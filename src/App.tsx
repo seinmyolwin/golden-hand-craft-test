@@ -1801,6 +1801,8 @@ export default function App() {
           isOpen={isUserGuideOpen}
           onClose={() => setIsUserGuideOpen(false)}
           onOpenZeroReset={() => setIsZeroResetModalOpen(true)}
+          onOpenNewEntry={() => handleOpenNewEntry()}
+          onOpenNewSale={() => handleOpenNewSale()}
         />
 
         <ZeroSettingsConfirmModal

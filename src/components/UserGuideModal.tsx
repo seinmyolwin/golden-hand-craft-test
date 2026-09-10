@@ -23,6 +23,12 @@ import {
   ChevronRight,
   Sparkles,
   Layers,
+  HelpCircle,
+  RefreshCw,
+  FileText,
+  Check,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -87,7 +93,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
   if (!isOpen) return null;
 
   const tabs: { id: GuideTab; label: string; icon: React.ReactNode; badge?: string }[] = [
-    { id: 'overview', label: 'စနစ်အကျဉ်းချုပ်', icon: <BookOpen className="w-4 h-4" /> },
+    { id: 'overview', label: 'စနစ်အကျဉ်းချုပ် & မာတိကာ', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'inbound', label: '၁။ ကုန်သိမ်းဘောင်ချာ မိုဒယ်လ်', icon: <ArrowDownLeft className="w-4 h-4 text-emerald-600" /> },
     { id: 'raw_materials', label: '၂။ ဝါး/ကြိမ်ကုန်ကြမ်း & ငွေကြိုယူ', icon: <Layers className="w-4 h-4 text-amber-600" />, badge: 'အသစ်' },
     { id: 'sales', label: '၃။ လက်ကားအရောင်းနှင့် ကားဂိတ်', icon: <ArrowUpRight className="w-4 h-4 text-blue-600" /> },
@@ -338,6 +344,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 </div>
               )}
             </div>
+
             {/* OVERVIEW */}
             {(printAllChapters || activeTab === 'overview') && (
               <div className={`space-y-5 ${printAllChapters ? 'pb-8 border-b-2 border-slate-300' : ''}`}>
@@ -353,6 +360,36 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                       အင်တာနက်လိုင်း မရှိသည့် အခြေအနေတွင်ပင် ဖုန်း သို့မဟုတ် ကွန်ပျူတာပေါ်တွင် ၁၀၀% အော့ဖ်လိုင်း သုံးနိုင်ပြီး ကုန်ပစ္စည်းပေးသွင်းသူ အကြိုငွေစာရင်း၊ ကုန်သည်လက်ကား ရောင်းချမှု၊ ကားဂိတ်ပို့ဆောင်မှု၊ ပစ္စည်းလက်ကျန် အနိမ့်ဆုံး သတိပေးချက်များနှင့် Shwe let yar doc. ဖိုင်တွဲထဲ အရန်သိမ်းဆည်းမှုများကို ပြည့်စုံစွာ ဆောင်ရွက်ပေးနိုင်ပါသည်။
                     </p>
                   </div>
+
+                  {/* Interactive Quick Action Buttons inside Guide */}
+                  <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto print:hidden">
+                    {onOpenNewEntry && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenNewEntry();
+                        }}
+                        className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                      >
+                        <ArrowDownLeft className="w-4 h-4 text-amber-300" />
+                        <span>+ ကုန်သိမ်းဘောင်ချာ အသစ်ဖွင့်မည်</span>
+                      </button>
+                    )}
+                    {onOpenNewSale && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenNewSale();
+                        }}
+                        className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                      >
+                        <ArrowUpRight className="w-4 h-4 text-blue-200" />
+                        <span>+ အရောင်းဘောင်ချာ အသစ်ဖွင့်မည်</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Core Workflow Grid */}
@@ -361,9 +398,19 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
                       <ArrowDownLeft className="w-4 h-4" />
                     </div>
-                    <h4 className="font-bold text-xs text-slate-900">ကုန်ပစ္စည်းပေးသွင်းသူထံမှ ကုန်သိမ်းခြင်း</h4>
+                    <h4 className="font-bold text-xs text-slate-900">၁။ ကုန်ပစ္စည်းပေးသွင်းသူထံမှ ကုန်သိမ်းခြင်း</h4>
                     <p className="text-[11px] text-slate-600 leading-relaxed">
                       ပေးသွင်းကုန်ပစ္စည်းတန်ဖိုးတွက်ချက်ပြီး ယခင်အကြိုငွေကျန်မှ နုတ်ယူခြင်း၊ အပိုပေးငွေနှင့် အကြိုငွေအသစ် ထုတ်ပေးခြင်းများကို တစ်မျက်နှာတည်းတွင် အလိုအလျောက် တွက်ချက်ပေးပါသည်။
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <h4 className="font-bold text-xs text-slate-900">၂။ ဝါး၊ ကြိမ်နှင့် ကုန်ကြမ်းကြိုထုတ်ပေးခြင်း</h4>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      ယွန်းဆရာများနှင့် ဝါးနှီးလုပ်သားများထံသို့ ဝါးပိုးဝါး၊ ကြိမ်လုံး၊ ငွေကြိုယူမှုများကို သီးသန့်ဘောင်ချာဖြင့် ထုတ်ပေးပြီး အကြိုငွေစာရင်းထဲ အလိုအလျောက် ပေါင်းထည့်ပေးပါသည်။
                     </p>
                   </div>
 
@@ -371,7 +418,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
                       <ArrowUpRight className="w-4 h-4" />
                     </div>
-                    <h4 className="font-bold text-xs text-slate-900">ကုန်သည် လက်ကားအရောင်းနှင့် ကားဂိတ်</h4>
+                    <h4 className="font-bold text-xs text-slate-900">၃။ ကုန်သည် လက်ကားအရောင်းနှင့် ကားဂိတ်</h4>
                     <p className="text-[11px] text-slate-600 leading-relaxed">
                       ကုန်သည်ဆိုင်ပိုင်ရှင်/ဆက်သွယ်ရမည့်သူ၊ တင်ပေးလိုက်သည့်ကား၊ ယာဉ်မောင်းအမည်နှင့် ဖုန်းနံပါတ်တို့ကို ဘောင်ချာတွင် ထည့်သွင်းမှတ်တမ်းတင်နိုင်ပြီး Print ထုတ်နိုင်ပါသည်။
                     </p>
@@ -381,9 +428,19 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
                       <AlertTriangle className="w-4 h-4" />
                     </div>
-                    <h4 className="font-bold text-xs text-slate-900">အနိမ့်ဆုံးလက်ကျန်နှင့် သတိပေးချက်</h4>
+                    <h4 className="font-bold text-xs text-slate-900">၄။ အနိမ့်ဆုံးလက်ကျန်နှင့် သတိပေးချက်</h4>
                     <p className="text-[11px] text-slate-600 leading-relaxed">
                       ကုန်ပစ္စည်းတမျိုးချင်းစီတွင် အနည်းဆုံးရှိရမည့် လက်ကျန် (Min Stock) သတ်မှတ်ထားနိုင်ပြီး သတ်မှတ်ချက်အောက် ရောက်ပါက ဦးစားပေးဝယ်ယူရန် အလိုအလျောက် အချက်ပေးပါသည်။
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2">
+                    <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                      <Package className="w-4 h-4" />
+                    </div>
+                    <h4 className="font-bold text-xs text-slate-900">၅။ အော်ဒါမှတ်တမ်းနှင့် စရန်ငွေ</h4>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      ကုန်သည်များထံမှ ကြိုတင်အော်ဒါနှင့် စရန်ငွေမှတ်တမ်းတင်နိုင်ပြီး ပစ္စည်းအသင့်ဖြစ်ပါက နှိပ်ရုံဖြင့် အရောင်းဘောင်ချာ အဖြစ် တိုက်ရိုက်ပြောင်းနိုင်ပါသည်။
                     </p>
                   </div>
 
@@ -391,31 +448,22 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold">
                       <Users className="w-4 h-4" />
                     </div>
-                    <h4 className="font-bold text-xs text-slate-900">ဆိုင်ချင်း ကုန်ဖလှယ်မှု/အငှားရောင်း</h4>
+                    <h4 className="font-bold text-xs text-slate-900">၆။ ဆိုင်ချင်း ကုန်ဖလှယ်မှု/အငှားရောင်း</h4>
                     <p className="text-[11px] text-slate-600 leading-relaxed">
                       အော်ဒါလော၍ မိတ်ဆွေယွန်းဆိုင်များထံမှ ပစ္စည်းငှားထုတ်ခြင်း သို့မဟုတ် မိမိဆိုင်မှ ပစ္စည်းငှားပေးခြင်းများကို အပြန်အလှန် စာရင်းရှင်းတမ်းဖြင့် ထိန်းသိမ်းပေးပါသည်။
                     </p>
                   </div>
+                </div>
 
-                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                      <Smartphone className="w-4 h-4" />
-                    </div>
-                    <h4 className="font-bold text-xs text-slate-900">Shwe let yar doc. ဖိုင်တွဲ အရန်သိမ်းခြင်း</h4>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      ဖုန်း၏ Download ထဲရှိ Shwe let yar doc. ဖိုင်တွဲထဲသို့ JSON ဖိုင်အဖြစ် အလွယ်တကူ ဒေါင်းလုဒ်သိမ်းဆည်းနိုင်ပြီး Zapya ဖြင့် အင်တာနက်မလိုဘဲ ဖုန်းအချင်းချင်း ပို့နိုင်ပါသည်။
-                    </p>
+                {/* Bicultural Number Format Note */}
+                <div className="p-4 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2 text-xs text-slate-800">
+                  <div className="font-bold text-amber-950 flex items-center gap-2 text-sm">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>ဂဏန်းအသွင်းရလွယ်ကူမှု စနစ် (Myanmar & English Number Auto-Conversion)</span>
                   </div>
-
-                  <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs space-y-2">
-                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <h4 className="font-bold text-xs text-slate-900">App Lock & Emergency Recovery</h4>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      ၄ လုံးပါ စကားဝှက် (PIN) ဖြင့် လုံခြုံစွာ Lock ချနိုင်ပြီး စကားဝှက်မေ့သွားပါက သီးသန့် အရေးပေါ် Recovery Key (SLY-xxxx-xxxx) ဖြင့် အချိန်မရွေး ပြန်ဖွင့်နိုင်ပါသည်။
-                    </p>
-                  </div>
+                  <p className="leading-relaxed text-[11px] text-slate-700">
+                    စနစ်အတွင်း ငွေပမာဏ သို့မဟုတ် အရေအတွက် ရိုက်ထည့်ရာတွင် မြန်မာဂဏန်း (ဥပမာ - <strong>၁၂၅၀၀</strong>) သို့မဟုတ် အင်္ဂလိပ်ဂဏန်း (<strong>12500</strong>) မည်သို့ပင် ရိုက်ထည့်သည်ဖြစ်စေ အလိုအလျောက် မှန်ကန်စွာ တွက်ချက်ပေးပါသည်။
+                  </p>
                 </div>
               </div>
             )}
@@ -423,14 +471,29 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
             {/* INBOUND VOUCHER GUIDE */}
             {(printAllChapters || activeTab === 'inbound') && (
               <div className={`space-y-5 ${printAllChapters ? 'print-page-break pt-8 pb-8 border-b-2 border-slate-300' : ''}`}>
-                <div className="border-b border-slate-200 pb-3">
-                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                    <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
-                    <span>၁။ ကုန်သိမ်းဘောင်ချာ ဖွင့်နည်း (Inbound Pickup & Advance Settlement)</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    ကုန်ပစ္စည်းပေးသွင်းသူထံမှ ကုန်ပစ္စည်းလက်ခံခြင်း၊ အကြိုငွေနုတ်ယူခြင်းနှင့် ငွေရှင်းတွက်ချက်မှု အဆင့်ဆင့်
-                  </p>
+                <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                      <ArrowDownLeft className="w-5 h-5 text-emerald-600" />
+                      <span>၁။ ကုန်သိမ်းဘောင်ချာ ဖွင့်နည်း (Inbound Pickup & Advance Settlement)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      ကုန်ပစ္စည်းပေးသွင်းသူထံမှ ကုန်ပစ္စည်းလက်ခံခြင်း၊ အကြိုငွေနုတ်ယူခြင်းနှင့် ငွေရှင်းတွက်ချက်မှု အဆင့်ဆင့်
+                    </p>
+                  </div>
+                  {onOpenNewEntry && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenNewEntry();
+                      }}
+                      className="hidden sm:flex px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl items-center gap-1.5 cursor-pointer print:hidden"
+                    >
+                      <ArrowDownLeft className="w-3.5 h-3.5 text-amber-300" />
+                      <span>+ ကုန်သိမ်းမည်</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* SCREEN SHOT MOCKUP 1: Inbound Modal */}
@@ -500,7 +563,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                       </div>
                       <div className="p-2 bg-slate-800/80 rounded-lg border border-slate-700">
                         <span className="text-[10px] text-slate-400 block">လက်ကျန် အကြိုငွေ</span>
-                        <span className="font-bold text-cyan-300">၅၅,၀၀၀ ကျပ်</span>
+                        <span className="font-bold text-cyan-300">၄၅,၀၀၀ ကျပ်</span>
                       </div>
                     </div>
                   </div>
@@ -643,7 +706,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
 
                     <div className="p-2 bg-slate-800 rounded text-[11px] text-slate-300 flex items-center justify-between">
                       <span>ထုတ်ပေးမည့် ဘောင်ချာအမျိုးအစား:</span>
-                      <span className="font-bold text-amber-400">ဘောင်ချာနံပါတ်: MAT-20260905-001 (ကုန်ကြမ်းကြိုထုတ်ပြေစာ)</span>
+                      <span className="font-bold text-amber-400">ဘောင်ချာနံပါတ်: RAW-8912 (ကုန်ကြမ်းကြိုထုတ်ပြေစာ)</span>
                     </div>
                   </div>
                 </div>
@@ -658,7 +721,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                         <span>၁။ အမျိုးအစား ၄ မျိုး ရွေးချယ်မှု</span>
                       </div>
                       <p className="text-slate-600 text-[11px]">
-                        <strong>"ဝါးကုန်ကြမ်း"</strong>၊ <strong>"ကြိမ်ကုန်ကြမ်း"</strong>၊ <strong>"ငွေကြိုယူ"</strong>၊ <strong>"အခြားကုန်ကြမ်း"</strong> ဟူ၍ အတိအကျ ခွဲခြားထားပါသည်။ သစ်စေးကို ဖြုတ်ထားပြီး လိုအပ်ပါက အခြားကုန်ကြမ်းတွင် ထည့်သွင်းနိုင်ပါသည်။
+                        <strong>"ဝါးကုန်ကြမ်း"</strong>၊ <strong>"ကြိမ်ကုန်ကြမ်း"</strong>၊ <strong>"ငွေကြိုယူ"</strong>၊ <strong>"အခြားကုန်ကြမ်း"</strong> ဟူ၍ အတိအကျ ခွဲခြားထားပါသည်။ လိုအပ်သော ကုန်ကြမ်းအလိုက် ရွေးချယ်နိုင်ပါသည်။
                       </p>
                     </div>
 
@@ -668,7 +731,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                         <span>၂။ "ငွေကြိုယူ" (Cash Advance) သီးသန့် အလိုအလျောက် သတ်မှတ်ခြင်း</span>
                       </div>
                       <p className="text-slate-600 text-[11px]">
-                        အမျိုးအစားတွင် <strong>"ငွေကြိုယူ"</strong> ကို ရွေးချယ်လိုက်ပါက ယူနစ်ကို <strong>"ကျပ်"</strong> အဖြစ်လည်းကောင်း၊ ပေါက်ဈေးကို <strong>"၁ ကျပ်"</strong> အဖြစ်လည်းကောင်း စနစ်မှ အလိုအလျောက် သတ်မှတ်ပေးပြီး ကုန်ပစ္စည်းပေးသွင်းသူယူမည့် ငွေပမာဏကိုသာ တိုက်ရိုက်ရိုက်ထည့်ပေးရန် လိုအပ်ပါသည်။
+                        အမျိုးအစားတွင် <strong>"ငွေကြိုယူ"</strong> ကို ရွေးချယ်လိုက်ပါက ယူနစ်ကို <strong>"ကျပ်"</strong> အဖြစ်လည်းကောင်း၊ ပေါက်ဈေးကို <strong>"၁ ကျပ်"</strong> အဖြစ်လည်းကောင်း စနစ်မှ အလိုအလျောက် သတ်မှတ်ပေးပြီး ထုတ်ယူမည့် ငွေပမာဏကိုသာ ရိုက်ထည့်ရန် လိုအပ်ပါသည်။
                       </p>
                     </div>
 
@@ -699,14 +762,29 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
             {/* SALES & CAR DELIVERY GUIDE */}
             {(printAllChapters || activeTab === 'sales') && (
               <div className={`space-y-5 ${printAllChapters ? 'print-page-break pt-8 pb-8 border-b-2 border-slate-300' : ''}`}>
-                <div className="border-b border-slate-200 pb-3">
-                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                    <ArrowUpRight className="w-5 h-5 text-blue-600" />
-                    <span>၃။ လက်ကားအရောင်းဘောင်ချာနှင့် ကားဂိတ်ပို့ဆောင်မှု (Wholesale Sales & Delivery)</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    ကုန်သည်ရွေးချယ်ခြင်း၊ ကားဂိတ်/ယာဉ်မောင်း/ဖုန်းနံပါတ် ဖြည့်သွင်းခြင်းနှင့် ဘောင်ချာထုတ်နည်း
-                  </p>
+                <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                      <ArrowUpRight className="w-5 h-5 text-blue-600" />
+                      <span>၃။ လက်ကားအရောင်းဘောင်ချာနှင့် ကားဂိတ်ပို့ဆောင်မှု (Wholesale Sales & Delivery)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      ကုန်သည်ရွေးချယ်ခြင်း၊ ကားဂိတ်/ယာဉ်မောင်း/ဖုန်းနံပါတ် ဖြည့်သွင်းခြင်းနှင့် ဘောင်ချာထုတ်နည်း
+                    </p>
+                  </div>
+                  {onOpenNewSale && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenNewSale();
+                      }}
+                      className="hidden sm:flex px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-xl items-center gap-1.5 cursor-pointer print:hidden"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5 text-blue-200" />
+                      <span>+ အရောင်းဖွင့်မည်</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* SCREEN SHOT MOCKUP 2: Sales Voucher */}
@@ -915,11 +993,25 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   <p>
                     ပုဂံ၊ မန္တလေးရှိ ရိုးရာယွန်းထည်ဆိုင်များသည် အော်ဒါလောသည့်အခါ မိတ်ဆွေဆိုင်များထံမှ ပစ္စည်းခေတ္တငှားယူထုတ်ပေးရလေ့ရှိပါသည်။
                   </p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li><strong>ငှားယူခြင်း (BORROW):</strong> မိတ်ဆွေဆိုင်ထံမှ ပစ္စည်းယူလာခြင်း (မိမိဘက်မှ ပေးရန်ကျန်)</li>
-                    <li><strong>ငှားပေးခြင်း (LEND):</strong> မိတ်ဆွေဆိုင်သို့ ပစ္စည်းထုတ်ပေးလိုက်ခြင်း (မိမိဘက်မှ ရရန်ကျန်)</li>
-                    <li><strong>စာရင်းရှင်းမည် (Settle):</strong> နောက်ပိုင်းတွင် ပစ္စည်းပြန်ပေးသည်ဖြစ်စေ၊ ငွေရှင်းသည်ဖြစ်စေ စာရင်းကို အကျေရှင်းနိုင်ပါသည်။</li>
-                  </ul>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    <div className="p-3 bg-white border border-cyan-300 rounded-xl space-y-1">
+                      <span className="font-bold text-cyan-900 block">ငှားယူခြင်း (BORROW IN):</span>
+                      <p className="text-[11px] text-slate-600">
+                        မိတ်ဆွေဆိုင်ထံမှ ပစ္စည်းယူလာခြင်း (မိမိဘက်မှ ပစ္စည်းပြန်ပေးရန် သို့မဟုတ် ငွေပေးရန်ကျန်)
+                      </p>
+                    </div>
+                    <div className="p-3 bg-white border border-cyan-300 rounded-xl space-y-1">
+                      <span className="font-bold text-cyan-900 block">ငှားပေးခြင်း (LEND OUT):</span>
+                      <p className="text-[11px] text-slate-600">
+                        မိတ်ဆွေဆိုင်သို့ ပစ္စည်းထုတ်ပေးလိုက်ခြင်း (မိမိဘက်မှ ပစ္စည်းပြန်ရရန် သို့မဟုတ် ငွေရရန်ကျန်)
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="pt-2">
+                    <strong>စာရင်းရှင်းမည် (Settle):</strong> နောက်ပိုင်းတွင် ပစ္စည်းပြန်ပေးသည်ဖြစ်စေ၊ ငွေရှင်းသည်ဖြစ်စေ <strong>"စာရင်းရှင်းမည်"</strong> ကို နှိပ်၍ အကျေရှင်းနိုင်ပါသည်။
+                  </p>
                 </div>
               </div>
             )}
@@ -984,9 +1076,9 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
 
                 <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
                   <div className="font-bold text-rose-950 text-sm">စကားဝှက် သတ်မှတ်ခြင်းနှင့် ပြန်လည်ရယူခြင်း:</div>
-                  <ul className="list-disc list-inside space-y-1">
+                  <ul className="list-disc list-inside space-y-1.5">
                     <li>App Lock ဖွင့်လှစ်ချိန်တွင် အသုံးပြုသူ ကိုယ်တိုင် စိတ်ကြိုက် PIN စကားဝှက် (၄~၈ လုံး) ကို သတ်မှတ်ရပါမည်။ (မည်သည့် မူလ default စကားဝှက်မျှ စနစ်တွင်း ပုံသေသတ်မှတ်ထားခြင်း မရှိပါ)</li>
-                    <li>စကားဝှက်မေ့သွားပါက မိမိ၏ သီးသန့်ထုတ်ပေးထားသော အရေးပေါ် ပြန်လည်ရယူရေးကီး (Recovery Key) ကို ရိုက်ထည့်၍ ချက်ချင်း Reset ချနိုင်ပါသည်။</li>
+                    <li>စကားဝှက်မေ့သွားပါက မိမိ၏ သီးသန့်ထုတ်ပေးထားသော အရေးပေါ် ပြန်လည်ရယူရေးကီး (Recovery Key - ဥပမာ: SLY-8821-9932) ကို ရိုက်ထည့်၍ ချက်ချင်း Reset ချနိုင်ပါသည်။</li>
                     <li>Recovery Key ကို ဘေးကင်းလုံခြုံသော မှတ်စုစာအုပ်တွင် ကူးယူသိမ်းဆည်းထားသင့်ပါသည်။</li>
                     <li>လုံခြုံရေးအရ ဆော့ဖ်ဝဲလ်သည် စကားဝှက်များကို Web Crypto (PBKDF2-SHA256) နည်းပညာဖြင့် လုံခြုံစွာ ကုဒ်ဝှက်စစ်ဆေးပါသည်။</li>
                   </ul>
