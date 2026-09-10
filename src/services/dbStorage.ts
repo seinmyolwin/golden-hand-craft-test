@@ -83,30 +83,22 @@ export async function loadFromIndexedDB<T>(key: string): Promise<T | null> {
   }
 }
 
+import {
+  saveAttachmentRecord,
+  getAttachmentsForVoucher as getServiceAttachmentsForVoucher,
+  blobToBase64,
+} from './attachmentService';
+
 /**
  * Save an offline image attachment (photo of delivery, voucher signature, receipt)
  */
-export async function saveAttachment(voucherId: string, imageBase64: string, caption?: string): Promise<string> {
-  const id = `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+export async function saveAttachment(voucherId: string, input: File | Blob | string, caption?: string): Promise<string> {
   try {
-    const db = await getDB();
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction([STORE_ATTACHMENTS], 'readwrite');
-      const store = transaction.objectStore(STORE_ATTACHMENTS);
-      const req = store.put({
-        id,
-        voucherId,
-        imageBase64,
-        caption: caption || '',
-        createdAt: new Date().toISOString(),
-      });
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-    return id;
+    const record = await saveAttachmentRecord({ voucherId, input, caption });
+    return record.id;
   } catch (err) {
-    console.warn('Failed to save attachment to IndexedDB:', err);
-    return id;
+    console.warn('Failed to save attachment:', err);
+    return `att_${Date.now()}`;
   }
 }
 
@@ -115,17 +107,23 @@ export async function saveAttachment(voucherId: string, imageBase64: string, cap
  */
 export async function getAttachmentsForVoucher(voucherId: string): Promise<Array<{ id: string; imageBase64: string; caption?: string; createdAt: string }>> {
   try {
-    const db = await getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_ATTACHMENTS], 'readonly');
-      const store = transaction.objectStore(STORE_ATTACHMENTS);
-      const index = store.index('voucherId');
-      const req = index.getAll(voucherId);
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
+    const list = await getServiceAttachmentsForVoucher(voucherId);
+    const result = [];
+    for (const item of list) {
+      let b64 = item.imageBase64 || item.thumbnail || '';
+      if (!b64 && item.blob) {
+        b64 = await blobToBase64(item.blob);
+      }
+      result.push({
+        id: item.id,
+        imageBase64: b64,
+        caption: item.caption,
+        createdAt: item.createdAt,
+      });
+    }
+    return result;
   } catch (err) {
-    console.warn('Failed to get attachments from IndexedDB:', err);
+    console.warn('Failed to get attachments:', err);
     return [];
   }
 }

@@ -32,6 +32,7 @@ import {
 import { db } from '../db/database';
 import { generateSecureRecoveryKey } from '../services/cryptoSecurity';
 import { generateStableId } from './idGenerator';
+import { createCompleteBackup, downloadBackupFile } from '../services/backupService';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'ledger_products_v2',
@@ -134,48 +135,30 @@ export function normalizeBilingualDigits(input: string): string {
 }
 
 export function getStoredProductCategories(): string[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.PRODUCT_CATEGORIES);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCT_CATEGORIES, JSON.stringify(DEFAULT_PRODUCT_CATEGORIES));
-      return DEFAULT_PRODUCT_CATEGORIES;
-    }
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PRODUCT_CATEGORIES;
-  } catch (e) {
-    console.error('Error reading product categories', e);
-    return DEFAULT_PRODUCT_CATEGORIES;
-  }
+  return DEFAULT_PRODUCT_CATEGORIES;
 }
 
 export function saveStoredProductCategories(categories: string[]): void {
   try {
     const clean = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
-    localStorage.setItem(STORAGE_KEYS.PRODUCT_CATEGORIES, JSON.stringify(clean.length > 0 ? clean : DEFAULT_PRODUCT_CATEGORIES));
+    const finalCats = clean.length > 0 ? clean : DEFAULT_PRODUCT_CATEGORIES;
+    db.settings.put({ key: 'productCategories', value: finalCats, updatedAt: new Date().toISOString() })
+      .catch((err) => console.error('Dexie save product categories error:', err));
   } catch (e) {
     console.error('Error saving product categories', e);
   }
 }
 
 export function getStoredRawMaterialCategories(): string[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.RAW_MATERIAL_CATEGORIES);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_CATEGORIES, JSON.stringify(DEFAULT_RAW_MATERIAL_CATEGORIES));
-      return DEFAULT_RAW_MATERIAL_CATEGORIES;
-    }
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_RAW_MATERIAL_CATEGORIES;
-  } catch (e) {
-    console.error('Error reading raw material categories', e);
-    return DEFAULT_RAW_MATERIAL_CATEGORIES;
-  }
+  return DEFAULT_RAW_MATERIAL_CATEGORIES;
 }
 
 export function saveStoredRawMaterialCategories(categories: string[]): void {
   try {
     const clean = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
-    localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_CATEGORIES, JSON.stringify(clean.length > 0 ? clean : DEFAULT_RAW_MATERIAL_CATEGORIES));
+    const finalCats = clean.length > 0 ? clean : DEFAULT_RAW_MATERIAL_CATEGORIES;
+    db.settings.put({ key: 'rawMaterialCategories', value: finalCats, updatedAt: new Date().toISOString() })
+      .catch((err) => console.error('Dexie save raw material categories error:', err));
   } catch (e) {
     console.error('Error saving raw material categories', e);
   }
@@ -259,19 +242,40 @@ export function getStoredRawMaterialPresets(): RawMaterialPreset[] {
 }
 
 export function saveStoredRawMaterialPresets(presets: RawMaterialPreset[]): void {
+  const list = presets && presets.length > 0 ? presets : DEFAULT_RAW_MATERIAL_PRESETS;
+  db.transaction('rw', db.rawMaterialPresets, async () => {
+    await db.rawMaterialPresets.clear();
+    await db.rawMaterialPresets.bulkPut(list);
+  }).catch((err) => console.error('Dexie save raw material presets error:', err));
+}
+
+let inMemoryLocalStorage: Record<string, string> = {};
+
+function getLocalStorage(): Storage | undefined {
   try {
-    localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify(presets || DEFAULT_RAW_MATERIAL_PRESETS));
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) return (globalThis as any).localStorage;
+    if (typeof localStorage !== 'undefined') return localStorage;
   } catch (e) {
-    console.error('Error saving raw material presets', e);
+    // Fall back to in-memory storage
   }
+  return {
+    getItem: (key: string) => inMemoryLocalStorage[key] ?? null,
+    setItem: (key: string, val: string) => { inMemoryLocalStorage[key] = String(val); },
+    removeItem: (key: string) => { delete inMemoryLocalStorage[key]; },
+    clear: () => { inMemoryLocalStorage = {}; },
+    length: Object.keys(inMemoryLocalStorage).length,
+    key: (i: number) => Object.keys(inMemoryLocalStorage)[i] ?? null,
+  };
 }
 
 export function safeLocalStorageGet<T>(key: string, fallback: T): T {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) {
+    const storage = getLocalStorage();
+    if (!storage) {
       return fallback;
     }
-    const item = window.localStorage.getItem(key);
+    const item = storage.getItem(key);
     if (item === null || item === undefined || item === '') {
       return fallback;
     }
@@ -288,10 +292,11 @@ export function safeLocalStorageGet<T>(key: string, fallback: T): T {
 
 export function safeLocalStorageSet<T>(key: string, value: T): boolean {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) {
+    const storage = getLocalStorage();
+    if (!storage) {
       return false;
     }
-    window.localStorage.setItem(key, JSON.stringify(value));
+    storage.setItem(key, JSON.stringify(value));
     return true;
   } catch (err) {
     console.error(`[safeLocalStorageSet] Failed saving key "${key}".`, err);
@@ -325,182 +330,144 @@ export function getStoredShopSettings(): ShopSettings {
 }
 
 export function saveStoredShopSettings(settings: ShopSettings): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.SHOP_SETTINGS, JSON.stringify(settings || DEFAULT_SHOP_SETTINGS));
-  } catch (e) {
-    console.error('Error saving shop settings', e);
-  }
+  const clean = settings || DEFAULT_SHOP_SETTINGS;
+  safeLocalStorageSet(STORAGE_KEYS.SHOP_SETTINGS, clean);
+  db.settings.put({ key: 'shopSettings', value: clean, updatedAt: new Date().toISOString() })
+    .catch((err) => console.error('Dexie save shop settings error:', err));
 }
 
 export function getStoredProducts(): Product[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading products', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredProducts(products: Product[]): void {
-  try {
-    const list = products || [];
-    db.products.clear().then(() => db.products.bulkPut(list)).catch((err) => console.error('Dexie save products error:', err));
-  } catch (e) {
-    console.error('Error saving products', e);
-  }
+  const list = products || [];
+  db.transaction('rw', db.products, async () => {
+    await db.products.clear();
+    if (list.length > 0) {
+      await db.products.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save products error:', err);
+    throw new Error('IndexedDB storage write failed for products: ' + err.message);
+  });
 }
 
 export function getStoredSuppliers(): Supplier[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading suppliers', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredSuppliers(suppliers: Supplier[]): void {
-  try {
-    const list = suppliers || [];
-    db.suppliers.clear().then(() => db.suppliers.bulkPut(list)).catch((err) => console.error('Dexie save suppliers error:', err));
-  } catch (e) {
-    console.error('Error saving suppliers', e);
-  }
+  const list = suppliers || [];
+  db.transaction('rw', db.suppliers, async () => {
+    await db.suppliers.clear();
+    if (list.length > 0) {
+      await db.suppliers.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save suppliers error:', err);
+    throw new Error('IndexedDB storage write failed for suppliers: ' + err.message);
+  });
 }
 
 export function getStoredTransactions(): TransactionRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading transactions', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredTransactions(transactions: TransactionRecord[]): void {
-  try {
-    const list = transactions || [];
-    db.transactions.clear().then(() => db.transactions.bulkPut(list)).catch((err) => console.error('Dexie save transactions error:', err));
-  } catch (e) {
-    console.error('Error saving transactions', e);
-  }
+  const list = transactions || [];
+  db.transaction('rw', db.transactions, async () => {
+    await db.transactions.clear();
+    if (list.length > 0) {
+      await db.transactions.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save transactions error:', err);
+    throw new Error('IndexedDB storage write failed for transactions: ' + err.message);
+  });
 }
 
 export function getStoredMerchants(): Merchant[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MERCHANTS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading merchants', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredMerchants(merchants: Merchant[]): void {
-  try {
-    const list = merchants || [];
-    db.merchants.clear().then(() => db.merchants.bulkPut(list)).catch((err) => console.error('Dexie save merchants error:', err));
-  } catch (e) {
-    console.error('Error saving merchants', e);
-  }
+  const list = merchants || [];
+  db.transaction('rw', db.merchants, async () => {
+    await db.merchants.clear();
+    if (list.length > 0) {
+      await db.merchants.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save merchants error:', err);
+    throw new Error('IndexedDB storage write failed for merchants: ' + err.message);
+  });
 }
 
 export function getStoredSales(): SaleRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.SALES);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading sales', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredSales(sales: SaleRecord[]): void {
-  try {
-    const list = sales || [];
-    db.sales.clear().then(() => db.sales.bulkPut(list)).catch((err) => console.error('Dexie save sales error:', err));
-  } catch (e) {
-    console.error('Error saving sales', e);
-  }
+  const list = sales || [];
+  db.transaction('rw', db.sales, async () => {
+    await db.sales.clear();
+    if (list.length > 0) {
+      await db.sales.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save sales error:', err);
+    throw new Error('IndexedDB storage write failed for sales: ' + err.message);
+  });
 }
 
 export function getStoredStockAdjustments(): StockAdjustmentRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.STOCK_ADJUSTMENTS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading stock adjustments', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredStockAdjustments(adjustments: StockAdjustmentRecord[]): void {
-  try {
-    const list = adjustments || [];
-    db.stockAdjustments.clear().then(() => db.stockAdjustments.bulkPut(list)).catch((err) => console.error('Dexie save stock adjustments error:', err));
-  } catch (e) {
-    console.error('Error saving stock adjustments', e);
-  }
+  const list = adjustments || [];
+  db.transaction('rw', db.stockAdjustments, async () => {
+    await db.stockAdjustments.clear();
+    if (list.length > 0) {
+      await db.stockAdjustments.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save stock adjustments error:', err);
+    throw new Error('IndexedDB storage write failed for stock adjustments: ' + err.message);
+  });
 }
 
 export function getStoredDeletedHistory(): DeletedRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.DELETED_HISTORY);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading deleted history', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredDeletedHistory(history: DeletedRecord[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.DELETED_HISTORY, JSON.stringify(history || []));
-  } catch (e) {
-    console.error('Error saving deleted history', e);
-  }
+  const list = history || [];
+  db.transaction('rw', db.softDeletedItems, async () => {
+    await db.softDeletedItems.clear();
+    if (list.length > 0) {
+      const formatted = list.map((item: any) => ({
+        id: item.id || generateStableId('del'),
+        originalId: item.originalId || item.id,
+        name: item.name || 'Deleted Item',
+        type: item.type || 'RECORD',
+        deletedAt: item.deletedAt || new Date().toISOString(),
+        data: item.data || item,
+      }));
+      await db.softDeletedItems.bulkPut(formatted);
+    }
+  }).catch((err) => console.error('Dexie save soft deleted items error:', err));
 }
 
 export function getStoredBackupReminderSettings(): BackupReminderSettings {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.BACKUP_REMINDER);
-    if (!data) {
-      return DEFAULT_BACKUP_REMINDER;
-    }
-    const parsed = JSON.parse(data);
-    return {
-      ...DEFAULT_BACKUP_REMINDER,
-      ...parsed,
-    };
-  } catch (e) {
-    console.error('Error reading backup reminder settings', e);
-    return DEFAULT_BACKUP_REMINDER;
-  }
+  return DEFAULT_BACKUP_REMINDER;
 }
 
 export function saveStoredBackupReminderSettings(settings: BackupReminderSettings): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.BACKUP_REMINDER, JSON.stringify(settings || DEFAULT_BACKUP_REMINDER));
-  } catch (e) {
-    console.error('Error saving backup reminder settings', e);
-  }
+  const clean = settings || DEFAULT_BACKUP_REMINDER;
+  db.settings.put({ key: 'backupReminder', value: clean, updatedAt: new Date().toISOString() })
+    .catch((err) => console.error('Dexie save backup reminder error:', err));
 }
 
 export function getStoredAppLockSettings(): AppLockSettings {
@@ -523,6 +490,19 @@ export function getStoredAppLockSettings(): AppLockSettings {
       autoLockMinutes: parsed.autoLockMinutes ?? 5,
       lockOnStartup: parsed.lockOnStartup ?? true,
     };
+
+    // Purge legacy plaintext fields if salted verifiers exist
+    if (settings.pinHash && settings.pinSalt) {
+      delete settings.passcode;
+      delete settings.pin;
+    }
+    if (settings.recoveryHash && settings.recoverySalt) {
+      delete settings.recoveryKey;
+    }
+    delete settings.hint;
+    delete settings.recoveryQuestion;
+    delete settings.recoveryAnswer;
+
     return settings;
   } catch (e) {
     console.error('Error reading app lock settings', e);
@@ -536,168 +516,87 @@ export function saveStoredAppLockSettings(settings: AppLockSettings): void {
       ...DEFAULT_APP_LOCK,
       ...(settings || {}),
     };
-    // If cryptographic hash exists, do not retain plaintext passcode in storage
+    // Always purge plaintext credential fields before persisting to storage
     if (cleanSettings.pinHash && cleanSettings.pinSalt) {
       delete cleanSettings.passcode;
       delete cleanSettings.pin;
     }
+    if (cleanSettings.recoveryHash && cleanSettings.recoverySalt) {
+      delete cleanSettings.recoveryKey;
+    }
+    delete cleanSettings.hint;
+    delete cleanSettings.recoveryQuestion;
+    delete cleanSettings.recoveryAnswer;
+
     safeLocalStorageSet(STORAGE_KEYS.APP_LOCK, cleanSettings);
+    db.settings.put({ key: 'appLock', value: cleanSettings, updatedAt: new Date().toISOString() })
+      .catch((err) => console.error('Dexie save app lock error:', err));
   } catch (e) {
     console.error('Error saving app lock settings', e);
   }
 }
 
-// Verify Recovery Key (matches normalized SLY-XXXX-XXXX or case-insensitive)
-export function normalizeKey(key: string): string {
-  return key.toUpperCase().replace(/[\s\-_]/g, '');
-}
-
-export function verifyRecoveryKey(inputKey: string): boolean {
-  const current = getStoredAppLockSettings();
-  if (!current.recoveryKey) return false;
-  const normInput = normalizeKey(inputKey);
-  const normCurrent = normalizeKey(current.recoveryKey);
-  return normInput === normCurrent;
-}
-
-// Reset PIN with Recovery Key (sync helper)
-export function resetAppLockPinWithRecoveryKey(
-  inputRecoveryKey: string,
-  newPin: string
-): { success: boolean; message: string } {
-  if (!inputRecoveryKey || !inputRecoveryKey.trim()) {
-    return { success: false, message: 'Recovery Key (ပြန်လည်ရယူရေးကီး) ရိုက်ထည့်ပေးပါ' };
-  }
-  if (!newPin || newPin.length < 4) {
-    return { success: false, message: 'PIN အသစ်သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်' };
-  }
-  if (!verifyRecoveryKey(inputRecoveryKey)) {
-    return { success: false, message: 'Recovery Key မှားယွင်းနေပါသည်။ သေချာစစ်ဆေးပြီး ပြန်လည်ရိုက်ထည့်ပါ' };
-  }
-  const current = getStoredAppLockSettings();
-  const updated: AppLockSettings = {
-    ...current,
-    lastResetAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-  };
-  saveStoredAppLockSettings(updated);
-  return {
-    success: true,
-    message: 'စကားဝှက် (PIN) အသစ် အောင်မြင်စွာ ပြောင်းလဲသတ်မှတ်ပြီးပါပြီ!',
-  };
-}
-
-// Regenerate a new Recovery Key
-export function regenerateRecoveryKey(): string {
-  const current = getStoredAppLockSettings();
-  const newKey = generateRandomRecoveryKey();
-  const updated: AppLockSettings = {
-    ...current,
-    recoveryKey: newKey,
-  };
-  saveStoredAppLockSettings(updated);
-  return newKey;
-}
-
 export function getStoredMerchantOrders(): MerchantOrder[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MERCHANT_ORDERS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading merchant orders', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredMerchantOrders(orders: MerchantOrder[]): void {
-  try {
-    const list = orders || [];
-    db.orders.clear().then(() => db.orders.bulkPut(list)).catch((err) => console.error('Dexie save orders error:', err));
-  } catch (e) {
-    console.error('Error saving merchant orders', e);
-  }
+  const list = orders || [];
+  db.transaction('rw', db.orders, async () => {
+    await db.orders.clear();
+    if (list.length > 0) {
+      await db.orders.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save orders error:', err);
+    throw new Error('IndexedDB storage write failed for orders: ' + err.message);
+  });
 }
 
 export function getStoredMerchantPurchases(): MerchantPurchaseRecord[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.MERCHANT_PURCHASES);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading merchant purchases', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredMerchantPurchases(purchases: MerchantPurchaseRecord[]): void {
-  try {
-    const list = purchases || [];
-    db.merchantPurchases.clear().then(() => db.merchantPurchases.bulkPut(list)).catch((err) => console.error('Dexie save merchant purchases error:', err));
-  } catch (e) {
-    console.error('Error saving merchant purchases', e);
-  }
+  const list = purchases || [];
+  db.transaction('rw', db.merchantPurchases, async () => {
+    await db.merchantPurchases.clear();
+    if (list.length > 0) {
+      await db.merchantPurchases.bulkPut(list);
+    }
+  }).catch((err) => {
+    console.error('Dexie save merchant purchases error:', err);
+    throw new Error('IndexedDB storage write failed for merchant purchases: ' + err.message);
+  });
 }
 
 export function getStoredPeerTraders(): PeerTrader[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.PEER_TRADERS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading peer traders', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredPeerTraders(peers: PeerTrader[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.PEER_TRADERS, JSON.stringify(peers || []));
-  } catch (e) {
-    console.error('Error saving peer traders', e);
-  }
+  // Saved inside peerTrades repository / Dexie table
 }
 
 export function getStoredPeerTransactions(): PeerTransaction[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.PEER_TRANSACTIONS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading peer transactions', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredPeerTransactions(txs: PeerTransaction[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.PEER_TRANSACTIONS, JSON.stringify(txs || []));
-  } catch (e) {
-    console.error('Error saving peer transactions', e);
-  }
+  // Saved inside peerTrades repository / Dexie table
 }
 
 export function getStoredRecoverySnapshots(): AutoRecoverySnapshot[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEYS.RECOVERY_SNAPSHOTS);
-    if (!data) return [];
-    const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Error reading recovery snapshots', e);
-    return [];
-  }
+  return [];
 }
 
 export function saveStoredRecoverySnapshots(snapshots: AutoRecoverySnapshot[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.RECOVERY_SNAPSHOTS, JSON.stringify(snapshots.slice(0, 30)));
-  } catch (e) {
-    console.error('Error saving recovery snapshots', e);
-  }
+  const list = snapshots || [];
+  db.transaction('rw', db.recoverySnapshots, async () => {
+    if (list.length > 0) {
+      await db.recoverySnapshots.bulkPut(list);
+    }
+  }).catch((err) => console.error('Dexie save recovery snapshots error:', err));
 }
 
 export function createAutoRecoverySnapshot(
@@ -1113,7 +1012,7 @@ export async function saveFileWithLocationPrompt(
   return { success: true, method: 'download', fileName: defaultFilename };
 }
 
-export function exportBackupJSON(
+export async function exportBackupJSON(
   products: Product[],
   suppliers: Supplier[],
   transactions: TransactionRecord[],
@@ -1124,43 +1023,8 @@ export function exportBackupJSON(
   customFileName?: string,
   useLocationPicker: boolean = false
 ): Promise<{ success: boolean; method: 'picker' | 'download'; fileName: string }> {
-  const currentShop = shopSettings || getStoredShopSettings();
-  const backupData = {
-    version: '2.0',
-    exportDate: new Date().toISOString(),
-    shopSettings: currentShop,
-    products,
-    suppliers,
-    transactions,
-    merchants,
-    sales,
-    stockAdjustments,
-    orders: loadOrders(),
-    peerTrades: loadPeerTrades(),
-  };
-
-  const safeShopName = (currentShop.shopName || 'Handicraft').replace(/[^a-zA-Z0-9_\u1000-\u109F]/g, '_');
-  const fileName = customFileName || `Shwe_let_yar_doc_${safeShopName}_Backup_${getTodayDateString()}.json`;
-  const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json;charset=utf-8;' });
-
-  if (useLocationPicker) {
-    return saveFileWithLocationPrompt(blob, fileName, [
-      {
-        description: 'JSON Backup File',
-        accept: { 'application/json': ['.json'] },
-      },
-    ]);
-  }
-
-  const url = URL.createObjectURL(blob);
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.href = url;
-  downloadAnchor.download = fileName;
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-  return Promise.resolve({ success: true, method: 'download', fileName });
+  const completeBackup = await createCompleteBackup();
+  return downloadBackupFile(completeBackup, useLocationPicker);
 }
 
 export function exportSuppliersCSV(suppliers: Supplier[]): void {

@@ -35,14 +35,21 @@ const PBKDF2_KEY_LEN = 256; // bits
  * Generate cryptographically secure random salt as a hex string
  */
 export function generateCryptoSalt(byteLength: number = 16): string {
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues
+      ? window.crypto
+      : typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues
+      ? globalThis.crypto
+      : undefined;
+
+  if (cryptoObj) {
     const array = new Uint8Array(byteLength);
-    window.crypto.getRandomValues(array);
+    cryptoObj.getRandomValues(array);
     return Array.from(array)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }
-  // Safe fallback for non-browser/test environments
+  // Fallback for non-browser/test environments without crypto.getRandomValues
   const fallback = new Uint8Array(byteLength);
   for (let i = 0; i < byteLength; i++) {
     fallback[i] = Math.floor(Math.random() * 256);
@@ -157,17 +164,27 @@ export async function verifySecretHash(
  */
 export function generateSecureRecoveryKey(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto?.getRandomValues
+      ? window.crypto
+      : typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues
+      ? globalThis.crypto
+      : undefined;
+
   let p1 = '';
   let p2 = '';
-  for (let i = 0; i < 4; i++) {
-    const rand1 = typeof window !== 'undefined' && window.crypto?.getRandomValues
-      ? window.crypto.getRandomValues(new Uint8Array(1))[0]
-      : Math.floor(Math.random() * 256);
-    const rand2 = typeof window !== 'undefined' && window.crypto?.getRandomValues
-      ? window.crypto.getRandomValues(new Uint8Array(1))[0]
-      : Math.floor(Math.random() * 256);
-    p1 += chars[rand1 % chars.length];
-    p2 += chars[rand2 % chars.length];
+  if (cryptoObj) {
+    const buf = new Uint8Array(8);
+    cryptoObj.getRandomValues(buf);
+    for (let i = 0; i < 4; i++) {
+      p1 += chars[buf[i] % chars.length];
+      p2 += chars[buf[i + 4] % chars.length];
+    }
+  } else {
+    for (let i = 0; i < 4; i++) {
+      p1 += chars[Math.floor(Math.random() * 256) % chars.length];
+      p2 += chars[Math.floor(Math.random() * 256) % chars.length];
+    }
   }
   return `SLY-${p1}-${p2}`;
 }
@@ -199,27 +216,27 @@ export async function deriveRecoveryCredentials(key: string): Promise<{ salt: st
 }
 
 /**
- * Verify an entered PIN against AppLockSettings
+ * Verify an entered PIN against AppLockSettings using PBKDF2 salted hash verifiers only.
+ * Plaintext PIN verification fallback is strictly disabled.
  */
 export async function verifyAppLockPin(enteredPin: string, settings: AppLockSettings): Promise<boolean> {
   if (!enteredPin || !settings.enabled) return false;
 
-  // 1. If modern verifier exists
-  if (settings.pinSalt && settings.pinHash) {
-    return verifySecretHash(enteredPin.trim(), settings.pinSalt, settings.pinHash);
+  let activeSettings = settings;
+  if (!activeSettings.pinHash && (activeSettings.passcode || activeSettings.pin)) {
+    activeSettings = await migrateLegacyAppLockSettings(activeSettings);
   }
 
-  // 2. Legacy fallback if settings have unmigrated plaintext PIN
-  const legacyPin = settings.passcode ?? settings.pin;
-  if (legacyPin && legacyPin.trim() === enteredPin.trim()) {
-    return true;
+  if (activeSettings.pinSalt && activeSettings.pinHash) {
+    return verifySecretHash(enteredPin.trim(), activeSettings.pinSalt, activeSettings.pinHash);
   }
 
   return false;
 }
 
 /**
- * Verify an entered recovery key against AppLockSettings
+ * Verify an entered recovery key against AppLockSettings using PBKDF2 salted hash verifiers only.
+ * Plaintext recovery key verification fallback is strictly disabled.
  */
 export async function verifyAppLockRecoveryKey(
   enteredKey: string,
@@ -228,15 +245,13 @@ export async function verifyAppLockRecoveryKey(
   if (!enteredKey || !settings.enabled) return false;
   const normalizedInput = normalizeRecoveryKey(enteredKey);
 
-  // 1. Modern verifier
-  if (settings.recoverySalt && settings.recoveryHash) {
-    return verifySecretHash(normalizedInput, settings.recoverySalt, settings.recoveryHash);
+  let activeSettings = settings;
+  if (!activeSettings.recoveryHash && activeSettings.recoveryKey) {
+    activeSettings = await migrateLegacyAppLockSettings(activeSettings);
   }
 
-  // 2. Legacy fallback
-  if (settings.recoveryKey) {
-    const normalizedStored = normalizeRecoveryKey(settings.recoveryKey);
-    return normalizedInput === normalizedStored;
+  if (activeSettings.recoverySalt && activeSettings.recoveryHash) {
+    return verifySecretHash(normalizedInput, activeSettings.recoverySalt, activeSettings.recoveryHash);
   }
 
   return false;
@@ -323,23 +338,45 @@ export function handleSuccessfulUnlock(settings: AppLockSettings): AppLockSettin
 export async function migrateLegacyAppLockSettings(settings: AppLockSettings): Promise<AppLockSettings> {
   const updated: AppLockSettings = { ...settings };
 
-  // If plaintext PIN exists and no pinHash yet
+  // 1. Migrate legacy PIN / passcode if present
   const rawPin = settings.passcode ?? settings.pin;
   if (rawPin && rawPin.trim() && (!updated.pinHash || !updated.pinSalt)) {
-    const creds = await derivePinCredentials(rawPin.trim());
+    const trimmedPin = rawPin.trim();
+    const creds = await derivePinCredentials(trimmedPin);
+
+    // Verify migration before deleting legacy values
+    const isPinValid = await verifySecretHash(trimmedPin, creds.salt, creds.hash);
+    if (!isPinValid) {
+      throw new Error('PIN verifier derivation failed integrity check during migration');
+    }
+
     updated.pinSalt = creds.salt;
     updated.pinHash = creds.hash;
     updated.isPinInitialized = true;
-    delete updated.passcode;
-    delete updated.pin;
   }
 
-  // If plaintext recoveryKey exists and no recoveryHash yet
+  // 2. Migrate legacy Recovery Key if present
   if (settings.recoveryKey && settings.recoveryKey.trim() && (!updated.recoveryHash || !updated.recoverySalt)) {
-    const creds = await deriveRecoveryCredentials(settings.recoveryKey.trim());
+    const normalizedKey = normalizeRecoveryKey(settings.recoveryKey.trim());
+    const creds = await deriveRecoveryCredentials(normalizedKey);
+
+    // Verify migration before deleting legacy values
+    const isKeyValid = await verifySecretHash(normalizedKey, creds.salt, creds.hash);
+    if (!isKeyValid) {
+      throw new Error('Recovery Key verifier derivation failed integrity check during migration');
+    }
+
     updated.recoverySalt = creds.salt;
     updated.recoveryHash = creds.hash;
   }
+
+  // Securely delete all plaintext credential fields
+  delete updated.passcode;
+  delete updated.pin;
+  delete updated.recoveryKey;
+  delete updated.hint;
+  delete updated.recoveryQuestion;
+  delete updated.recoveryAnswer;
 
   return updated;
 }

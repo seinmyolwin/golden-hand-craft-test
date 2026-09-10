@@ -494,9 +494,16 @@ export interface SettingRecord {
 export interface AttachmentRecord {
   id: string;
   voucherId: string;
-  imageBase64: string;
+  ownerId?: string;
+  blob?: Blob;
+  thumbnail?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
   caption?: string;
   createdAt: string;
+  imageBase64?: string;
 }
 
 export interface BackupMetadata {

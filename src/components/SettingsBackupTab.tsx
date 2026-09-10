@@ -22,8 +22,6 @@ import {
   generate100SampleSuppliers,
   computeAllProductsStock,
   DEFAULT_SHOP_SETTINGS,
-  regenerateRecoveryKey,
-  resetAppLockPinWithRecoveryKey,
   DEFAULT_APP_LOCK,
   formatMMK,
   formatNumberOnly,

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Image as ImageIcon, X, ZoomIn, Loader2 } from 'lucide-react';
-import { compressImageFile } from '../utils/imageCompressor';
+import { Camera, Image as ImageIcon, X, Loader2, AlertCircle } from 'lucide-react';
+import { validateAttachmentFile, processImageInput, formatStorageError } from '../services/attachmentService';
 
 interface PhotoAttachmentFieldProps {
   photos: string[];
@@ -16,6 +16,7 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
   label = 'ဘောင်ချာ / ပစ္စည်း ဓာတ်ပုံ ပူးတွဲမှတ်တမ်း (Photo Attachment)',
 }) => {
   const [compressing, setCompressing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,21 +26,25 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
     if (!files || files.length === 0) return;
 
     setCompressing(true);
+    setErrorMessage(null);
     const newPhotos = [...photos];
 
     for (let i = 0; i < files.length; i++) {
       if (newPhotos.length >= maxPhotos) break;
       const file = files[i];
       try {
-        const compressedDataUrl = await compressImageFile(file, {
-          maxWidth: 1024,
-          maxHeight: 1024,
-          quality: 0.75,
-          outputFormat: 'image/webp',
-        });
-        newPhotos.push(compressedDataUrl);
+        // Requirement 1 & 2: Validate file type & size limit
+        validateAttachmentFile(file);
+
+        // Requirement 3 & 4: Compress & generate lightweight thumbnail
+        const processed = await processImageInput(file);
+
+        // Store thumbnail/compressed data url into photos array
+        newPhotos.push(processed.thumbnail);
       } catch (err) {
-        console.error('Failed to compress image:', err);
+        const formatted = formatStorageError(err);
+        setErrorMessage(formatted.message);
+        console.error('Image upload validation/processing failed:', err);
       }
     }
 
@@ -53,6 +58,7 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
   const handleRemovePhoto = (index: number) => {
     const updated = photos.filter((_, idx) => idx !== index);
     onChange(updated);
+    setErrorMessage(null);
   };
 
   return (
@@ -66,6 +72,20 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
           {photos.length} / {maxPhotos} ပုံ
         </span>
       </div>
+
+      {errorMessage && (
+        <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-1.5">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <span className="flex-1">{errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-rose-500 hover:text-rose-800 font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Hidden file inputs */}
       <input
@@ -93,7 +113,7 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
               <img
                 src={photo}
                 alt={`Attachment ${idx + 1}`}
-                className="w-full h-full object-cover cursor-pointer"
+                className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition"
                 onClick={() => setPreviewPhoto(photo)}
               />
               <button
@@ -143,7 +163,7 @@ export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
           <div className="relative max-w-lg max-h-[85vh] p-2 bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <img src={previewPhoto} alt="Preview" className="max-w-full max-h-[75vh] object-contain rounded-xl" />
             <div className="flex justify-between items-center px-2 pt-2">
-              <span className="text-xs text-slate-500">အော့ဖ်လိုင်း ဖိသိပ်ထားသော ဓာတ်ပုံ</span>
+              <span className="text-xs text-slate-500 font-medium">အော့ဖ်လိုင်း ဖိသိပ်ထားသော ဓာတ်ပုံ (IndexedDB Blob)</span>
               <button
                 type="button"
                 onClick={() => setPreviewPhoto(null)}

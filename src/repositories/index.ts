@@ -1,5 +1,12 @@
 import { db, ShweLetYarDatabase } from '../db/database';
 import {
+  saveAttachmentRecord,
+  getAttachmentsForVoucher as getServiceAttachmentsForVoucher,
+  deleteAttachmentSafely,
+  cleanupOrphanAttachments,
+  migrateLegacyAttachments,
+} from '../services/attachmentService';
+import {
   Product,
   Supplier,
   Merchant,
@@ -1493,25 +1500,17 @@ export class SettingsRepository implements ISettingsRepository {
 export class AttachmentRepository implements IAttachmentRepository {
   constructor(private database: ShweLetYarDatabase = db) {}
 
-  async save(voucherId: string, imageBase64: string, caption?: string): Promise<string> {
-    const id = generateStableId('att');
-    const record: AttachmentRecord = {
-      id,
-      voucherId,
-      imageBase64,
-      caption: caption || '',
-      createdAt: new Date().toISOString(),
-    };
-    await this.database.attachments.put(record);
-    return id;
+  async save(voucherId: string, input: File | Blob | string, caption?: string, ownerId?: string): Promise<string> {
+    const record = await saveAttachmentRecord({ voucherId, input, caption, ownerId });
+    return record.id;
   }
 
   async getByVoucher(voucherId: string): Promise<AttachmentRecord[]> {
-    return this.database.attachments.where('voucherId').equals(voucherId).toArray();
+    return getServiceAttachmentsForVoucher(voucherId);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.database.attachments.delete(id);
+  async delete(id: string, options?: { force?: boolean }): Promise<void> {
+    await deleteAttachmentSafely(id, options);
   }
 
   async deleteByVoucher(voucherId: string): Promise<void> {
@@ -1520,6 +1519,14 @@ export class AttachmentRepository implements IAttachmentRepository {
 
   async count(): Promise<number> {
     return this.database.attachments.count();
+  }
+
+  async cleanupOrphans(): Promise<number> {
+    return cleanupOrphanAttachments();
+  }
+
+  async migrateLegacy(): Promise<number> {
+    return migrateLegacyAttachments();
   }
 }
 

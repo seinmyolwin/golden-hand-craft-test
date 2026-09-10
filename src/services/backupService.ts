@@ -1,4 +1,5 @@
 import { db } from '../db/database';
+import { blobToBase64, processImageInput, base64ToBlob } from './attachmentService';
 import {
   Product,
   Supplier,
@@ -109,7 +110,14 @@ export async function createCompleteBackup(options?: {
   ]);
 
   const shopSettings = options?.shopSettings || getStoredShopSettings();
-  const appLockSettings = getStoredAppLockSettings();
+  const rawAppLock = getStoredAppLockSettings();
+  const appLockSettings: AppLockSettings = { ...rawAppLock };
+  delete appLockSettings.passcode;
+  delete appLockSettings.pin;
+  delete appLockSettings.recoveryKey;
+  delete appLockSettings.hint;
+  delete appLockSettings.recoveryQuestion;
+  delete appLockSettings.recoveryAnswer;
   const backupReminderSettings = getStoredBackupReminderSettings();
   const productCategories = getStoredProductCategories();
   const rawMaterialCategories = getStoredRawMaterialCategories();
@@ -165,6 +173,28 @@ export async function createCompleteBackup(options?: {
     customNotes: options?.customNotes,
   };
 
+  const serializableAttachments: AttachmentRecord[] = await Promise.all(
+    attachments.map(async (att) => {
+      let imageBase64 = att.imageBase64 || '';
+      if (!imageBase64 && att.blob) {
+        imageBase64 = await blobToBase64(att.blob);
+      }
+      return {
+        id: att.id,
+        voucherId: att.voucherId,
+        ownerId: att.ownerId || att.voucherId,
+        imageBase64,
+        thumbnail: att.thumbnail,
+        mimeType: att.mimeType,
+        sizeBytes: att.sizeBytes || att.blob?.size || 0,
+        width: att.width,
+        height: att.height,
+        caption: att.caption || '',
+        createdAt: att.createdAt,
+      };
+    })
+  );
+
   const data: BackupDataPayload = {
     products,
     suppliers,
@@ -183,7 +213,7 @@ export async function createCompleteBackup(options?: {
     backupReminderSettings,
     productCategories,
     rawMaterialCategories,
-    attachments,
+    attachments: serializableAttachments,
   };
 
   const dataPayloadString = JSON.stringify(data);
@@ -365,7 +395,17 @@ export function normalizeRawBackup(raw: any): {
     auditLogs,
     rawMaterialPresets,
     shopSettings,
-    appLockSettings,
+    appLockSettings: (() => {
+      if (!appLockSettings) return undefined;
+      const clean = { ...appLockSettings };
+      delete clean.passcode;
+      delete clean.pin;
+      delete clean.recoveryKey;
+      delete clean.hint;
+      delete clean.recoveryQuestion;
+      delete clean.recoveryAnswer;
+      return clean;
+    })(),
     backupReminderSettings,
     productCategories,
     rawMaterialCategories,
@@ -569,6 +609,13 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
         code: 'INVALID_PRICE',
       });
     }
+    if (typeof p.currentStock === 'number' && p.currentStock < 0) {
+      warnings.push({
+        field: `products[${idx}].currentStock`,
+        message: `ကုန်ပစ္စည်း "${p.name || p.id}" ၏ လက်ကျန်စတော့ (${p.currentStock}) သည် အနှုတ်ဖြစ်နေပါသည်`,
+        code: 'NEGATIVE_STOCK',
+      });
+    }
   });
 
   if (productDuplicateIds.length > 0) {
@@ -579,8 +626,32 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     });
   }
 
-  // 4. Suppliers validation
+  // Helper to check duplicate IDs across collections
+  const checkDuplicateEntityIds = <T extends { id?: string }>(
+    items: T[],
+    entityKey: string,
+    entityTitle: string
+  ) => {
+    const seen = new Set<string>();
+    const dupes: string[] = [];
+    items.forEach((item) => {
+      if (item.id) {
+        if (seen.has(item.id)) dupes.push(item.id);
+        seen.add(item.id);
+      }
+    });
+    if (dupes.length > 0) {
+      warnings.push({
+        field: `${entityKey}.duplicateIds`,
+        message: `ထပ်နေသော ${entityTitle} ID ${dupes.length} ခု တွေ့ရှိရပြီး Auto-deduplicate ပြုလုပ်ပါမည်`,
+        code: `DUPLICATE_${entityKey.toUpperCase()}_IDS`,
+      });
+    }
+  };
+
+  // 4. Suppliers validation & duplicate check
   const supplierIdSet = new Set<string>();
+  checkDuplicateEntityIds(normalized.suppliers, 'suppliers', 'ကုန်ကြမ်းပေးသွင်းသူ');
   normalized.suppliers.forEach((s, idx) => {
     if (!s.id || typeof s.id !== 'string') {
       errors.push({
@@ -602,8 +673,9 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     }
   });
 
-  // 5. Merchants validation
+  // 5. Merchants validation & duplicate check
   const merchantIdSet = new Set<string>();
+  checkDuplicateEntityIds(normalized.merchants, 'merchants', 'ကုန်သည်');
   normalized.merchants.forEach((m, idx) => {
     if (!m.id || typeof m.id !== 'string') {
       errors.push({
@@ -625,9 +697,10 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     }
   });
 
-  // 6. Transactions validation
+  // 6. Transactions validation & item product reference / financial checks
   const txIdSet = new Set<string>();
   let orphanTxSuppliers = 0;
+  checkDuplicateEntityIds(normalized.transactions, 'transactions', 'ကုန်သိမ်းဘောင်ချာ');
   normalized.transactions.forEach((tx, idx) => {
     if (!tx.id || typeof tx.id !== 'string') {
       errors.push({
@@ -649,6 +722,31 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
         code: 'INVALID_TX_DATE',
       });
     }
+    if (tx.items && Array.isArray(tx.items)) {
+      tx.items.forEach((item, itemIdx) => {
+        if (item.productId && !productIdSet.has(item.productId)) {
+          warnings.push({
+            field: `transactions[${idx}].items[${itemIdx}].productId`,
+            message: `ကုန်သိမ်းဘောင်ချာ (${tx.voucherNo || tx.id}) ရှိ ပစ္စည်း ID ${item.productId} သည် ပစ္စည်းစာရင်းတွင် မရှိပါ`,
+            code: 'MISSING_PRODUCT_REFERENCE',
+          });
+        }
+        if (typeof item.quantity === 'number' && item.quantity <= 0) {
+          warnings.push({
+            field: `transactions[${idx}].items[${itemIdx}].quantity`,
+            message: `ကုန်သိမ်းဘောင်ချာ (${tx.voucherNo || tx.id}) ရှိ ပစ္စည်း အရေအတွက် မမှန်ကန်ပါ`,
+            code: 'INVALID_QUANTITY',
+          });
+        }
+      });
+    }
+    if (typeof tx.totalGoodsValue === 'number' && tx.totalGoodsValue < 0) {
+      warnings.push({
+        field: `transactions[${idx}].totalGoodsValue`,
+        message: `ကုန်သိမ်းဘောင်ချာ (${tx.voucherNo || tx.id}) ၏ တန်ဖိုး အနှုတ်ဖြစ်နေပါသည်`,
+        code: 'INVALID_FINANCIAL_TOTAL',
+      });
+    }
   });
 
   if (orphanTxSuppliers > 0) {
@@ -659,9 +757,10 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     });
   }
 
-  // 7. Sales validation
+  // 7. Sales validation & item product reference / financial relationship checks
   const saleIdSet = new Set<string>();
   let orphanSaleMerchants = 0;
+  checkDuplicateEntityIds(normalized.sales, 'sales', 'အရောင်းဘောင်ချာ');
   normalized.sales.forEach((sale, idx) => {
     if (!sale.id || typeof sale.id !== 'string') {
       errors.push({
@@ -676,6 +775,38 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     if (sale.merchantId && !merchantIdSet.has(sale.merchantId)) {
       orphanSaleMerchants++;
     }
+    if (sale.items && Array.isArray(sale.items)) {
+      sale.items.forEach((item, itemIdx) => {
+        if (item.productId && !productIdSet.has(item.productId)) {
+          warnings.push({
+            field: `sales[${idx}].items[${itemIdx}].productId`,
+            message: `အရောင်းဘောင်ချာ (${sale.voucherNo || sale.id}) ရှိ ပစ္စည်း ID ${item.productId} သည် ပစ္စည်းစာရင်းတွင် မရှိပါ`,
+            code: 'MISSING_PRODUCT_REFERENCE',
+          });
+        }
+        if (typeof item.quantity === 'number' && item.quantity <= 0) {
+          warnings.push({
+            field: `sales[${idx}].items[${itemIdx}].quantity`,
+            message: `အရောင်းဘောင်ချာ (${sale.voucherNo || sale.id}) ရှိ ပစ္စည်း အရေအတွက် မမှန်ကန်ပါ`,
+            code: 'INVALID_QUANTITY',
+          });
+        }
+      });
+    }
+    if (
+      typeof sale.grandTotal === 'number' &&
+      typeof sale.cashPaidByMerchant === 'number' &&
+      typeof sale.remainingReceivableBalance === 'number'
+    ) {
+      const calcBalance = sale.cashPaidByMerchant + sale.remainingReceivableBalance;
+      if (Math.abs(sale.grandTotal - calcBalance) > 1) {
+        warnings.push({
+          field: `sales[${idx}].grandTotal`,
+          message: `အရောင်းဘောင်ချာ (${sale.voucherNo || sale.id}) ၏ စုစုပေါင်း ငွေပမာဏ မကိုက်ညီပါ (GrandTotal: ${sale.grandTotal}, Paid+Balance: ${calcBalance})`,
+          code: 'FINANCIAL_MISMATCH',
+        });
+      }
+    }
   });
 
   if (orphanSaleMerchants > 0) {
@@ -686,7 +817,66 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     });
   }
 
-  // 8. Database Comparison (Compare with current Dexie DB)
+  // 8. Other entities duplicate & reference validations
+  const purchaseIdSet = new Set<string>();
+  checkDuplicateEntityIds(normalized.merchantPurchases, 'merchantPurchases', 'ကုန်သည်ဝယ်ယူမှု');
+  normalized.merchantPurchases.forEach((p, idx) => {
+    if (p.id) purchaseIdSet.add(p.id);
+    if (p.merchantId && !merchantIdSet.has(p.merchantId)) {
+      warnings.push({
+        field: `merchantPurchases[${idx}].merchantId`,
+        message: `ကုန်သည်ဝယ်ယူမှု (${p.purchaseNo || p.id}) ရှိ Merchant ID ${p.merchantId} သည် ကုန်သည်စာရင်းတွင် မရှိပါ`,
+        code: 'MISSING_MERCHANT_REFERENCE',
+      });
+    }
+  });
+
+  checkDuplicateEntityIds(normalized.orders, 'orders', 'အော်ဒါ');
+  normalized.orders.forEach((ord, idx) => {
+    if (ord.merchantId && !merchantIdSet.has(ord.merchantId)) {
+      warnings.push({
+        field: `orders[${idx}].merchantId`,
+        message: `အော်ဒါ (${ord.orderNo || ord.id}) ရှိ Merchant ID ${ord.merchantId} သည် ကုန်သည်စာရင်းတွင် မရှိပါ`,
+        code: 'MISSING_MERCHANT_REFERENCE',
+      });
+    }
+    if (ord.items && Array.isArray(ord.items)) {
+      ord.items.forEach((item, itemIdx) => {
+        if (item.productId && !productIdSet.has(item.productId)) {
+          warnings.push({
+            field: `orders[${idx}].items[${itemIdx}].productId`,
+            message: `အော်ဒါ (${ord.orderNo || ord.id}) ရှိ Product ID ${item.productId} သည် ပစ္စည်းစာရင်းတွင် မရှိပါ`,
+            code: 'MISSING_PRODUCT_REFERENCE',
+          });
+        }
+      });
+    }
+  });
+
+  checkDuplicateEntityIds(normalized.stockAdjustments, 'stockAdjustments', 'စတော့ညှိနှိုင်းမှု');
+  normalized.stockAdjustments.forEach((adj, idx) => {
+    if (adj.productId && !productIdSet.has(adj.productId)) {
+      warnings.push({
+        field: `stockAdjustments[${idx}].productId`,
+        message: `စတော့ညှိနှိုင်းမှု (${adj.id}) ရှိ Product ID ${adj.productId} သည် ပစ္စည်းစာရင်းတွင် မရှိပါ`,
+        code: 'MISSING_PRODUCT_REFERENCE',
+      });
+    }
+  });
+
+  checkDuplicateEntityIds(normalized.peerTrades, 'peerTrades', 'အချင်းချင်းကုန်သွယ်မှု');
+  checkDuplicateEntityIds(normalized.attachments, 'attachments', 'ဓါတ်ပုံမှတ်တမ်း');
+  normalized.attachments.forEach((att, idx) => {
+    if (att.voucherId && !txIdSet.has(att.voucherId) && !saleIdSet.has(att.voucherId) && !purchaseIdSet.has(att.voucherId)) {
+      warnings.push({
+        field: `attachments[${idx}].voucherId`,
+        message: `ဓါတ်ပုံမှတ်တမ်း (${att.id}) ရှိ Voucher ID ${att.voucherId} သည် ဘောင်ချာစာရင်းတွင် မရှိပါ`,
+        code: 'MISSING_VOUCHER_REFERENCE',
+      });
+    }
+  });
+
+  // 9. Database Comparison (Compare with current Dexie DB)
   let comparison: BackupValidationReport['comparison'];
   try {
     const [
@@ -893,6 +1083,44 @@ export async function executeSafeRestore(
         db.attachments,
       ],
       async () => {
+        // Prepare attachments with native IndexedDB Blobs
+        const restoredAttachments: AttachmentRecord[] = [];
+        if (data.attachments && data.attachments.length > 0) {
+          for (const att of data.attachments) {
+            let blob = att.blob;
+            let thumbnail = att.thumbnail;
+            let mimeType = att.mimeType;
+            let sizeBytes = att.sizeBytes;
+            let width = att.width;
+            let height = att.height;
+
+            if ((!blob || blob.size === 0) && att.imageBase64) {
+              try {
+                const processed = await processImageInput(att.imageBase64);
+                blob = processed.blob;
+                thumbnail = thumbnail || processed.thumbnail;
+                mimeType = mimeType || processed.mimeType;
+                sizeBytes = sizeBytes || processed.sizeBytes;
+                width = width || processed.width;
+                height = height || processed.height;
+              } catch {
+                blob = base64ToBlob(att.imageBase64);
+              }
+            }
+
+            restoredAttachments.push({
+              ...att,
+              ownerId: att.ownerId || att.voucherId,
+              blob,
+              thumbnail,
+              mimeType,
+              sizeBytes,
+              width,
+              height,
+            });
+          }
+        }
+
         if (mode === 'OVERWRITE') {
           // Clear all operational tables
           await Promise.all([
@@ -909,7 +1137,6 @@ export async function executeSafeRestore(
             db.attachments.clear(),
           ]);
 
-          // Bulk put normalized data
           if (data.products.length > 0) await db.products.bulkPut(data.products);
           if (data.suppliers.length > 0) await db.suppliers.bulkPut(data.suppliers);
           if (data.merchants.length > 0) await db.merchants.bulkPut(data.merchants);
@@ -920,7 +1147,7 @@ export async function executeSafeRestore(
           if (data.stockAdjustments.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
           if (data.peerTrades.length > 0) await db.peerTrades.bulkPut(data.peerTrades);
           if (data.softDeletedItems.length > 0) await db.softDeletedItems.bulkPut(data.softDeletedItems);
-          if (data.attachments && data.attachments.length > 0) await db.attachments.bulkPut(data.attachments);
+          if (restoredAttachments.length > 0) await db.attachments.bulkPut(restoredAttachments);
           if (data.rawMaterialPresets.length > 0) {
             await db.rawMaterialPresets.clear();
             await db.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
@@ -949,7 +1176,7 @@ export async function executeSafeRestore(
           if (data.stockAdjustments.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
           if (data.peerTrades.length > 0) await db.peerTrades.bulkPut(data.peerTrades);
           if (data.softDeletedItems.length > 0) await db.softDeletedItems.bulkPut(data.softDeletedItems);
-          if (data.attachments && data.attachments.length > 0) await db.attachments.bulkPut(data.attachments);
+          if (restoredAttachments.length > 0) await db.attachments.bulkPut(restoredAttachments);
           if (data.rawMaterialPresets.length > 0) await db.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
 
           // Merge categories
@@ -972,6 +1199,22 @@ export async function executeSafeRestore(
           entityType: 'BACKUP_RECOVERY',
           entityId: snapshotId,
         });
+
+        // Verification: Ensure database is healthy and records exist
+        const [verProds, verSupps, verMerchs] = await Promise.all([
+          db.products.count(),
+          db.suppliers.count(),
+          db.merchants.count(),
+        ]);
+
+        if (mode === 'OVERWRITE') {
+          if (data.products.length > 0 && verProds !== data.products.length) {
+            throw new Error(`Database verification failed: Product count mismatch (expected ${data.products.length}, found ${verProds})`);
+          }
+          if (data.suppliers.length > 0 && verSupps !== data.suppliers.length) {
+            throw new Error(`Database verification failed: Supplier count mismatch (expected ${data.suppliers.length}, found ${verSupps})`);
+          }
+        }
       }
     );
 

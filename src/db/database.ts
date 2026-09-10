@@ -27,9 +27,16 @@ export interface SettingRecord {
 export interface AttachmentRecord {
   id: string;
   voucherId: string;
-  imageBase64: string;
+  ownerId?: string;
+  blob?: Blob;
+  thumbnail?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
   caption?: string;
   createdAt: string;
+  imageBase64?: string;
 }
 
 export class ShweLetYarDatabase extends Dexie {
@@ -105,6 +112,25 @@ export class ShweLetYarDatabase extends Dexie {
       settings: 'key, updatedAt',
       recoverySnapshots: 'id, timestamp, date',
       attachments: 'id, voucherId, createdAt',
+    });
+
+    // Version 4: IndexedDB Blob storage for photo attachments with metadata & owner reference
+    this.version(4).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      rawMaterialPresets: 'id, category, name',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, ownerId, createdAt',
     });
   }
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
 import {
   deriveSecretHash,
   verifySecretHash,
@@ -15,9 +16,19 @@ import {
   SECURITY_DISCLOSURE_EN,
   SECURITY_DISCLOSURE_MY,
 } from '../services/cryptoSecurity';
+import { getStoredAppLockSettings, saveStoredAppLockSettings, DEFAULT_APP_LOCK } from '../utils/storage';
 import { AppLockSettings } from '../types';
 
 describe('Local App-Lock Cryptographic Security Engine', () => {
+  beforeEach(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
+    if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) {
+      (globalThis as any).localStorage.clear();
+    }
+  });
+
   it('derives consistent salted hashes using PBKDF2-SHA256', async () => {
     const secret = '5678';
     const salt = 'random-test-salt-12345';
@@ -35,7 +46,8 @@ describe('Local App-Lock Cryptographic Security Engine', () => {
     expect(isWrongValid).toBe(false);
   });
 
-  it('correctly creates PIN credentials and verifies PIN matches', async () => {
+  it('supports PIN creation, verifies correct PIN, and rejects wrong PIN', async () => {
+    // 1. Creation
     const creds = await derivePinCredentials('9182');
     expect(creds.salt).toBeDefined();
     expect(creds.hash).toBeDefined();
@@ -48,18 +60,24 @@ describe('Local App-Lock Cryptographic Security Engine', () => {
       isPinInitialized: true,
     };
 
+    // 2. Correct PIN
     const correctMatch = await verifyAppLockPin('9182', settings);
     expect(correctMatch).toBe(true);
 
+    // 3. Wrong PIN
     const wrongMatch = await verifyAppLockPin('1234', settings);
     expect(wrongMatch).toBe(false);
   });
 
-  it('generates unambiguous formatted recovery keys and validates them', async () => {
-    const key = generateSecureRecoveryKey();
-    expect(key).toMatch(/^SLY-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+  it('generates unique, non-universal recovery keys per installation and validates them', async () => {
+    const key1 = generateSecureRecoveryKey();
+    const key2 = generateSecureRecoveryKey();
+    expect(key1).toMatch(/^SLY-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+    expect(key2).toMatch(/^SLY-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+    // Keys must be unique per generation (no hardcoded universal key)
+    expect(key1).not.toBe(key2);
 
-    const recCreds = await deriveRecoveryCredentials(key);
+    const recCreds = await deriveRecoveryCredentials(key1);
     expect(recCreds.salt).toBeDefined();
     expect(recCreds.hash).toBeDefined();
 
@@ -67,15 +85,14 @@ describe('Local App-Lock Cryptographic Security Engine', () => {
       enabled: true,
       recoverySalt: recCreds.salt,
       recoveryHash: recCreds.hash,
-      recoveryKey: key,
     };
 
     // Verifies exact match
-    expect(await verifyAppLockRecoveryKey(key, settings)).toBe(true);
+    expect(await verifyAppLockRecoveryKey(key1, settings)).toBe(true);
     // Verifies lowercase / spaces normalization
-    const unformatted = key.toLowerCase().replace(/-/g, ' ');
+    const unformatted = key1.toLowerCase().replace(/-/g, ' ');
     expect(await verifyAppLockRecoveryKey(unformatted, settings)).toBe(true);
-    // Rejects invalid keys
+    // Rejects wrong recovery keys
     expect(await verifyAppLockRecoveryKey('SLY-0000-0000', settings)).toBe(false);
   });
 
@@ -119,12 +136,13 @@ describe('Local App-Lock Cryptographic Security Engine', () => {
     expect(unlocked.lastUnlockedAt).toBeDefined();
   });
 
-  it('migrates legacy plaintext passcodes into salted verifiers and cleans plaintext values', async () => {
+  it('migrates legacy plaintext passcodes into salted verifiers, verifies migration, and cleans plaintext values', async () => {
     const legacySettings: AppLockSettings = {
       enabled: true,
       passcode: '7741',
       pin: '7741',
       recoveryKey: 'SLY-LEGACY-KEY1',
+      hint: 'my birthday',
     };
 
     const migrated = await migrateLegacyAppLockSettings(legacySettings);
@@ -134,13 +152,43 @@ describe('Local App-Lock Cryptographic Security Engine', () => {
     expect(migrated.recoveryHash).toBeDefined();
     expect(migrated.isPinInitialized).toBe(true);
 
-    // Plaintext passcode/pin must be purged
+    // Plaintext credential fields must be completely purged
     expect(migrated.passcode).toBeUndefined();
     expect(migrated.pin).toBeUndefined();
+    expect(migrated.recoveryKey).toBeUndefined();
+    expect(migrated.hint).toBeUndefined();
 
-    // Verify migrated PIN works
+    // Verify migrated PIN and Recovery Key work via salted verifier
     const isPinValid = await verifyAppLockPin('7741', migrated);
     expect(isPinValid).toBe(true);
+
+    const isKeyValid = await verifyAppLockRecoveryKey('SLY-LEGACY-KEY1', migrated);
+    expect(isKeyValid).toBe(true);
+  });
+
+  it('strictly purges plaintext credentials when saving to storage', async () => {
+    const creds = await derivePinCredentials('4321');
+    const recCreds = await deriveRecoveryCredentials('SLY-TEST-KEY1');
+
+    const unsafeSettings: AppLockSettings = {
+      enabled: true,
+      pinSalt: creds.salt,
+      pinHash: creds.hash,
+      recoverySalt: recCreds.salt,
+      recoveryHash: recCreds.hash,
+      passcode: '4321', // Unsafe legacy field
+      pin: '4321', // Unsafe legacy field
+      recoveryKey: 'SLY-TEST-KEY1', // Unsafe legacy field
+    };
+
+    saveStoredAppLockSettings(unsafeSettings);
+
+    const stored = getStoredAppLockSettings();
+    expect(stored.pinHash).toBe(creds.hash);
+    expect(stored.recoveryHash).toBe(recCreds.hash);
+    expect(stored.passcode).toBeUndefined();
+    expect(stored.pin).toBeUndefined();
+    expect(stored.recoveryKey).toBeUndefined();
   });
 
   it('includes clear and honest security disclosures', () => {

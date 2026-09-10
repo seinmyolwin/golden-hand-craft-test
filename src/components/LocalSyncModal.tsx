@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import {
@@ -27,6 +27,8 @@ interface LocalSyncModalProps {
 
 type SyncTab = 'QR_CODE' | 'WIFI_GUIDE' | 'TEXT_CODE';
 
+import { db } from '../db/database';
+
 export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
   isOpen,
   onClose,
@@ -46,40 +48,52 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const currentBackupData = () => {
+  const fetchBackupDataFromDb = useCallback(async () => {
     try {
+      const [suppliers, merchants, products, transactions, sales, merchantPurchases, orders] = await Promise.all([
+        db.suppliers.toArray(),
+        db.merchants.toArray(),
+        db.products.toArray(),
+        db.transactions.toArray(),
+        db.sales.toArray(),
+        db.merchantPurchases.toArray(),
+        db.orders.toArray(),
+      ]);
+      const shopSettingsRecord = await db.settings.get('shopSettings');
+      const productCategoriesRecord = await db.settings.get('productCategories');
+      const rawMaterialCategoriesRecord = await db.settings.get('rawMaterialCategories');
+
       return {
         shweLetYarSync: true,
         version: '5.0',
         timestamp: new Date().toISOString(),
-        suppliers: JSON.parse(localStorage.getItem('ledger_suppliers_v1') || '[]'),
-        merchants: JSON.parse(localStorage.getItem('ledger_merchants_v1') || '[]'),
-        products: JSON.parse(localStorage.getItem('ledger_products_v1') || '[]'),
-        transactions: JSON.parse(localStorage.getItem('ledger_transactions_v1') || '[]'),
-        sales: JSON.parse(localStorage.getItem('ledger_sales_v1') || '[]'),
-        merchantPurchases: JSON.parse(localStorage.getItem('ledger_merchant_purchases_v1') || '[]'),
-        orders: JSON.parse(localStorage.getItem('ledger_orders_v1') || '[]'),
-        productCategories: JSON.parse(localStorage.getItem('ledger_product_categories_v2') || '[]'),
-        rawMaterialCategories: JSON.parse(localStorage.getItem('ledger_raw_material_categories_v2') || '[]'),
-        shopSettings: JSON.parse(localStorage.getItem('ledger_shop_settings_v1') || '{}'),
+        suppliers,
+        merchants,
+        products,
+        transactions,
+        sales,
+        merchantPurchases,
+        orders,
+        productCategories: productCategoriesRecord?.value || [],
+        rawMaterialCategories: rawMaterialCategoriesRecord?.value || [],
+        shopSettings: shopSettingsRecord?.value || {},
       };
     } catch {
       return null;
     }
-  };
-
-  const currentBackupString = () => {
-    const data = currentBackupData();
-    return data ? JSON.stringify(data) : '';
-  };
+  }, []);
 
   // Generate lightweight sync QR code
   useEffect(() => {
+    let isSubscribed = true;
     if (isOpen && activeTab === 'QR_CODE') {
       setIsGeneratingQR(true);
-      try {
-        const full = currentBackupData();
-        // Create concise summary payload or full data string
+      fetchBackupDataFromDb().then((full) => {
+        if (!isSubscribed) return;
+        if (!full) {
+          setIsGeneratingQR(false);
+          return;
+        }
         const jsonStr = JSON.stringify(full);
         QRCode.toDataURL(jsonStr, {
           errorCorrectionLevel: 'L',
@@ -87,19 +101,21 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
           margin: 1,
         })
           .then((url) => {
-            setQrDataUrl(url);
-            setIsGeneratingQR(false);
+            if (isSubscribed) {
+              setQrDataUrl(url);
+              setIsGeneratingQR(false);
+            }
           })
           .catch((err) => {
             console.error('QR generation failed:', err);
-            // If data is very large for a single QR, fall back to showing instructions and code
-            setIsGeneratingQR(false);
+            if (isSubscribed) setIsGeneratingQR(false);
           });
-      } catch {
-        setIsGeneratingQR(false);
-      }
+      });
     }
-  }, [isOpen, activeTab]);
+    return () => {
+      isSubscribed = false;
+    };
+  }, [isOpen, activeTab, fetchBackupDataFromDb]);
 
   // Clean up camera stream when unmounting or switching tabs
   useEffect(() => {
@@ -176,10 +192,13 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     animationFrameRef.current = requestAnimationFrame(tickScan);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(currentBackupString());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const data = await fetchBackupDataFromDb();
+    if (data) {
+      navigator.clipboard.writeText(JSON.stringify(data));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleImport = () => {

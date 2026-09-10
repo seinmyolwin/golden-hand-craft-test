@@ -182,9 +182,11 @@ export interface ISettingsRepository {
 }
 
 export interface IAttachmentRepository {
-  save(voucherId: string, imageBase64: string, caption?: string): Promise<string>;
+  save(voucherId: string, input: File | Blob | string, caption?: string, ownerId?: string): Promise<string>;
   getByVoucher(voucherId: string): Promise<AttachmentRecord[]>;
-  delete(id: string): Promise<void>;
+  delete(id: string, options?: { force?: boolean }): Promise<void>;
   deleteByVoucher(voucherId: string): Promise<void>;
   count(): Promise<number>;
+  cleanupOrphans?(): Promise<number>;
+  migrateLegacy?(): Promise<number>;
 }

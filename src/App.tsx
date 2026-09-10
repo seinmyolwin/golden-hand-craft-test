@@ -20,6 +20,7 @@ import {
   MerchantPurchaseRecord,
 } from './types';
 import {
+  DEFAULT_SHOP_SETTINGS,
   loadSuppliers,
   saveSuppliers,
   loadMerchants,
@@ -99,6 +100,7 @@ import { ExcelImportModal, ExcelImportTarget } from './components/ExcelImportMod
 import { UpdateNotificationModal } from './components/UpdateNotificationModal';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { db } from './db/database';
 import { runOfflineStorageMigration } from './db/migration';
 import { migrateLegacyAppLockSettings } from './services/cryptoSecurity';
 import {
@@ -151,79 +153,22 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Core Data States
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadSuppliers();
-    if (!isZeroed && (!loaded || loaded.length === 0 || loaded.every((s) => s.totalGoodsValueDelivered === 0 && s.currentAdvanceBalance === 0))) {
-      return getFullDemoData().suppliers;
-    }
-    return loaded;
-  });
-  const [merchants, setMerchants] = useState<Merchant[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadMerchants();
-    if (!isZeroed && (!loaded || loaded.length === 0 || loaded.every((m) => m.totalPurchasesValue === 0 && m.currentReceivableBalance === 0))) {
-      return getFullDemoData().merchants;
-    }
-    return loaded;
-  });
-  const [products, setProducts] = useState<Product[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadProducts();
-    if (!isZeroed && (!loaded || loaded.length === 0 || loaded.every((p) => (p.currentStock || 0) === 0))) {
-      return getFullDemoData().products;
-    }
-    return loaded;
-  });
-  const [transactions, setTransactions] = useState<TransactionRecord[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadTransactions();
-    if (!isZeroed && (!loaded || loaded.length === 0)) {
-      return getFullDemoData().transactions;
-    }
-    return loaded;
-  });
-  const [sales, setSales] = useState<SaleRecord[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadSales();
-    if (!isZeroed && (!loaded || loaded.length === 0)) {
-      return getFullDemoData().sales;
-    }
-    return loaded;
-  });
-  const [orders, setOrders] = useState<MerchantOrder[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadOrders();
-    if (!isZeroed && (!loaded || loaded.length === 0)) {
-      return getFullDemoData().orders;
-    }
-    return loaded;
-  });
-  const [peerTrades, setPeerTrades] = useState<PeerTradeRecord[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = loadPeerTrades();
-    if (!isZeroed && (!loaded || loaded.length === 0)) {
-      return getFullDemoData().peerTrades;
-    }
-    return loaded;
-  });
-  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustmentRecord[]>(() => {
-    const isZeroed = typeof window !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
-    const loaded = getStoredStockAdjustments();
-    if (!isZeroed && (!loaded || loaded.length === 0)) {
-      return getFullDemoData().stockAdjustments;
-    }
-    return loaded;
-  });
-  const [merchantPurchases, setMerchantPurchases] = useState<MerchantPurchaseRecord[]>(() => {
-    return getStoredMerchantPurchases();
-  });
+  // Core Data States (Dexie IndexedDB Single Source of Truth)
+  const [isDbLoaded, setIsDbLoaded] = useState<boolean>(false);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [merchants, setMerchants] = useState<Merchant[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [sales, setSales] = useState<SaleRecord[]>([]);
+  const [orders, setOrders] = useState<MerchantOrder[]>([]);
+  const [peerTrades, setPeerTrades] = useState<PeerTradeRecord[]>([]);
+  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustmentRecord[]>([]);
+  const [merchantPurchases, setMerchantPurchases] = useState<MerchantPurchaseRecord[]>([]);
   const [backupReminderSettings, setBackupReminderSettings] = useState<BackupReminderSettings>(() => getStoredBackupReminderSettings());
-  const [snapshots, setSnapshots] = useState<AutoRecoverySnapshot[]>(() => getStoredRecoverySnapshots());
-  const [shopSettings, setShopSettings] = useState<ShopSettings>(() => loadShopSettings());
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => loadAuditLogs());
-  const [deletedItems, setDeletedItems] = useState<SoftDeletedItem[]>(() => loadDeletedItems());
+  const [snapshots, setSnapshots] = useState<AutoRecoverySnapshot[]>([]);
+  const [shopSettings, setShopSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [deletedItems, setDeletedItems] = useState<SoftDeletedItem[]>([]);
 
   // Safe offline migration & IndexedDB Hydration on initial launch
   useEffect(() => {
@@ -244,6 +189,7 @@ export default function App() {
             dbPeerTrades,
             dbDeleted,
             dbAudit,
+            shopRecord,
           ] = await Promise.all([
             productRepo.getAll(),
             supplierRepo.getAll(),
@@ -256,6 +202,7 @@ export default function App() {
             peerTradeRepo.getAll(),
             softDeleteRepo.getAll(),
             auditRepo.getAll(),
+            db.settings.get('shopSettings'),
           ]);
 
           setProducts(dbProducts || []);
@@ -269,6 +216,10 @@ export default function App() {
           setPeerTrades(dbPeerTrades || []);
           setDeletedItems(dbDeleted || []);
           setAuditLogs(dbAudit || []);
+          if (shopRecord?.value) {
+            setShopSettings(shopRecord.value);
+          }
+          setIsDbLoaded(true);
         }
       } catch (err) {
         console.warn('Database initialization warning:', err);
@@ -569,20 +520,20 @@ export default function App() {
     );
   }, [logAction]);
 
-  // Persist State Changes
-  useEffect(() => { saveSuppliers(suppliers); }, [suppliers]);
-  useEffect(() => { saveMerchants(merchants); }, [merchants]);
-  useEffect(() => { saveProducts(products); }, [products]);
-  useEffect(() => { saveTransactions(transactions); }, [transactions]);
-  useEffect(() => { saveSales(sales); }, [sales]);
-  useEffect(() => { saveOrders(orders); }, [orders]);
-  useEffect(() => { savePeerTrades(peerTrades); }, [peerTrades]);
-  useEffect(() => { saveStoredStockAdjustments(stockAdjustments); }, [stockAdjustments]);
-  useEffect(() => { saveStoredBackupReminderSettings(backupReminderSettings); }, [backupReminderSettings]);
-  useEffect(() => { saveShopSettings(shopSettings); }, [shopSettings]);
-  useEffect(() => { saveAuditLogs(auditLogs); }, [auditLogs]);
-  useEffect(() => { saveDeletedItems(deletedItems); }, [deletedItems]);
-  useEffect(() => { saveAppLockSettings(appLockSettings); }, [appLockSettings]);
+  // Persist State Changes to Dexie IndexedDB
+  useEffect(() => { if (isDbLoaded) saveSuppliers(suppliers); }, [suppliers, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveMerchants(merchants); }, [merchants, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveProducts(products); }, [products, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveTransactions(transactions); }, [transactions, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveSales(sales); }, [sales, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveOrders(orders); }, [orders, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) savePeerTrades(peerTrades); }, [peerTrades, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveStoredStockAdjustments(stockAdjustments); }, [stockAdjustments, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveStoredBackupReminderSettings(backupReminderSettings); }, [backupReminderSettings, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveShopSettings(shopSettings); }, [shopSettings, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveAuditLogs(auditLogs); }, [auditLogs, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveDeletedItems(deletedItems); }, [deletedItems, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveAppLockSettings(appLockSettings); }, [appLockSettings, isDbLoaded]);
 
   // Transparently migrate legacy plaintext app lock credentials to salted hashes on initial startup
   useEffect(() => {
@@ -756,94 +707,91 @@ export default function App() {
   // Suppliers CRUD
   const handleAddSupplier = useCallback((s: Supplier) => {
     setSuppliers((prev) => [s, ...prev]);
+    supplierRepo.save(s).catch((err) => console.error('Supplier save error:', err));
     logAction('ကုန်ပစ္စည်းပေးသွင်းသူ အသစ်ထည့်သွင်းခြင်း', `${s.name} (${s.village})`, 'SUPPLIER', s.id);
   }, [logAction]);
 
   const handleUpdateSupplier = useCallback((s: Supplier) => {
     setSuppliers((prev) => prev.map((item) => (item.id === s.id ? s : item)));
+    supplierRepo.save(s).catch((err) => console.error('Supplier update error:', err));
     logAction('ကုန်ပစ္စည်းပေးသွင်းသူ ပြင်ဆင်ခြင်း', `${s.name} (${s.village})`, 'SUPPLIER', s.id);
   }, [logAction]);
 
-  const handleDeleteSupplier = useCallback((supplierId: string) => {
+  const handleDeleteSupplier = useCallback(async (supplierId: string) => {
     const s = suppliers.find((item) => item.id === supplierId);
     if (!s) return;
 
-    // Soft delete to Recycle Bin
-    const softDeleted: SoftDeletedItem = {
-      id: generateStableId('del'),
-      originalId: s.id,
-      name: `${s.name} (${s.village})`,
-      type: 'SUPPLIER',
-      deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      data: s,
-    };
-
-    setDeletedItems((prev) => [softDeleted, ...prev]);
-    setSuppliers((prev) => prev.filter((item) => item.id !== supplierId));
-    logAction('ကုန်ပစ္စည်းပေးသွင်းသူ ဖျက်ခြင်း (အမှိုက်ပုံး)', `${s.name} (${s.village})`, 'SUPPLIER', s.id);
+    try {
+      const softItem = await softDeleteRepo.softDeleteAtomic('SUPPLIER', supplierId, `${s.name} (${s.village})`);
+      setDeletedItems((prev) => [softItem, ...prev]);
+      setSuppliers((prev) => prev.filter((item) => item.id !== supplierId));
+      logAction('ကုန်ပစ္စည်းပေးသွင်းသူ ဖျက်ခြင်း (အမှိုက်ပုံး)', `${s.name} (${s.village})`, 'SUPPLIER', s.id);
+    } catch (err: any) {
+      console.error('Failed to soft delete supplier:', err);
+      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [suppliers, logAction]);
 
   // Merchants CRUD
   const handleAddMerchant = useCallback((m: Merchant) => {
     setMerchants((prev) => [m, ...prev]);
+    merchantRepo.save(m).catch((err) => console.error('Merchant save error:', err));
     logAction('ကုန်သည် အသစ်ထည့်သွင်းခြင်း', `${m.name} (${m.town})`, 'MERCHANT', m.id);
   }, [logAction]);
 
   const handleUpdateMerchant = useCallback((m: Merchant) => {
     setMerchants((prev) => prev.map((item) => (item.id === m.id ? m : item)));
+    merchantRepo.save(m).catch((err) => console.error('Merchant update error:', err));
     logAction('ကုန်သည် ပြင်ဆင်ခြင်း', `${m.name} (${m.town})`, 'MERCHANT', m.id);
   }, [logAction]);
 
-  const handleDeleteMerchant = useCallback((merchantId: string) => {
+  const handleDeleteMerchant = useCallback(async (merchantId: string) => {
     const m = merchants.find((item) => item.id === merchantId);
     if (!m) return;
 
-    const softDeleted: SoftDeletedItem = {
-      id: generateStableId('del'),
-      originalId: m.id,
-      name: `${m.name} (${m.town})`,
-      type: 'MERCHANT',
-      deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      data: m,
-    };
-
-    setDeletedItems((prev) => [softDeleted, ...prev]);
-    setMerchants((prev) => prev.filter((item) => item.id !== merchantId));
-    logAction('ကုန်သည် ဖျက်ခြင်း (အမှိုက်ပုံး)', `${m.name} (${m.town})`, 'MERCHANT', m.id);
+    try {
+      const softItem = await softDeleteRepo.softDeleteAtomic('MERCHANT', merchantId, `${m.name} (${m.town})`);
+      setDeletedItems((prev) => [softItem, ...prev]);
+      setMerchants((prev) => prev.filter((item) => item.id !== merchantId));
+      logAction('ကုန်သည် ဖျက်ခြင်း (အမှိုက်ပုံး)', `${m.name} (${m.town})`, 'MERCHANT', m.id);
+    } catch (err: any) {
+      console.error('Failed to soft delete merchant:', err);
+      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [merchants, logAction]);
 
   // Products CRUD
   const handleAddProduct = useCallback((p: Product) => {
     setProducts((prev) => [p, ...prev]);
+    productRepo.save(p).catch((err) => console.error('Product save error:', err));
     logAction('ကုန်ပစ္စည်း အသစ်ထည့်သွင်းခြင်း', `${p.name} (${p.category})`, 'PRODUCT', p.id);
   }, [logAction]);
 
   const handleUpdateProduct = useCallback((p: Product) => {
     setProducts((prev) => prev.map((item) => (item.id === p.id ? p : item)));
+    productRepo.save(p).catch((err) => console.error('Product update error:', err));
     logAction('ကုန်ပစ္စည်း ပြင်ဆင်ခြင်း', `${p.name}`, 'PRODUCT', p.id);
   }, [logAction]);
 
-  const handleDeleteProduct = useCallback((productId: string) => {
+  const handleDeleteProduct = useCallback(async (productId: string) => {
     const p = products.find((item) => item.id === productId);
     if (!p) return;
 
-    const softDeleted: SoftDeletedItem = {
-      id: generateStableId('del'),
-      originalId: p.id,
-      name: `${p.name} (${p.category})`,
-      type: 'PRODUCT',
-      deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      data: p,
-    };
-
-    setDeletedItems((prev) => [softDeleted, ...prev]);
-    setProducts((prev) => prev.filter((item) => item.id !== productId));
-    logAction('ကုန်ပစ္စည်း ဖျက်ခြင်း (အမှိုက်ပုံး)', `${p.name}`, 'PRODUCT', p.id);
+    try {
+      const softItem = await softDeleteRepo.softDeleteAtomic('PRODUCT', productId, `${p.name} (${p.category})`);
+      setDeletedItems((prev) => [softItem, ...prev]);
+      setProducts((prev) => prev.filter((item) => item.id !== productId));
+      logAction('ကုန်ပစ္စည်း ဖျက်ခြင်း (အမှိုက်ပုံး)', `${p.name}`, 'PRODUCT', p.id);
+    } catch (err: any) {
+      console.error('Failed to soft delete product:', err);
+      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [products, logAction]);
 
   // Orders CRUD
   const handleAddOrder = useCallback((ord: MerchantOrder) => {
     setOrders((prev) => [ord, ...prev]);
+    orderRepo.save(ord).catch((err) => console.error('Order save error:', err));
     logAction('အော်ဒါ အသစ်ရေးသွင်းခြင်း', `${ord.merchantName} - ${ord.orderNumber}`, 'ORDER', ord.id);
   }, [logAction]);
 
@@ -851,10 +799,13 @@ export default function App() {
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     );
+    orderRepo.getById(orderId).then((ord) => {
+      if (ord) orderRepo.save({ ...ord, status }).catch(console.error);
+    });
     logAction('အော်ဒါ အခြေအနေ ပြောင်းလဲခြင်း', `Order ID: ${orderId} -> ${status}`, 'ORDER', orderId);
   }, [logAction]);
 
-  const handleConvertOrderToSale = useCallback((order: MerchantOrder) => {
+  const handleConvertOrderToSale = useCallback(async (order: MerchantOrder) => {
     const items = order.items.map((it) => ({
       productId: it.productId,
       productName: it.productName,
@@ -884,28 +835,55 @@ export default function App() {
       notes: `အော်ဒါ ${order.orderNumber} မှ အရောင်းသို့ ပြောင်းလဲခဲ့သည်`,
     };
 
-    handleSaveSale(newSale);
-    handleUpdateOrderStatus(order.id, 'DELIVERED');
-  }, [handleSaveSale, handleUpdateOrderStatus]);
+    try {
+      const updatedOrder = await orderRepo.completeOrderAtomic(order.id, newSale);
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? updatedOrder : o)));
+      const refreshedSales = await saleRepo.getAll();
+      const refreshedProducts = await productRepo.getAll();
+      const refreshedMerchants = await merchantRepo.getAll();
+      if (refreshedSales.length > 0) setSales(refreshedSales);
+      if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+      if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
+      logAction('အော်ဒါပို့ဆောင်ပြီး အရောင်းသို့ပြောင်းလဲခြင်း (Atomic)', `အော်ဒါ: ${order.orderNumber}`, 'ORDER', order.id);
+    } catch (err: any) {
+      console.error('Failed to convert order to sale atomically:', err);
+      alert(`အော်ဒါ ပြောင်းလဲမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
+  }, [logAction]);
 
-  const handleDeleteOrder = useCallback((orderId: string) => {
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
-    logAction('အော်ဒါ ဖျက်ခြင်း', `Order ID: ${orderId}`, 'ORDER', orderId);
+  const handleDeleteOrder = useCallback(async (orderId: string) => {
+    try {
+      await orderRepo.cancelOrderAtomic(orderId, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      logAction('အော်ဒါ ဖျက်ခြင်း (Atomic)', `Order ID: ${orderId}`, 'ORDER', orderId);
+    } catch (err: any) {
+      console.error('Failed to cancel order atomically:', err);
+      alert(`အော်ဒါ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
   // Peer Trades
-  const handleAddPeerTrade = useCallback((trade: PeerTradeRecord) => {
-    setPeerTrades((prev) => [trade, ...prev]);
-    logAction(
-      'မိတ်ဖက်ဆိုင် ကုန်ဖလှယ်ခြင်း',
-      `${trade.peerShopName} နှင့် ${trade.productName} (${trade.quantity} ${trade.unit})`,
-      'PEER_TRADE',
-      trade.id
-    );
+  const handleAddPeerTrade = useCallback(async (trade: PeerTradeRecord) => {
+    try {
+      const saved = await peerTradeRepo.saveTradeAtomic(trade);
+      setPeerTrades((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
+      const refreshedProducts = await productRepo.getAll();
+      if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+      logAction(
+        'မိတ်ဖက်ဆိုင် ကုန်ဖလှယ်ခြင်း (Atomic)',
+        `${saved.peerShopName} နှင့် ${saved.productName} (${saved.quantity} ${saved.unit})`,
+        'PEER_TRADE',
+        saved.id
+      );
+    } catch (err: any) {
+      console.error('Failed to save peer trade atomically:', err);
+      alert(`မိတ်ဖက်ဆိုင် ကုန်ဖလှယ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
   const handleUpdatePeerTrade = useCallback((trade: PeerTradeRecord) => {
     setPeerTrades((prev) => prev.map((t) => (t.id === trade.id ? trade : t)));
+    peerTradeRepo.save(trade).catch(console.error);
     logAction(
       'ကုန်ဖလှယ်မှတ်တမ်း ပြင်ဆင်/ရှင်းလင်းခြင်း',
       `${trade.peerShopName} - ${trade.productName} အခြေအနေ: ${trade.status}`,
@@ -916,62 +894,69 @@ export default function App() {
 
   const handleDeletePeerTrade = useCallback((tradeId: string) => {
     setPeerTrades((prev) => prev.filter((t) => t.id !== tradeId));
+    peerTradeRepo.delete(tradeId).catch(console.error);
     logAction('မိတ်ဖက်ဆိုင် မှတ်တမ်း ဖျက်ခြင်း', `ID: ${tradeId}`, 'PEER_TRADE', tradeId);
   }, [logAction]);
 
   // Delete Transaction / Sale
-  const handleDeleteTransaction = useCallback((txId: string) => {
+  const handleDeleteTransaction = useCallback(async (txId: string) => {
     const tx = transactions.find((t) => t.id === txId);
     if (!tx) return;
 
-    const softDeleted: SoftDeletedItem = {
-      id: generateStableId('del'),
-      originalId: tx.id,
-      name: `ကုန်သိမ်းဘောင်ချာ ${tx.voucherNo} (${tx.supplierName})`,
-      type: 'TRANSACTION',
-      deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      data: tx,
-    };
-
-    setDeletedItems((prev) => [softDeleted, ...prev]);
-    setTransactions((prev) => prev.filter((t) => t.id !== txId));
-    logAction('ကုန်သိမ်းဘောင်ချာ ဖျက်ခြင်း', `${tx.voucherNo}`, 'TRANSACTION', tx.id);
+    try {
+      const cancelled = await transactionRepo.cancelInboundAtomic(txId, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+      setTransactions((prev) => prev.map((t) => (t.id === txId ? cancelled : t)));
+      const refreshedProducts = await productRepo.getAll();
+      const refreshedSuppliers = await supplierRepo.getAll();
+      if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+      if (refreshedSuppliers.length > 0) setSuppliers(refreshedSuppliers);
+      logAction('ကုန်သိမ်းဘောင်ချာ ဖျက်ခြင်း (Atomic Rollback)', `${tx.voucherNo}`, 'TRANSACTION', tx.id);
+    } catch (err: any) {
+      console.error('Failed to cancel transaction atomically:', err);
+      alert(`ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [transactions, logAction]);
 
-  const handleDeleteSale = useCallback((saleId: string) => {
+  const handleDeleteSale = useCallback(async (saleId: string) => {
     const s = sales.find((sale) => sale.id === saleId);
     if (!s) return;
 
-    const softDeleted: SoftDeletedItem = {
-      id: generateStableId('del'),
-      originalId: s.id,
-      name: `အရောင်းဘောင်ချာ ${s.voucherNo} (${s.merchantName})`,
-      type: 'SALE',
-      deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      data: s,
-    };
-
-    setDeletedItems((prev) => [softDeleted, ...prev]);
-    setSales((prev) => prev.filter((sale) => sale.id !== saleId));
-    logAction('အရောင်းဘောင်ချာ ဖျက်ခြင်း', `${s.voucherNo}`, 'SALE', s.id);
+    try {
+      const cancelled = await saleRepo.cancelSaleAtomic(saleId, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+      setSales((prev) => prev.map((sale) => (sale.id === saleId ? cancelled : sale)));
+      const refreshedProducts = await productRepo.getAll();
+      const refreshedMerchants = await merchantRepo.getAll();
+      if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+      if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
+      logAction('အရောင်းဘောင်ချာ ဖျက်ခြင်း (Atomic Rollback)', `${s.voucherNo}`, 'SALE', s.id);
+    } catch (err: any) {
+      console.error('Failed to cancel sale atomically:', err);
+      alert(`ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [sales, logAction]);
 
   // Recycle Bin / Restore / Empty
-  const handleRestoreDeletedItem = useCallback((item: SoftDeletedItem) => {
-    if (item.type === 'SUPPLIER') {
-      setSuppliers((prev) => [item.data, ...prev]);
-    } else if (item.type === 'MERCHANT') {
-      setMerchants((prev) => [item.data, ...prev]);
-    } else if (item.type === 'PRODUCT') {
-      setProducts((prev) => [item.data, ...prev]);
-    } else if (item.type === 'TRANSACTION') {
-      setTransactions((prev) => [item.data, ...prev]);
-    } else if (item.type === 'SALE') {
-      setSales((prev) => [item.data, ...prev]);
-    }
+  const handleRestoreDeletedItem = useCallback(async (item: SoftDeletedItem) => {
+    try {
+      const restored = await softDeleteRepo.restoreAtomic(item.id);
+      if (item.type === 'SUPPLIER') {
+        setSuppliers((prev) => [restored, ...prev.filter((s) => s.id !== restored.id)]);
+      } else if (item.type === 'MERCHANT') {
+        setMerchants((prev) => [restored, ...prev.filter((m) => m.id !== restored.id)]);
+      } else if (item.type === 'PRODUCT') {
+        setProducts((prev) => [restored, ...prev.filter((p) => p.id !== restored.id)]);
+      } else if (item.type === 'TRANSACTION') {
+        setTransactions((prev) => [restored, ...prev.filter((t) => t.id !== restored.id)]);
+      } else if (item.type === 'SALE') {
+        setSales((prev) => [restored, ...prev.filter((s) => s.id !== restored.id)]);
+      }
 
-    setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
-    logAction('အမှိုက်ပုံးမှ ပြန်လည်ရယူခြင်း', `${item.name}`, item.type, item.originalId);
+      setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
+      logAction('အမှိုက်ပုံးမှ ပြန်လည်ရယူခြင်း (Atomic Restore)', `${item.name}`, item.type, item.originalId);
+    } catch (err: any) {
+      console.error('Failed to restore item atomically:', err);
+      alert(`ပြန်လည်ရယူမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
   const handlePermanentDelete = useCallback((id: string) => {
@@ -1078,33 +1063,32 @@ export default function App() {
   }, [products, suppliers, merchants, shopSettings, logAction]);
 
   // Merchant Raw Material Purchases Handlers
-  const handleSaveMerchantPurchase = useCallback((record: MerchantPurchaseRecord) => {
-    setMerchantPurchases((prev) => {
-      const updated = [record, ...prev];
-      saveStoredMerchantPurchases(updated);
-      return updated;
-    });
-    logAction('ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း', `ဘောင်ချာ ${record.purchaseNo} - ${record.merchantName}`, 'PURCHASE');
+  const handleSaveMerchantPurchase = useCallback(async (record: MerchantPurchaseRecord) => {
+    try {
+      const saved = await purchaseRepo.savePurchaseAtomic(record);
+      setMerchantPurchases((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
+      const refreshedMerchants = await merchantRepo.getAll();
+      if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
+      logAction('ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း (Atomic)', `ဘောင်ချာ ${saved.purchaseNo} - ${saved.merchantName}`, 'PURCHASE', saved.id);
+    } catch (err: any) {
+      console.error('Failed to save merchant purchase atomically:', err);
+      alert(`ကုန်ကြမ်းဝယ်ယူမှု သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
-  const handleDeleteMerchantPurchase = useCallback((id: string) => {
+  const handleDeleteMerchantPurchase = useCallback(async (id: string) => {
     const target = merchantPurchases.find((p) => p.id === id);
-    if (target) {
-      const softDeleted: SoftDeletedItem = {
-        id: generateStableId('del'),
-        originalId: target.id,
-        name: `ကုန်ကြမ်းဝယ်ယူမှု ${target.purchaseNo} (${target.merchantName})`,
-        type: 'TRANSACTION',
-        deletedAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
-        data: target,
-      };
-      setDeletedItems((prev) => [softDeleted, ...prev]);
-      setMerchantPurchases((prev) => {
-        const updated = prev.filter((p) => p.id !== id);
-        saveStoredMerchantPurchases(updated);
-        return updated;
-      });
-      logAction('ကုန်ကြမ်းဝယ်ယူမှု ဖျက်သိမ်းခြင်း', `ဘောင်ချာ ${target.purchaseNo}`, 'PURCHASE');
+    if (!target) return;
+
+    try {
+      const cancelled = await purchaseRepo.cancelPurchaseAtomic(id, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+      setMerchantPurchases((prev) => prev.map((p) => (p.id === id ? cancelled : p)));
+      const refreshedMerchants = await merchantRepo.getAll();
+      if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
+      logAction('ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်ခြင်း (Atomic Reversal)', `ဘောင်ချာ ${target.purchaseNo}`, 'PURCHASE', target.id);
+    } catch (err: any) {
+      console.error('Failed to cancel merchant purchase atomically:', err);
+      alert(`ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
     }
   }, [merchantPurchases, logAction]);
 
@@ -1283,14 +1267,22 @@ export default function App() {
   }, []);
 
   // Stock Adjustment Handler
-  const handleAddStockAdjustment = useCallback((adj: StockAdjustmentRecord) => {
-    setStockAdjustments((prev) => [adj, ...prev]);
-    logAction(
-      'လက်ကျန်ပစ္စည်း ချိန်ညှိခြင်း',
-      `${adj.productName} (${adj.quantity > 0 ? '+' : ''}${adj.quantity}) - ${adj.reason}`,
-      'INVENTORY',
-      adj.id
-    );
+  const handleAddStockAdjustment = useCallback(async (adj: StockAdjustmentRecord) => {
+    try {
+      const saved = await stockAdjustmentRepo.saveAdjustmentAtomic(adj);
+      setStockAdjustments((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
+      const refreshedProducts = await productRepo.getAll();
+      if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+      logAction(
+        'လက်ကျန်ပစ္စည်း ချိန်ညှိခြင်း (Atomic)',
+        `${saved.productName} (${saved.quantity > 0 ? '+' : ''}${saved.quantity}) - ${saved.reason}`,
+        'INVENTORY',
+        saved.id
+      );
+    } catch (err: any) {
+      console.error('Failed to save stock adjustment atomically:', err);
+      alert(`လက်ကျန်ပစ္စည်း ချိန်ညှိမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
   // Full Restore Data for Backup Tab

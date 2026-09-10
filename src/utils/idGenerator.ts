@@ -4,27 +4,30 @@
  */
 
 export function generateCryptoRandomString(length: number = 6): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const randomBytes = new Uint8Array(length);
   if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const randomBytes = new Uint8Array(length);
     crypto.getRandomValues(randomBytes);
-    let result = '';
+  } else {
     for (let i = 0; i < length; i++) {
-      result += chars[randomBytes[i] % chars.length];
+      randomBytes[i] = (Date.now() + i * 31) % 256;
     }
-    return result;
   }
-  return Math.random().toString(36).substring(2, 2 + length).toUpperCase();
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars[randomBytes[i] % chars.length];
+  }
+  return result;
 }
 
 /**
- * Generate a unique and stable entity ID
- * Format: {prefix}_{timestamp}_{random}
+ * Generate a unique and collision-resistant entity ID using crypto.randomUUID()
  */
 export function generateStableId(prefix: string = 'rec'): string {
-  const ts = Date.now();
-  const rand = generateCryptoRandomString(6).toLowerCase();
-  return `${prefix}_${ts}_${rand}`;
+  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}_${generateCryptoRandomString(12)}`;
+  return prefix ? `${prefix}_${uuid}` : uuid;
 }
 
 /**

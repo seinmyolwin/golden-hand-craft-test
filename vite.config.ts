@@ -11,8 +11,17 @@ export default defineConfig(({ command }) => {
       tailwindcss(),
       VitePWA({
         disable: command === 'serve',
-        registerType: 'autoUpdate',
-        includeAssets: ['logo.svg', 'logo.png', 'logo.jpg'],
+        registerType: 'prompt',
+        includeAssets: [
+          'favicon.ico',
+          'apple-touch-icon.png',
+          'logo.svg',
+          'logo.png',
+          'logo.jpg',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+        ],
         manifest: {
           id: '/',
           name: 'ရွှေလက်ရာ - မြန်မာ့လက်မှု စာရင်းကိုင်စနစ်',
@@ -26,16 +35,22 @@ export default defineConfig(({ command }) => {
           scope: '/',
           icons: [
             {
-              src: '/logo.png',
+              src: '/pwa-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/logo.png',
+              src: '/pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable',
+              purpose: 'any',
+            },
+            {
+              src: '/pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
             },
             {
               src: '/logo.svg',
@@ -45,8 +60,12 @@ export default defineConfig(({ command }) => {
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff,woff2,json,webmanifest}'],
           navigateFallback: '/index.html',
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: false,
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
         },
         devOptions: {
           enabled: false,
@@ -61,6 +80,16 @@ export default defineConfig(({ command }) => {
     },
     optimizeDeps: {
       include: ['react', 'react-dom', 'lucide-react', 'motion', 'qrcode', 'jsqr', 'dexie'],
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            xlsx: ['xlsx'],
+            vendor: ['react', 'react-dom', 'dexie', 'lucide-react', 'motion'],
+          },
+        },
+      },
     },
     server: {
       host: '0.0.0.0',
