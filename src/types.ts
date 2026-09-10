@@ -610,4 +610,137 @@ export interface BackupValidationReport {
   normalizedData?: BackupDataPayload;
 }
 
+export type HealthCheckSeverity = 'PASS' | 'INFO' | 'WARN' | 'ERROR' | 'CRITICAL';
+
+export type HealthCheckCategory =
+  | 'DATABASE'
+  | 'DATA_INTEGRITY'
+  | 'REFERENCES'
+  | 'FINANCIAL'
+  | 'STOCK'
+  | 'ATTACHMENTS'
+  | 'BACKUP';
+
+export type HealthOverallStatus = 'HEALTHY' | 'ATTENTION' | 'DEGRADED' | 'CRITICAL';
+
+export interface HealthCheckResult {
+  id: string;
+  category: HealthCheckCategory;
+  severity: HealthCheckSeverity;
+  code: string;
+  title: string;
+  message: string;
+  entity?: string;
+  recordId?: string;
+  relatedRecordIds?: string[];
+  details?: string | Record<string, any>;
+  detectedAt: string;
+}
+
+export interface StorageEstimateInfo {
+  usageBytes?: number;
+  quotaBytes?: number;
+  usageFormatted?: string;
+  quotaFormatted?: string;
+}
+
+export interface DatabaseHealthReport {
+  appVersion: string;
+  databaseName: string;
+  databaseSchemaVersion: number;
+  generatedAt: string;
+  durationMs: number;
+  overallStatus: HealthOverallStatus;
+  totalChecks: number;
+  passedChecks: number;
+  infoCount: number;
+  warningCount: number;
+  errorCount: number;
+  criticalCount: number;
+  tableCounts: Record<string, number>;
+  storageEstimate?: StorageEstimateInfo;
+  summaryByCategory: Record<
+    HealthCheckCategory,
+    {
+      total: number;
+      pass: number;
+      info: number;
+      warn: number;
+      error: number;
+      critical: number;
+    }
+  >;
+  results: HealthCheckResult[];
+}
+
+// ============================================================================
+// Phase 13: Safe Database Repair & Recovery Types
+// ============================================================================
+
+export type RepairSafetyLevel = 'LEVEL_A' | 'LEVEL_B' | 'LEVEL_C';
+
+export type RepairStatus =
+  | 'PREVIEW'
+  | 'CONFIRMED'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'ROLLED_BACK'
+  | 'REJECTED';
+
+export type RepairType =
+  | 'REASSIGN_BROKEN_SUPPLIER_REF'
+  | 'REASSIGN_BROKEN_MERCHANT_REF'
+  | 'REASSIGN_BROKEN_PRODUCT_REF'
+  | 'DELETE_ORPHAN_ATTACHMENT'
+  | 'REASSIGN_ORPHAN_ATTACHMENT'
+  | 'REMOVE_BROKEN_ATTACHMENT_REF'
+  | 'RESTORE_MISSING_UNIT'
+  | 'NORMALIZE_MERCHANT_ROLE'
+  | 'REPAIR_CORRUPT_BACKUP_METADATA'
+  | 'DELETE_PAYLOADLESS_ATTACHMENT'
+  | 'MANUAL_REVIEW_ONLY';
+
+export interface RepairAction {
+  repairId: string;
+  repairType: RepairType;
+  targetEntity: string;
+  targetRecordId: string;
+  affectedRecordIds: string[];
+  reason: string;
+  diagnosticCode: string;
+  beforeSnapshot: Record<string, any>;
+  proposedAfterSnapshot: Record<string, any>;
+  safetyLevel: RepairSafetyLevel;
+  createdAt: string;
+  status: RepairStatus;
+  selectedOption?: string;
+  error?: string;
+  backupId?: string;
+}
+
+export interface RepairAuditDetails {
+  repairId: string;
+  repairType: RepairType;
+  entity: string;
+  recordId: string;
+  affectedRecords: string[];
+  beforeSummary: Record<string, any>;
+  afterSummary: Record<string, any>;
+  reason: string;
+  diagnosticCode: string;
+  result: 'SUCCESS' | 'FAILED' | 'ROLLED_BACK';
+  backupId?: string;
+  appVersion: string;
+}
+
+export interface RepairCapability {
+  code: string;
+  title: string;
+  repairAvailable: boolean;
+  safetyLevel: RepairSafetyLevel;
+  isAutomatic: boolean;
+  requiresUserConfirmation: boolean;
+  description: string;
+}
+
 

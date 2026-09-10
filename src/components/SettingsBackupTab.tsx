@@ -57,8 +57,10 @@ import {
 } from '../services/backupService';
 import { BackupImportPreviewModal } from './BackupImportPreviewModal';
 import { AutoRecoverySnapshotsModal } from './AutoRecoverySnapshotsModal';
+import { DatabaseHealthModal } from './DatabaseHealthModal';
 import { Logo } from './Logo';
 import {
+  Activity,
   Database,
   Download,
   Upload,
@@ -199,6 +201,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const [validationReport, setValidationReport] = useState<BackupValidationReport | null>(null);
   const [importFileName, setImportFileName] = useState<string>('');
   const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState<boolean>(false);
+  const [isDatabaseHealthOpen, setIsDatabaseHealthOpen] = useState<boolean>(false);
   const [isBackingUp, setIsBackingUp] = useState<boolean>(false);
   const [isValidating, setIsValidating] = useState<boolean>(false);
   const [emergencyReason, setEmergencyReason] = useState<string>('');
@@ -1413,6 +1416,63 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
       </div>
 
+      {/* Database Health & System Diagnostics Card (Phase 12) */}
+      <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-300/40">
+              <Activity className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                  ဒေတာဘေ့စ် စစ်ဆေးမှုနှင့် ကျန်းမာရေး (Database Health & Diagnostics)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  Read-Only
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                စာရင်းဒေတာ တည်ငြိမ်မှု၊ ID မထပ်စေရေး၊ အကိုးအကားနှင့် ငွေကြေးဆိုင်ရာ အမှားများအား အလိုအလျောက် စစ်ဆေးခြင်း
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              id="settings-db-health-btn"
+              type="button"
+              onClick={() => setIsDatabaseHealthOpen(true)}
+              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0"
+            >
+              <Activity className="w-4 h-4 text-emerald-300" />
+              <span>ကျန်းမာရေး စစ်ဆေးမည် (Run Diagnostics)</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="text-[11px] text-slate-500 font-medium">Schema Status</div>
+            <div className="font-bold text-slate-800 mt-0.5">Active (Dexie v4)</div>
+          </div>
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="text-[11px] text-slate-500 font-medium">Data Integrity</div>
+            <div className="font-bold text-emerald-700 mt-0.5 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Protected</span>
+            </div>
+          </div>
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="text-[11px] text-slate-500 font-medium">Offline Architecture</div>
+            <div className="font-bold text-slate-800 mt-0.5">IndexedDB Only</div>
+          </div>
+          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="text-[11px] text-slate-500 font-medium">Safety Guarantee</div>
+            <div className="font-bold text-blue-700 mt-0.5">Non-Destructive</div>
+          </div>
+        </div>
+      </div>
+
       {/* Time-stamped AutoRecovery Snapshots List Card */}
       <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2610,6 +2670,12 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 
           alert(msg);
         }}
+      />
+
+      {/* Professional Database Health & Diagnostics Modal (Phase 12) */}
+      <DatabaseHealthModal
+        isOpen={isDatabaseHealthOpen}
+        onClose={() => setIsDatabaseHealthOpen(false)}
       />
     </div>
   );
