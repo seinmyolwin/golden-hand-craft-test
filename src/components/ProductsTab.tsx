@@ -1,29 +1,41 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product } from '../types';
+import {
+  Product,
+  TransactionRecord,
+  SaleRecord,
+  StockAdjustmentRecord,
+  MerchantPurchaseRecord,
+  PeerTradeRecord,
+} from '../types';
 import {
   formatMMK,
-  formatNumberOnly,
-  parseBilingualNumber,
   getStoredProductCategories,
 } from '../utils/storage';
-import { generateStableId } from '../utils/idGenerator';
 import {
   Package,
   Search,
   Plus,
   Edit2,
   Trash2,
-  X,
   Tag,
-  DollarSign,
-  Layers,
   FileSpreadsheet,
-  SlidersHorizontal,
+  History,
 } from 'lucide-react';
 import { CategoryManageModal } from './CategoryManageModal';
+import { ProductMasterModal } from './master/ProductMasterModal';
+import { ProductStockLedgerModal } from './ProductStockLedgerModal';
+import {
+  calculateAllProductsStockLedgerSummaries,
+  exportAllProductsStockLedgerSummaryCSV,
+} from '../services/stockLedgerService';
 
 interface ProductsTabProps {
   products: Product[];
+  transactions?: TransactionRecord[];
+  sales?: SaleRecord[];
+  stockAdjustments?: StockAdjustmentRecord[];
+  merchantPurchases?: MerchantPurchaseRecord[];
+  peerTrades?: PeerTradeRecord[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct?: (productId: string) => void;
@@ -32,6 +44,11 @@ interface ProductsTabProps {
 
 export const ProductsTab: React.FC<ProductsTabProps> = ({
   products = [],
+  transactions = [],
+  sales = [],
+  stockAdjustments = [],
+  merchantPurchases = [],
+  peerTrades = [],
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
@@ -44,13 +61,9 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  const [name, setName] = useState<string>('');
-  const [category, setCategory] = useState<string>('ယွန်းထည်');
-  const [defaultPrice, setDefaultPrice] = useState<number>(0);
-  const [defaultWholesalePrice, setDefaultWholesalePrice] = useState<number>(0);
-  const [unit, setUnit] = useState<string>('ထည်');
-  const [openingStock, setOpeningStock] = useState<number>(50);
-  const [minStockAlert, setMinStockAlert] = useState<number>(15);
+  // Stock Ledger Modal State
+  const [isLedgerModalOpen, setIsLedgerModalOpen] = useState<boolean>(false);
+  const [selectedProductForLedger, setSelectedProductForLedger] = useState<Product | null>(null);
 
   const categories = useMemo(() => {
     const set = new Set<string>(getStoredProductCategories());
@@ -76,60 +89,24 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
-    setName('');
-    setCategory('ယွန်းထည်');
-    setDefaultPrice(0);
-    setDefaultWholesalePrice(0);
-    setUnit('ထည်');
-    setOpeningStock(0);
-    setMinStockAlert(15);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (p: Product) => {
     setEditingProduct(p);
-    setName(p.name);
-    setCategory(p.category);
-    setDefaultPrice(p.defaultPrice);
-    setDefaultWholesalePrice(p.defaultWholesalePrice || Math.round(p.defaultPrice * 1.25));
-    setUnit(p.unit);
-    setOpeningStock(p.openingStock || 0);
-    setMinStockAlert(p.minStockAlert || 15);
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    if (editingProduct) {
-      const updated: Product = {
-        ...editingProduct,
-        name: name.trim(),
-        category: category.trim() || 'ယွန်းထည်',
-        defaultPrice: defaultPrice || 0,
-        defaultWholesalePrice: defaultWholesalePrice || Math.round((defaultPrice || 0) * 1.25),
-        unit: unit.trim() || 'ထည်',
-        openingStock: openingStock || 0,
-        minStockAlert: minStockAlert || 15,
-      };
-      onUpdateProduct(updated);
-    } else {
-      const newProd: Product = {
-        id: generateStableId('p'),
-        name: name.trim(),
-        category: category.trim() || 'ယွန်းထည်',
-        defaultPrice: defaultPrice || 0,
-        defaultWholesalePrice: defaultWholesalePrice || Math.round((defaultPrice || 0) * 1.25),
-        unit: unit.trim() || 'ထည်',
-        openingStock: openingStock || 0,
-        currentStock: openingStock || 0,
-        minStockAlert: minStockAlert || 15,
-        active: true,
-      };
-      onAddProduct(newProd);
-    }
-    setIsModalOpen(false);
+  const handleExportAllLedgerSummary = () => {
+    const summaries = calculateAllProductsStockLedgerSummaries(
+      products || [],
+      transactions || [],
+      sales || [],
+      stockAdjustments || [],
+      merchantPurchases || [],
+      peerTrades || []
+    );
+    exportAllProductsStockLedgerSummaryCSV(summaries);
   };
 
   return (
@@ -166,6 +143,15 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
               <span>Excel ဖြင့် သွင်းမည်</span>
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleExportAllLedgerSummary}
+            className="px-3 py-2 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded-lg border border-emerald-700/60 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+            title="ပစ္စည်းအားလုံး၏ စာရင်းစာအုပ် အနှစ်ချုပ် (All Products Stock Ledger Summary CSV) ထုတ်ယူမည်"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Ledger အနှစ်ချုပ် CSV</span>
+          </button>
           <button
             type="button"
             onClick={handleOpenAdd}
@@ -250,8 +236,20 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    onClick={() => {
+                      setSelectedProductForLedger(product);
+                      setIsLedgerModalOpen(true);
+                    }}
+                    className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                    title="Stock Ledger (စာရင်းစာအုပ်) ကြည့်မည်"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleOpenEdit(product)}
                     className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                    title="ကုန်ပစ္စည်း အချက်အလက် ပြင်ဆင်မည်"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
@@ -264,6 +262,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                         }
                       }}
                       className="p-1.5 text-rose-400 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                      title="ပစ္စည်း ဖျက်မည်"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -326,160 +325,39 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
-            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold">
-                  {editingProduct ? 'ပစ္စည်းအချက်အလက် ပြင်ဆင်ခြင်း' : 'ပစ္စည်းအသစ် ထည့်သွင်းခြင်း'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleSave} className="p-4 space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">ပစ္စည်းအမည် *</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ကွမ်းအစ် ၇ လက်မ (ပန်းချီ)"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">အမျိုးအစား *</label>
-                  <input
-                    type="text"
-                    list="product-category-list"
-                    placeholder="ဥပမာ - ယွန်းထည်"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
-                  <datalist id="product-category-list">
-                    {categories.map((c) => (
-                      <option key={c} value={c} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ရေတွက်ယူနစ် *</label>
-                  <input
-                    type="text"
-                    placeholder="ဥပမာ - ထည်"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    ဝယ်စျေး (ကျပ်) *
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={defaultPrice === 0 ? '' : defaultPrice}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = parseBilingualNumber(e.target.value);
-                      const price = isNaN(val) ? 0 : Math.max(0, val);
-                      setDefaultPrice(price);
-                      if (!editingProduct) {
-                        setDefaultWholesalePrice(Math.round(price * 1.25));
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    လက္ကားရောင်းစျေး (ကျပ်) *
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={defaultWholesalePrice === 0 ? '' : defaultWholesalePrice}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = parseBilingualNumber(e.target.value);
-                      setDefaultWholesalePrice(isNaN(val) ? 0 : Math.max(0, val));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold text-blue-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    အဖွင့်လက်ကျန် (Opening Stock)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={openingStock === 0 ? '' : openingStock}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = parseBilingualNumber(e.target.value);
-                      setOpeningStock(isNaN(val) ? 0 : Math.max(0, val));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    အနည်းဆုံးသတိပေးလက်ကျန်
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={minStockAlert === 0 ? '' : minStockAlert}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const val = parseBilingualNumber(e.target.value);
-                      setMinStockAlert(isNaN(val) ? 0 : Math.max(0, val));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"
-                  />
-                </div>
-              </div>
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors"
-                >
-                  မလုပ်တော့ပါ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors"
-                >
-                  သိမ်းဆည်းမည်
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Canonical Product Master Modal for Add/Edit */}
+      <ProductMasterModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingProduct(null);
+        }}
+        initialProduct={editingProduct}
+        onSave={(savedProd) => {
+          if (editingProduct) {
+            onUpdateProduct(savedProd);
+          } else {
+            onAddProduct(savedProd);
+          }
+        }}
+        availableCategories={categories}
+      />
+
+      {/* Professional Auditable Stock Movement Ledger Modal */}
+      <ProductStockLedgerModal
+        isOpen={isLedgerModalOpen}
+        onClose={() => {
+          setIsLedgerModalOpen(false);
+          setSelectedProductForLedger(null);
+        }}
+        product={selectedProductForLedger}
+        transactions={transactions}
+        sales={sales}
+        stockAdjustments={stockAdjustments}
+        merchantPurchases={merchantPurchases}
+        peerTrades={peerTrades}
+      />
+
       {/* Category Management Modal */}
       <CategoryManageModal
         isOpen={isCategoryModalOpen}

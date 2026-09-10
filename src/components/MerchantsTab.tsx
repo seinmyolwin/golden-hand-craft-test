@@ -7,6 +7,7 @@ import {
   getTodayDateString,
 } from '../utils/storage';
 import { generateStableId } from '../utils/idGenerator';
+import { MerchantMasterModal } from './master/MerchantMasterModal';
 import {
   Building2,
   MapPin,
@@ -569,111 +570,23 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Merchant Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
-            <div className="px-4 py-3 bg-blue-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-300" />
-                <h3 className="text-sm font-bold">
-                  {editingMerchant ? 'ကုန်သည်အချက်အလက် ပြင်ဆင်ခြင်း' : 'ကုန်သည်အသစ် ထည့်သွင်းခြင်း'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-blue-800 hover:bg-blue-700 text-blue-200 flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveMerchant} className="p-4 space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">ကုန်သည် / ဆိုင်အမည် *</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ရွှေမန္တလေး ယွန်းဆိုင်"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  ပိုင်ရှင် သို့မဟုတ် ဆက်သွယ်ရမည့်သူ
-                </label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ဒေါ်နွယ်နွယ်ဝင်း (ဆိုင်ပိုင်ရှင်)"
-                  value={ownerOrContact}
-                  onChange={(e) => setOwnerOrContact(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">မြို့နယ် *</label>
-                  <input
-                    type="text"
-                    placeholder="ဥပမာ - မန္တလေး"
-                    value={town}
-                    onChange={(e) => setTown(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ဖုန်းနံပါတ်</label>
-                  <input
-                    type="text"
-                    placeholder="09-..."
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">လိပ်စာ / ကားဂိတ်</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ၇၈ လမ်း၊ မန္တလေးရွှေမန်းသူ ကားဂိတ်ပို့"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">မှတ်ချက်</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - လစဥ်ပုံမှန်အော်ဒါရှိ"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors"
-                >
-                  မလုပ်တော့ပါ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors"
-                >
-                  သိမ်းဆည်းမည်
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Canonical Merchant Master Modal */}
+      <MerchantMasterModal
+        isOpen={isAddModalOpen}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingMerchant(null);
+        }}
+        initialMerchant={editingMerchant}
+        onSave={(savedMerch) => {
+          if (editingMerchant) {
+            onUpdateMerchant(savedMerch);
+          } else {
+            onAddMerchant(savedMerch);
+          }
+        }}
+        availableTowns={towns}
+      />
 
       {/* Settle Debt Modal */}
       {isSettleModalOpen && settlingMerchant && (

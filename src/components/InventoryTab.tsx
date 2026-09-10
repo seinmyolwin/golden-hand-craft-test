@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Product, TransactionRecord, SaleRecord, StockAdjustmentRecord, PeerTradeRecord } from '../types';
+import {
+  Product,
+  TransactionRecord,
+  SaleRecord,
+  StockAdjustmentRecord,
+  PeerTradeRecord,
+  MerchantPurchaseRecord,
+} from '../types';
 import {
   formatMMK,
   formatNumberOnly,
@@ -10,6 +17,12 @@ import {
   getCurrentTimeString,
 } from '../utils/storage';
 import { generateStableId } from '../utils/idGenerator';
+import {
+  calculateAllProductsStockLedgerSummaries,
+  exportAllProductsStockLedgerSummaryCSV,
+} from '../services/stockLedgerService';
+import { ProductStockLedgerModal } from './ProductStockLedgerModal';
+import { ProductMasterModal } from './master/ProductMasterModal';
 import {
   Layers,
   Package,
@@ -26,6 +39,7 @@ import {
   X,
   History,
   TrendingUp,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface InventoryTabProps {
@@ -34,6 +48,7 @@ interface InventoryTabProps {
   sales: SaleRecord[];
   stockAdjustments: StockAdjustmentRecord[];
   peerTrades?: PeerTradeRecord[];
+  merchantPurchases?: MerchantPurchaseRecord[];
   onUpdateProduct?: (product: Product) => void;
   onAddProduct?: (product: Product) => void;
   onAddStockAdjustment?: (adjustment: StockAdjustmentRecord) => void;
@@ -58,6 +73,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   sales = [],
   stockAdjustments = [],
   peerTrades = [],
+  merchantPurchases = [],
   onUpdateProduct,
   onAddProduct,
   onAddStockAdjustment,
@@ -481,6 +497,18 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     );
   };
 
+  const handleExportAllLedgerSummary = () => {
+    const summaries = calculateAllProductsStockLedgerSummaries(
+      products || [],
+      transactions || [],
+      sales || [],
+      stockAdjustments || [],
+      merchantPurchases || [],
+      peerTrades || []
+    );
+    exportAllProductsStockLedgerSummaryCSV(summaries);
+  };
+
   const finishedFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'FINISHED');
   const bambooFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'BAMBOO');
   const rattanFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'RATTAN');
@@ -535,14 +563,25 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             <Plus className="w-4 h-4" />
             <span>ပစ္စည်းသစ်ထည့်</span>
           </button>
-          <button
-            type="button"
-            onClick={() => exportInventoryCSV(allStockStats)}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 cursor-pointer transition-colors"
-            title="Excel/CSV ထုတ်ယူမည်"
-          >
-            <Download className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => exportInventoryCSV(allStockStats)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 cursor-pointer transition-colors"
+              title="လက်ကျန်စာရင်း (Inventory CSV) ထုတ်ယူမည်"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleExportAllLedgerSummary}
+              className="px-2.5 py-2 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded-lg border border-emerald-700/60 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              title="ပစ္စည်းအားလုံး၏ စာရင်းစာအုပ် အနှစ်ချုပ် (All Products Stock Ledger Summary CSV) ထုတ်ယူမည်"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Ledger အနှစ်ချုပ်</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -962,127 +1001,34 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         </div>
       )}
 
-      {/* Add New Product Modal */}
-      {isAddProductModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
-            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-sm font-bold">ကုန်ပစ္စည်း အသစ်ထည့်သွင်းခြင်း</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddProductModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Canonical Product Master Modal */}
+      <ProductMasterModal
+        isOpen={isAddProductModalOpen}
+        onClose={() => setIsAddProductModalOpen(false)}
+        onSave={(newProd) => {
+          if (onAddProduct) onAddProduct(newProd);
+        }}
+        availableCategories={Array.from(new Set(products.map((p) => p.category).filter(Boolean)))}
+      />
 
-            <form onSubmit={handleCreateProduct} className="p-4 space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">ကုန်ပစ္စည်းအမည် *</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ယွန်း ကွမ်းအစ် (အကြီး)"
-                  value={newProdName}
-                  onChange={(e) => setNewProdName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">အမျိုးအစား</label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="ယွန်းထည်">ယွန်းထည်</option>
-                    <option value="ဝါးထည်">ဝါးထည်</option>
-                    <option value="ကြိမ်ထည်">ကြိမ်ထည်</option>
-                    <option value="ကုန်ကြမ်း (ဝါး)">ကုန်ကြမ်း (ဝါး)</option>
-                    <option value="ကုန်ကြမ်း (ကြိမ်)">ကုန်ကြမ်း (ကြိမ်)</option>
-                    <option value="အခြား">အခြား</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ရေတွက်ပုံ (ယူနစ်)</label>
-                  <input
-                    type="text"
-                    placeholder="ထည် / လုံး / ချပ်"
-                    value={newUnit}
-                    onChange={(e) => setNewUnit(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ဝယ်စျေး / ကုန်ကျစရိတ် (ကျပ်)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={newBuyPrice === 0 ? '' : newBuyPrice}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNewBuyPrice(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ရောင်းစျေး / လက်ကားစျေး (ကျပ်)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={newSellPrice === 0 ? '' : newSellPrice}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNewSellPrice(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">စတင်လက်ကျန် အရေအတွက် (Opening Stock)</label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={newOpeningStock === 0 ? '' : newOpeningStock}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setNewOpeningStock(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <p className="text-[11px] text-slate-500 mt-0.5">မရှိသေးပါက သုည (၀) ထားရှိနိုင်ပါသည်</p>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddProductModalOpen(false)}
-                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors"
-                >
-                  မလုပ်တော့ပါ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>သိမ်းဆည်းမည်</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Professional Auditable Stock Movement Ledger Modal */}
+      <ProductStockLedgerModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => {
+          setIsHistoryModalOpen(false);
+          setSelectedProductForHistory(null);
+        }}
+        product={selectedProductForHistory}
+        transactions={transactions}
+        sales={sales}
+        stockAdjustments={stockAdjustments}
+        merchantPurchases={merchantPurchases}
+        peerTrades={peerTrades}
+        onOpenStockAdjust={(prod) => {
+          setSelectedProductForAdjust(prod);
+          setIsAdjustModalOpen(true);
+        }}
+      />
     </div>
   );
 };

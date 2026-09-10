@@ -9,6 +9,7 @@ import {
   getStoredRawMaterialPresets,
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
+import { SupplierMasterModal } from './master/SupplierMasterModal';
 import {
   Users,
   Search,
@@ -691,110 +692,23 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Supplier Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
-            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold">
-                  {editingSupplier ? 'ကုန်ပစ္စည်းပေးသွင်းသူ ပြင်ဆင်ခြင်း' : 'ကုန်ပစ္စည်းပေးသွင်းသူအသစ် ထည့်သွင်းခြင်း'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveSupplier} className="p-4 space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">ကုန်ပစ္စည်းပေးသွင်းသူအမည် *</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ဦးဘတင်"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ရွာအမည် *</label>
-                  <input
-                    type="text"
-                    placeholder="ဥပမာ - မင်းနန်သူ"
-                    value={village}
-                    onChange={(e) => setVillage(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">ဖုန်းနံပါတ်</label>
-                  <input
-                    type="text"
-                    placeholder="09-..."
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-              {!editingSupplier && (
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    စတင်ချိန် လက်ကျန်အကြိုငွေ (ရှိလျှင်)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="0"
-                    value={initialAdvance === 0 ? '' : initialAdvance}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      const cleanStr = e.target.value.replace(/^0+(?=\d)/, '');
-                      const val = cleanStr === '' ? 0 : parseInt(cleanStr, 10);
-                      setInitialAdvance(isNaN(val) ? 0 : Math.max(0, val));
-                    }}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">မှတ်ချက် / အလုပ်ရုံ</label>
-                <input
-                  type="text"
-                  placeholder="ဥပမာ - ကွမ်းအစ် အထူးကျွမ်းကျင်"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors"
-                >
-                  မလုပ်တော့ပါ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors"
-                >
-                  သိမ်းဆည်းမည်
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Canonical Supplier Master Modal */}
+      <SupplierMasterModal
+        isOpen={isAddModalOpen}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingSupplier(null);
+        }}
+        initialSupplier={editingSupplier}
+        onSave={(savedSup) => {
+          if (editingSupplier) {
+            onUpdateSupplier(savedSup);
+          } else {
+            onAddSupplier(savedSup);
+          }
+        }}
+        availableVillages={villages}
+      />
 
       {/* Raw Material Credit Modal */}
       {isRawMaterialModalOpen && selectedSupplierForRaw && (
