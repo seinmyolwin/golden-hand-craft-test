@@ -983,11 +983,12 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 </div>
 
                 <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
-                  <div className="font-bold text-rose-950 text-sm">စကားဝှက် သတ်မှတ်ခြင်း:</div>
+                  <div className="font-bold text-rose-950 text-sm">စကားဝှက် သတ်မှတ်ခြင်းနှင့် ပြန်လည်ရယူခြင်း:</div>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>မူလစကားဝှက်မှာ <strong>1234</strong> ဖြစ်ပြီး ဆက်တင်တွင် စိတ်ကြိုက် ၄ လုံး ပြောင်းနိုင်ပါသည်။</li>
-                    <li>စကားဝှက်မေ့သွားပါက အရေးပေါ် ပြန်လည်ရယူရေးကီး (ဥပမာ - <strong>SLY-8842-9173</strong>) ကို ရိုက်ထည့်၍ ချက်ချင်း Reset ချနိုင်ပါသည်။</li>
+                    <li>App Lock ဖွင့်လှစ်ချိန်တွင် အသုံးပြုသူ ကိုယ်တိုင် စိတ်ကြိုက် PIN စကားဝှက် (၄~၈ လုံး) ကို သတ်မှတ်ရပါမည်။ (မည်သည့် မူလ default စကားဝှက်မျှ စနစ်တွင်း ပုံသေသတ်မှတ်ထားခြင်း မရှိပါ)</li>
+                    <li>စကားဝှက်မေ့သွားပါက မိမိ၏ သီးသန့်ထုတ်ပေးထားသော အရေးပေါ် ပြန်လည်ရယူရေးကီး (Recovery Key) ကို ရိုက်ထည့်၍ ချက်ချင်း Reset ချနိုင်ပါသည်။</li>
                     <li>Recovery Key ကို ဘေးကင်းလုံခြုံသော မှတ်စုစာအုပ်တွင် ကူးယူသိမ်းဆည်းထားသင့်ပါသည်။</li>
+                    <li>လုံခြုံရေးအရ ဆော့ဖ်ဝဲလ်သည် စကားဝှက်များကို Web Crypto (PBKDF2-SHA256) နည်းပညာဖြင့် လုံခြုံစွာ ကုဒ်ဝှက်စစ်ဆေးပါသည်။</li>
                   </ul>
                 </div>
               </div>

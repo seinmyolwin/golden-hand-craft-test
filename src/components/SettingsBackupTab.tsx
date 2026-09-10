@@ -11,9 +11,9 @@ import {
   AppLockSettings,
   AutoRecoverySnapshot,
   RawMaterialPreset,
+  BackupValidationReport,
 } from '../types';
 import {
-  exportBackupJSON,
   exportSuppliersCSV,
   exportMerchantsCSV,
   exportDailyCollectionCSV,
@@ -32,7 +32,32 @@ import {
   getStoredRawMaterialPresets,
   saveStoredRawMaterialPresets,
   DEFAULT_RAW_MATERIAL_PRESETS,
+  loadShopSettings,
 } from '../utils/storage';
+import {
+  derivePinCredentials,
+  deriveRecoveryCredentials,
+  generateSecureRecoveryKey,
+  verifyAppLockRecoveryKey,
+  SECURITY_DISCLOSURE_MY,
+} from '../services/cryptoSecurity';
+import {
+  productRepo,
+  supplierRepo,
+  merchantRepo,
+  transactionRepo,
+  saleRepo,
+  stockAdjustmentRepo,
+} from '../repositories';
+import {
+  createCompleteBackup,
+  downloadBackupFile,
+  validateBackupFile,
+  createAutoRecoverySnapshot,
+  getRecoverySnapshots,
+} from '../services/backupService';
+import { BackupImportPreviewModal } from './BackupImportPreviewModal';
+import { AutoRecoverySnapshotsModal } from './AutoRecoverySnapshotsModal';
 import { Logo } from './Logo';
 import {
   Database,
@@ -41,6 +66,8 @@ import {
   RefreshCw,
   Smartphone,
   ShieldCheck,
+  ShieldAlert,
+  Shield,
   Users,
   AlertTriangle,
   FileSpreadsheet,
@@ -65,7 +92,6 @@ import {
   Check,
   Eye,
   EyeOff,
-  ShieldAlert,
   Plus,
   Search,
   X,
@@ -166,8 +192,18 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingPin, setEditingPin] = useState(false);
-  const [newPin, setNewPin] = useState(appLockSettings?.passcode ?? appLockSettings?.pin ?? '1234');
+  const [newPin, setNewPin] = useState('');
   const [snapshotReason, setSnapshotReason] = useState('');
+
+  // Backup & Safe Recovery System States
+  const [isImportPreviewOpen, setIsImportPreviewOpen] = useState<boolean>(false);
+  const [validationReport, setValidationReport] = useState<BackupValidationReport | null>(null);
+  const [importFileName, setImportFileName] = useState<string>('');
+  const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState<boolean>(false);
+  const [isBackingUp, setIsBackingUp] = useState<boolean>(false);
+  const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [emergencyReason, setEmergencyReason] = useState<string>('');
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState<boolean>(false);
 
   // Password Recovery Key State
   const [showRecoveryKey, setShowRecoveryKey] = useState<boolean>(false);
@@ -271,32 +307,39 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const [downloadSuccessMsg, setDownloadSuccessMsg] = useState<string>('');
 
   const currentRecoveryKey =
-    appLockSettings?.recoveryKey || DEFAULT_APP_LOCK.recoveryKey || 'SLY-8842-9173';
+    appLockSettings?.recoveryKey || '';
 
   const handleCopyRecoveryKey = () => {
+    if (!currentRecoveryKey) {
+      alert('Recovery Key မရှိသေးပါ။ Key အသစ်ထုတ်ယူပေးပါ');
+      return;
+    }
     navigator.clipboard.writeText(currentRecoveryKey);
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
-  const handleRegenerateKey = () => {
+  const handleRegenerateKey = async () => {
     if (
       confirm(
         'Recovery Key အသစ်ထုတ်ယူလိုပါသလား?\n\n(Key အသစ်ထုတ်ယူပြီးပါက ယခင် Key ဖြင့် ပြန်လည်ရယူနိုင်တော့မည် မဟုတ်ပါ)'
       )
     ) {
-      const newKey = regenerateRecoveryKey();
+      const newKey = generateSecureRecoveryKey();
+      const recCreds = await deriveRecoveryCredentials(newKey);
       if (onUpdateAppLockSettings && appLockSettings) {
         onUpdateAppLockSettings({
           ...appLockSettings,
           recoveryKey: newKey,
+          recoverySalt: recCreds.salt,
+          recoveryHash: recCreds.hash,
         });
       }
       alert(`Recovery Key အသစ် ထုတ်ယူပြီးပါပြီ:\n${newKey}\n\nဤကီးကို သေချာမှတ်သားသိမ်းဆည်းထားပါ`);
     }
   };
 
-  const handleDirectKeyResetSubmit = (e: React.FormEvent) => {
+  const handleDirectKeyResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
     setResetSuccess('');
@@ -314,66 +357,69 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       return;
     }
 
-    const res = resetAppLockPinWithRecoveryKey(resetKeyInput.trim(), resetNewPin);
-    if (res.success) {
-      setResetSuccess(res.message);
-      if (onUpdateAppLockSettings && appLockSettings) {
-        onUpdateAppLockSettings({
-          ...appLockSettings,
-          passcode: resetNewPin,
-          pin: resetNewPin,
-        });
-      }
-      setResetKeyInput('');
-      setResetNewPin('');
-      setResetConfirmPin('');
-      setTimeout(() => {
-        setIsKeyResetOpen(false);
-        setResetSuccess('');
-      }, 1500);
-    } else {
-      setResetError(res.message);
+    if (!appLockSettings) {
+      setResetError('App Lock ဆက်တင် မတွေ့ပါ');
+      return;
     }
+
+    const isValid = await verifyAppLockRecoveryKey(resetKeyInput.trim(), appLockSettings);
+    if (!isValid) {
+      setResetError('Recovery Key မှားယွင်းနေပါသည်။ သေချာစစ်ဆေးပြီး ပြန်လည်ရိုက်ထည့်ပါ');
+      return;
+    }
+
+    const pinCreds = await derivePinCredentials(resetNewPin);
+    const updated: AppLockSettings = {
+      ...appLockSettings,
+      pinSalt: pinCreds.salt,
+      pinHash: pinCreds.hash,
+      isPinInitialized: true,
+      failedAttempts: 0,
+      lockedUntilTimestamp: undefined,
+      lastResetAt: new Date().toISOString(),
+    };
+    delete updated.passcode;
+    delete updated.pin;
+
+    if (onUpdateAppLockSettings) {
+      onUpdateAppLockSettings(updated);
+    }
+    setResetSuccess('စကားဝှက် (PIN) အသစ် အောင်မြင်စွာ ပြောင်းလဲသတ်မှတ်ပြီးပါပြီ!');
+    setResetKeyInput('');
+    setResetNewPin('');
+    setResetConfirmPin('');
+    setTimeout(() => {
+      setIsKeyResetOpen(false);
+      setResetSuccess('');
+    }, 1500);
   };
 
   const handleBackup = () => {
     if (onOpenBackupSaveModal) {
       onOpenBackupSaveModal();
     } else {
-      exportBackupJSON(products, suppliers, transactions, merchants, sales, stockAdjustments, shopSettings);
+      handleShweLetYarDocBackup(false);
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-        const payload = parsed.data || parsed;
-        if (payload.suppliers && payload.products) {
-          onRestoreData(
-            Array.isArray(payload.products) ? payload.products : DEFAULT_PRODUCTS,
-            Array.isArray(payload.suppliers) ? payload.suppliers : INITIAL_SUPPLIERS,
-            Array.isArray(payload.transactions) ? payload.transactions : [],
-            Array.isArray(payload.merchants) ? payload.merchants : INITIAL_MERCHANTS,
-            Array.isArray(payload.sales) ? payload.sales : INITIAL_SALES,
-            Array.isArray(payload.stockAdjustments) ? payload.stockAdjustments : [],
-            payload.shopSettings ? payload.shopSettings : undefined
-          );
-          alert('ဒေတာများ အောင်မြင်စွာ ပြန်လည်သွင်းယူပြီးပါပြီ! (Data Restored Successfully!)');
-        } else {
-          alert('ဖိုင်ဖော်မတ် မမှန်ကန်ပါ (Invalid Backup File)');
-        }
-      } catch (err) {
-        alert('ဖိုင်ဖတ်၍ မရပါ');
-        console.error(err);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+
+    setIsValidating(true);
+    setImportFileName(file.name);
+
+    try {
+      const text = await file.text();
+      const report = await validateBackupFile(text);
+      setValidationReport(report);
+      setIsImportPreviewOpen(true);
+    } catch (err: any) {
+      alert(`ဖိုင်စစ်ဆေး၍ မရပါ: ${err?.message || 'Corrupted file'}`);
+    } finally {
+      setIsValidating(false);
+      e.target.value = '';
+    }
   };
 
   const handleLoad100Suppliers = () => {
@@ -546,24 +592,23 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleShweLetYarDocBackup = async (useFolderPicker: boolean = false) => {
-    const todayStr = getTodayDateString();
-    const fileName = `Shwe_let_yar_doc_backup_${todayStr}.json`;
-    const res = await exportBackupJSON(
-      products,
-      suppliers,
-      transactions,
-      merchants,
-      sales,
-      stockAdjustments,
-      shopSettings,
-      fileName,
-      useFolderPicker
-    );
-    if (res.success) {
-      setDownloadSuccessMsg(
-        `ဖိုင်အမည် "${res.fileName}" ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။ ဖုန်းအတွင်း Download > "Shwe let yar doc." Folder ထဲသို့ ရွှေ့ပြောင်းသိမ်းဆည်းနိုင်ပါသည်။`
-      );
-      setTimeout(() => setDownloadSuccessMsg(''), 8000);
+    setIsBackingUp(true);
+    try {
+      const backup = await createCompleteBackup({
+        shopSettings,
+        customNotes: 'Manual Export from Settings Backup Tab',
+      });
+      const res = await downloadBackupFile(backup, useFolderPicker);
+      if (res.success) {
+        setDownloadSuccessMsg(
+          `ဖိုင်အမည် "${res.fileName}" (${backup.metadata.totalRecords} records, v${backup.formatVersion}) ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။ ဖုန်းအတွင်း Download > "Shwe let yar doc." Folder ထဲသို့ ရွှေ့ပြောင်းသိမ်းဆည်းနိုင်ပါသည်။`
+        );
+        setTimeout(() => setDownloadSuccessMsg(''), 8000);
+      }
+    } catch (err: any) {
+      alert(`Backup ထုတ်ယူရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်: ${err?.message || err}`);
+    } finally {
+      setIsBackingUp(false);
     }
   };
 
@@ -965,14 +1010,8 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               checked={appLockSettings?.enabled ?? false}
               onChange={(e) =>
                 onUpdateAppLockSettings?.({
-                  ...(appLockSettings || {
-                    enabled: false,
-                    pin: '1234',
-                    passcode: '1234',
-                    recoveryKey: currentRecoveryKey,
-                  }),
+                  ...(appLockSettings || { enabled: false }),
                   enabled: e.target.checked,
-                  recoveryKey: currentRecoveryKey,
                 })
               }
               className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
@@ -986,26 +1025,34 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <span className="text-slate-600 font-medium">PIN အသစ်:</span>
                 <input
                   type="password"
-                  maxLength={6}
+                  maxLength={8}
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                  className="w-20 px-2 py-1 bg-white border border-amber-300 rounded-lg text-center font-extrabold text-sm tracking-widest text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  placeholder="၄~၈ လုံး"
+                  className="w-24 px-2 py-1 bg-white border border-amber-300 rounded-lg text-center font-extrabold text-sm tracking-widest text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (newPin.length < 4) {
                       alert('PIN သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်');
                       return;
                     }
-                    onUpdateAppLockSettings?.({
-                      ...(appLockSettings || { enabled: true, pin: '1234', passcode: '1234', recoveryKey: currentRecoveryKey }),
-                      pin: newPin,
-                      passcode: newPin,
+                    const pinCreds = await derivePinCredentials(newPin);
+                    const updated: AppLockSettings = {
+                      ...(appLockSettings || { enabled: true }),
+                      pinSalt: pinCreds.salt,
+                      pinHash: pinCreds.hash,
+                      isPinInitialized: true,
                       enabled: true,
-                      recoveryKey: currentRecoveryKey,
-                    });
+                      failedAttempts: 0,
+                      lockedUntilTimestamp: undefined,
+                    };
+                    delete updated.passcode;
+                    delete updated.pin;
+                    onUpdateAppLockSettings?.(updated);
                     setEditingPin(false);
+                    setNewPin('');
                     alert('PIN အသစ် ပြောင်းလဲပြီးပါပြီ!');
                   }}
                   className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg cursor-pointer"
@@ -1014,7 +1061,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditingPin(false)}
+                  onClick={() => {
+                    setEditingPin(false);
+                    setNewPin('');
+                  }}
                   className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg cursor-pointer"
                 >
                   ပယ်ဖျက်
@@ -1022,11 +1072,15 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-slate-600 font-medium">လက်ရှိ PIN: ****</span>
+                <span className="text-slate-600 font-medium">
+                  {appLockSettings?.isPinInitialized || appLockSettings?.pinHash
+                    ? 'PIN သတ်မှတ်ထားပြီး (****)'
+                    : 'PIN မသတ်မှတ်ရသေးပါ'}
+                </span>
                 <button
                   type="button"
                   onClick={() => {
-                    setNewPin(appLockSettings?.passcode ?? appLockSettings?.pin ?? '1234');
+                    setNewPin('');
                     setEditingPin(true);
                   }}
                   className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold rounded-lg cursor-pointer transition-colors"
@@ -1035,6 +1089,15 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Security Disclosure Notice */}
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
+          <Shield className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-bold text-slate-700">ဒေသတွင်း မျက်နှာပြင်သော့ အသိပေးချက် (Local App Lock Disclosure)</p>
+            <p>{SECURITY_DISCLOSURE_MY}</p>
           </div>
         </div>
 
@@ -1617,28 +1680,30 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           <div className="p-3.5 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည်</span>
+                <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည် (v3.0 Verified)</span>
                 <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-semibold">အကြံပြုချက်</span>
               </div>
               <p className="text-[11px] text-slate-600 mt-0.5">
-                လက်ရှိ စာရင်းသွင်းထားသော ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
+                လက်ရှိ စာရင်းသွင်းထားသော ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို SHA-256 Checksum ပါဝင်သော JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
               </p>
             </div>
             <div className="space-y-2 pt-1">
               <button
                 type="button"
                 id="direct-download-backup-btn"
+                disabled={isBackingUp}
                 onClick={() => handleShweLetYarDocBackup(false)}
-                className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
               >
                 <Download className="w-4 h-4" />
-                <span>Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်</span>
+                <span>{isBackingUp ? 'Backup ဖိုင် ထုတ်ယူနေပါသည်...' : 'Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်'}</span>
               </button>
               <button
                 type="button"
                 id="download-backup-btn"
+                disabled={isBackingUp}
                 onClick={() => handleShweLetYarDocBackup(true)}
-                className="w-full py-2 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
+                className="w-full py-2 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
               >
                 <FolderOpen className="w-4 h-4 text-slate-600" />
                 <span>နေရာရွေးပြီး Backup သိမ်းမည် (Folder Picker)</span>
@@ -1648,9 +1713,12 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 
           <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 flex flex-col justify-between">
             <div>
-              <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Restore)</span>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Safe Restore)</span>
+                <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">Integrity Verified</span>
+              </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး လက်ရှိစက်ထဲသို့ အစားထိုး ထည့်သွင်းမည်
+                ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး ဖိုင်စစ်ဆေးမှု၊ နှိုင်းယှဉ်ချက်များနှင့် Smart Merge / Clean Overwrite အဆင့်ဆင့် ပြုလုပ်ပါမည်
               </p>
             </div>
             <div>
@@ -1664,14 +1732,85 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               <button
                 type="button"
                 id="restore-backup-btn"
+                disabled={isValidating}
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-2.5 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                className="w-full py-2.5 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
               >
                 <Upload className="w-4 h-4 text-slate-600" />
-                <span>Backup ဖိုင် ရွေးမည်</span>
+                <span>{isValidating ? 'ဖိုင်စစ်ဆေးနေပါသည်...' : 'Backup ဖိုင် ရွေးမည် (Preview & Validate)'}</span>
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Auto-Recovery Safety Snapshots Management Card */}
+      <div className="bg-white rounded-xl p-4 border border-blue-200 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                  အလိုအလျောက် Safety Snapshots နှင့် Rollback စနစ်
+                </h3>
+                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                  {snapshots.length} ခု သိမ်းဆည်းပြီး
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Restore, Clear Data သို့မဟုတ် အရေးကြီးသော ပြောင်းလဲမှုများ မပြုလုပ်မီ စနစ်က လက်ရှိဒေတာကို Auto Snapshot အဖြစ် ကာကွယ်သိမ်းဆည်းပေးထားပါသည်
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              id="open-snapshots-modal-btn"
+              onClick={() => setIsSnapshotsModalOpen(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0"
+            >
+              <History className="w-4 h-4" />
+              <span>Safety Snapshots ကြည့်မည် / ပြန်ယူမည် ({snapshots.length})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Emergency Snapshot Bar */}
+        <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
+          <input
+            type="text"
+            placeholder="Snapshot အကြောင်းပြချက် (ဥပမာ - လကုန်စာရင်းမရှင်းမီ မှတ်တမ်း)"
+            value={emergencyReason}
+            onChange={(e) => setEmergencyReason(e.target.value)}
+            className="w-full sm:flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+          />
+          <button
+            type="button"
+            disabled={isCreatingSnapshot}
+            onClick={async () => {
+              setIsCreatingSnapshot(true);
+              try {
+                const reason = emergencyReason.trim() || 'Manual Safety Snapshot';
+                await createAutoRecoverySnapshot(reason);
+                if (onTakeSnapshotNow) {
+                  onTakeSnapshotNow(reason);
+                }
+                setEmergencyReason('');
+                alert(`Safety Snapshot "${reason}" ကို IndexedDB ထဲသို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ`);
+              } catch (e: any) {
+                alert(`Snapshot သိမ်းဆည်းရာတွင် အမှားဖြစ်ပွားပါသည်: ${e?.message || e}`);
+              } finally {
+                setIsCreatingSnapshot(false);
+              }
+            }}
+            className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+            <span>{isCreatingSnapshot ? 'သိမ်းဆည်းနေပါသည်...' : 'Snapshot ချက်ချင်း ရယူမည်'}</span>
+          </button>
         </div>
       </div>
 
@@ -2414,6 +2553,65 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </div>
         </div>
       )}
+      {/* Backup Import & Deep Validation Preview Modal */}
+      <BackupImportPreviewModal
+        isOpen={isImportPreviewOpen}
+        onClose={() => {
+          setIsImportPreviewOpen(false);
+          setValidationReport(null);
+        }}
+        report={validationReport}
+        fileName={importFileName}
+        onRestoreSuccess={async (result) => {
+          // Re-hydrate state from database
+          const refreshedProducts = await productRepo.getAll();
+          const refreshedSuppliers = await supplierRepo.getAll();
+          const refreshedMerchants = await merchantRepo.getAll();
+          const refreshedTransactions = await transactionRepo.getAll();
+          const refreshedSales = await saleRepo.getAll();
+          const refreshedAdjustments = await stockAdjustmentRepo.getAll();
+          const refreshedShopSettings = loadShopSettings();
+
+          onRestoreData(
+            refreshedProducts,
+            refreshedSuppliers,
+            refreshedTransactions,
+            refreshedMerchants,
+            refreshedSales,
+            refreshedAdjustments,
+            refreshedShopSettings
+          );
+
+          alert(`ဒေတာများ အောင်မြင်စွာ ပြန်လည်သွင်းယူပြီးပါပြီ!\n\n${result.message}`);
+        }}
+      />
+
+      {/* Auto-Recovery Snapshots History & Rollback Modal */}
+      <AutoRecoverySnapshotsModal
+        isOpen={isSnapshotsModalOpen}
+        onClose={() => setIsSnapshotsModalOpen(false)}
+        onRestoreSuccess={async (msg) => {
+          const refreshedProducts = await productRepo.getAll();
+          const refreshedSuppliers = await supplierRepo.getAll();
+          const refreshedMerchants = await merchantRepo.getAll();
+          const refreshedTransactions = await transactionRepo.getAll();
+          const refreshedSales = await saleRepo.getAll();
+          const refreshedAdjustments = await stockAdjustmentRepo.getAll();
+          const refreshedShopSettings = loadShopSettings();
+
+          onRestoreData(
+            refreshedProducts,
+            refreshedSuppliers,
+            refreshedTransactions,
+            refreshedMerchants,
+            refreshedSales,
+            refreshedAdjustments,
+            refreshedShopSettings
+          );
+
+          alert(msg);
+        }}
+      />
     </div>
   );
 };

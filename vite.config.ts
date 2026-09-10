@@ -4,12 +4,13 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
   return {
     plugins: [
       react(),
       tailwindcss(),
       VitePWA({
+        disable: command === 'serve',
         registerType: 'autoUpdate',
         includeAssets: ['logo.svg', 'logo.png', 'logo.jpg'],
         manifest: {
@@ -48,7 +49,7 @@ export default defineConfig(() => {
           navigateFallback: '/index.html',
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
         },
       }),
     ],

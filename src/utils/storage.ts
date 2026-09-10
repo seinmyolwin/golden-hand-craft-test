@@ -30,6 +30,7 @@ import {
   INITIAL_PEER_TRADERS,
 } from '../data/defaultData';
 import { db } from '../db/database';
+import { generateSecureRecoveryKey } from '../services/cryptoSecurity';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'ledger_products_v2',
@@ -124,7 +125,7 @@ export function normalizeBilingualDigits(input: string): string {
     const ch = input[i];
     if (myanmarToEnglishMap[ch] !== undefined) {
       res += myanmarToEnglishMap[ch];
-    } else if ((ch >= '0' && ch <= '9') || ch === '.' || ch === '-') {
+    } else {
       res += ch;
     }
   }
@@ -179,26 +180,18 @@ export function saveStoredRawMaterialCategories(categories: string[]): void {
   }
 }
 
-// Generate an 8-character random formatted recovery key e.g. "SLY-8842-9173"
+// Generate a cryptographically random formatted recovery key e.g. "SLY-8K3N-7R4W"
 export function generateRandomRecoveryKey(): string {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let part1 = '';
-  let part2 = '';
-  for (let i = 0; i < 4; i++) {
-    part1 += chars.charAt(Math.floor(Math.random() * chars.length));
-    part2 += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `SLY-${part1}-${part2}`;
+  return generateSecureRecoveryKey();
 }
+export const generateRecoveryKey = generateRandomRecoveryKey;
 
 export const DEFAULT_APP_LOCK: AppLockSettings = {
   enabled: false,
-  passcode: '',
-  pin: '',
-  hint: '',
-  recoveryKey: '',
-  recoveryQuestion: '',
-  recoveryAnswer: '',
+  isPinInitialized: false,
+  autoLockMinutes: 5,
+  lockOnStartup: true,
+  failedAttempts: 0,
 };
 
 export const DEFAULT_BACKUP_REMINDER: BackupReminderSettings = {
@@ -540,17 +533,19 @@ export function getStoredAppLockSettings(): AppLockSettings {
     if (!parsed || typeof parsed !== 'object') {
       return DEFAULT_APP_LOCK;
     }
-    const effectivePasscode = parsed.passcode ?? parsed.pin ?? '';
-    const effectiveRecoveryKey = parsed.recoveryKey || '';
     const settings: AppLockSettings = {
       ...DEFAULT_APP_LOCK,
       ...parsed,
       enabled: parsed.enabled ?? DEFAULT_APP_LOCK.enabled,
-      passcode: effectivePasscode,
-      pin: effectivePasscode,
-      recoveryKey: effectiveRecoveryKey,
-      recoveryQuestion: parsed.recoveryQuestion || DEFAULT_APP_LOCK.recoveryQuestion,
-      recoveryAnswer: parsed.recoveryAnswer || '',
+      pinSalt: parsed.pinSalt,
+      pinHash: parsed.pinHash,
+      recoverySalt: parsed.recoverySalt,
+      recoveryHash: parsed.recoveryHash,
+      isPinInitialized: parsed.isPinInitialized ?? (Boolean(parsed.pinHash) || Boolean(parsed.passcode) || Boolean(parsed.pin)),
+      failedAttempts: parsed.failedAttempts ?? 0,
+      lockedUntilTimestamp: parsed.lockedUntilTimestamp,
+      autoLockMinutes: parsed.autoLockMinutes ?? 5,
+      lockOnStartup: parsed.lockOnStartup ?? true,
     };
     return settings;
   } catch (e) {
@@ -561,16 +556,16 @@ export function getStoredAppLockSettings(): AppLockSettings {
 
 export function saveStoredAppLockSettings(settings: AppLockSettings): void {
   try {
-    const safePasscode = settings?.passcode ?? settings?.pin ?? '';
-    const safeRecoveryKey = settings?.recoveryKey || '';
-    const safeSettings: AppLockSettings = {
+    const cleanSettings: AppLockSettings = {
       ...DEFAULT_APP_LOCK,
       ...(settings || {}),
-      passcode: safePasscode,
-      pin: safePasscode,
-      recoveryKey: safeRecoveryKey,
     };
-    safeLocalStorageSet(STORAGE_KEYS.APP_LOCK, safeSettings);
+    // If cryptographic hash exists, do not retain plaintext passcode in storage
+    if (cleanSettings.pinHash && cleanSettings.pinSalt) {
+      delete cleanSettings.passcode;
+      delete cleanSettings.pin;
+    }
+    safeLocalStorageSet(STORAGE_KEYS.APP_LOCK, cleanSettings);
   } catch (e) {
     console.error('Error saving app lock settings', e);
   }
@@ -589,7 +584,7 @@ export function verifyRecoveryKey(inputKey: string): boolean {
   return normInput === normCurrent;
 }
 
-// Reset PIN with Recovery Key
+// Reset PIN with Recovery Key (sync helper)
 export function resetAppLockPinWithRecoveryKey(
   inputRecoveryKey: string,
   newPin: string
@@ -606,8 +601,6 @@ export function resetAppLockPinWithRecoveryKey(
   const current = getStoredAppLockSettings();
   const updated: AppLockSettings = {
     ...current,
-    passcode: newPin,
-    pin: newPin,
     lastResetAt: `${getTodayDateString()} ${getCurrentTimeString()}`,
   };
   saveStoredAppLockSettings(updated);
@@ -1720,7 +1713,6 @@ export const loadShopSettings = getStoredShopSettings;
 export const saveShopSettings = saveStoredShopSettings;
 export const loadAppLockSettings = getStoredAppLockSettings;
 export const saveAppLockSettings = saveStoredAppLockSettings;
-export const generateRecoveryKey = generateRandomRecoveryKey;
 
 export function loadPeerTrades(): any[] {
   return safeLocalStorageGet('ledger_peer_trades_v1', []);

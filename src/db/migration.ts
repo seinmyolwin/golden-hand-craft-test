@@ -7,7 +7,6 @@ import {
   INITIAL_SALES,
   INITIAL_STOCK_ADJUSTMENTS,
   INITIAL_MERCHANT_ORDERS,
-  INITIAL_PEER_TRADERS,
 } from '../data/defaultData';
 import {
   Product,
@@ -21,12 +20,39 @@ import {
   PeerTradeRecord,
   SoftDeletedItem,
   AuditLogEntry,
-  ShopSettings,
-  AppLockSettings,
-  BackupReminderSettings,
+  RawMaterialPreset,
 } from '../types';
 
 export const MIGRATION_FLAG_KEY = 'shwe_let_yar_migration_status_v2';
+
+export const DEFAULT_RAW_MATERIAL_PRESETS: RawMaterialPreset[] = [
+  // ဝါးကုန်ကြမ်း
+  { id: 'rm-1', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးပိုးဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 3500 },
+  { id: 'rm-2', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'တင်းဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 2800 },
+  { id: 'rm-3', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'သနပ်ခါးဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 3000 },
+  { id: 'rm-4', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'မျှင်ဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 2200 },
+  { id: 'rm-5', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးနှီးစိပ် (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 4500 },
+  { id: 'rm-6', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးခွေ (ချော)', defaultUnit: 'ခွေ', defaultUnitPrice: 5000 },
+
+  // ကြိမ်ကုန်ကြမ်း
+  { id: 'rm-7', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်လုံး (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 12000 },
+  { id: 'rm-8', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ကြိုး (ခွေ)', defaultUnit: 'ခွေ', defaultUnitPrice: 8500 },
+  { id: 'rm-9', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ခွေ (ချော)', defaultUnit: 'ခွေ', defaultUnitPrice: 9000 },
+  { id: 'rm-10', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်အူ (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 15000 },
+  { id: 'rm-11', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ပြား (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 11000 },
+
+  // ငွေကြိုယူ
+  { id: 'rm-12', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'ငွေသားကြိုထုတ် (Cash Advance)', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  { id: 'rm-13', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'အလုပ်သမားစရိတ်ကြိုယူ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  { id: 'rm-14', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'လုပ်အားခကြိုယူငွေ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  { id: 'rm-15', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'အိမ်သုံးစရိတ်ကြိုယူငွေ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+
+  // အခြားကုန်ကြမ်း
+  { id: 'rm-16', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သဲစက္ကူ (ကော်ပတ်)', defaultUnit: 'ချပ်', defaultUnitPrice: 1500 },
+  { id: 'rm-17', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သစ်သားကော် / ကော်ကပ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 6000 },
+  { id: 'rm-18', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'အရောင်တင်ဆီ / သုတ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 8000 },
+  { id: 'rm-19', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'ဆိုးဆေးရောင်စုံ', defaultUnit: 'ထုပ်', defaultUnitPrice: 3500 },
+];
 
 export interface MigrationResult {
   success: boolean;
@@ -43,6 +69,7 @@ export interface MigrationResult {
     peerTrades: number;
     deletedItems: number;
     auditLogs: number;
+    rawMaterialPresets: number;
   };
   error?: string;
 }
@@ -69,7 +96,7 @@ function safeParseLocalStorage<T>(keys: string[], fallback: T): T {
 /**
  * Validate and clean array of products
  */
-function validateProducts(items: any[]): Product[] {
+export function validateProducts(items: any[]): Product[] {
   if (!Array.isArray(items)) return DEFAULT_PRODUCTS;
   const cleaned: Product[] = [];
   items.forEach((item, index) => {
@@ -96,7 +123,7 @@ function validateProducts(items: any[]): Product[] {
 /**
  * Validate and clean array of suppliers
  */
-function validateSuppliers(items: any[]): Supplier[] {
+export function validateSuppliers(items: any[]): Supplier[] {
   if (!Array.isArray(items)) return INITIAL_SUPPLIERS;
   const cleaned: Supplier[] = [];
   items.forEach((item, index) => {
@@ -125,7 +152,7 @@ function validateSuppliers(items: any[]): Supplier[] {
 /**
  * Validate and clean merchants
  */
-function validateMerchants(items: any[]): Merchant[] {
+export function validateMerchants(items: any[]): Merchant[] {
   if (!Array.isArray(items)) return INITIAL_MERCHANTS;
   const cleaned: Merchant[] = [];
   items.forEach((item, index) => {
@@ -180,6 +207,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
           peerTrades: await db.peerTrades.count(),
           deletedItems: await db.softDeletedItems.count(),
           auditLogs: await db.auditLogs.count(),
+          rawMaterialPresets: await db.rawMaterialPresets.count(),
         },
       };
     }
@@ -196,9 +224,12 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const rawPeerTrades = safeParseLocalStorage<any[]>(['ledger_peer_trades_v1'], []);
     const rawDeletedItems = safeParseLocalStorage<any[]>(['ledger_deleted_items_v1', 'ledger_deleted_history_v1'], []);
     const rawAuditLogs = safeParseLocalStorage<any[]>(['ledger_audit_logs_v1'], []);
+    const rawPresets = safeParseLocalStorage<any[]>(['ledger_raw_material_presets_v1'], DEFAULT_RAW_MATERIAL_PRESETS);
     const rawShopSettings = safeParseLocalStorage<any>(['ledger_shop_settings_v2', 'ledger_shop_settings_v1'], null);
     const rawAppLock = safeParseLocalStorage<any>(['ledger_app_lock_v1'], null);
     const rawBackupReminder = safeParseLocalStorage<any>(['ledger_backup_reminder_v1'], null);
+    const rawProductCats = safeParseLocalStorage<any[]>(['ledger_product_categories_v1'], null);
+    const rawRawCats = safeParseLocalStorage<any[]>(['ledger_raw_material_categories_v1'], null);
 
     // 2. Validate and transform
     const validProducts = validateProducts(rawProducts);
@@ -329,6 +360,17 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         }))
       : [];
 
+    const validPresets: RawMaterialPreset[] = Array.isArray(rawPresets) && rawPresets.length > 0
+      ? rawPresets.map((p, i) => ({
+          id: String(p.id || `rm-${i + 1}`),
+          category: p.category || 'OTHER',
+          categoryLabel: String(p.categoryLabel || 'ကုန်ကြမ်း'),
+          name: String(p.name || ''),
+          defaultUnit: String(p.defaultUnit || 'ခု'),
+          defaultUnitPrice: Number(p.defaultUnitPrice) || 0,
+        }))
+      : DEFAULT_RAW_MATERIAL_PRESETS;
+
     // 3. Write into IndexedDB atomically
     await db.transaction(
       'rw',
@@ -344,6 +386,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         db.peerTrades,
         db.softDeletedItems,
         db.auditLogs,
+        db.rawMaterialPresets,
         db.settings,
       ],
       async () => {
@@ -358,6 +401,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         if (validPeerTrades.length > 0) await db.peerTrades.bulkPut(validPeerTrades);
         if (validDeleted.length > 0) await db.softDeletedItems.bulkPut(validDeleted);
         if (validAudit.length > 0) await db.auditLogs.bulkPut(validAudit);
+        if (validPresets.length > 0) await db.rawMaterialPresets.bulkPut(validPresets);
 
         if (rawShopSettings) {
           await db.settings.put({ key: 'shopSettings', value: rawShopSettings, updatedAt: new Date().toISOString() });
@@ -367,6 +411,12 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         }
         if (rawBackupReminder) {
           await db.settings.put({ key: 'backupReminderSettings', value: rawBackupReminder, updatedAt: new Date().toISOString() });
+        }
+        if (rawProductCats) {
+          await db.settings.put({ key: 'productCategories', value: rawProductCats, updatedAt: new Date().toISOString() });
+        }
+        if (rawRawCats) {
+          await db.settings.put({ key: 'rawMaterialCategories', value: rawRawCats, updatedAt: new Date().toISOString() });
         }
       }
     );
@@ -401,6 +451,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         peerTrades: await db.peerTrades.count(),
         deletedItems: await db.softDeletedItems.count(),
         auditLogs: await db.auditLogs.count(),
+        rawMaterialPresets: await db.rawMaterialPresets.count(),
       },
     };
   } catch (err: any) {
@@ -420,6 +471,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
         peerTrades: 0,
         deletedItems: 0,
         auditLogs: 0,
+        rawMaterialPresets: 0,
       },
       error: err?.message || String(err),
     };

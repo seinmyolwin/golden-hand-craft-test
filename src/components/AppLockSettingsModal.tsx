@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppLockSettings } from '../types';
-import { generateRecoveryKey } from '../utils/storage';
 import {
   X,
   Shield,
@@ -12,9 +11,15 @@ import {
   RotateCcw,
   Save,
   Lock,
-  Unlock,
-  AlertTriangle,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
+import {
+  generateSecureRecoveryKey,
+  derivePinCredentials,
+  deriveRecoveryCredentials,
+  SECURITY_DISCLOSURE_MY,
+} from '../services/cryptoSecurity';
 
 interface AppLockSettingsModalProps {
   isOpen: boolean;
@@ -32,58 +37,133 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
   onLockNow,
 }) => {
   const [enabled, setEnabled] = useState<boolean>(appLockSettings.enabled ?? false);
-  const [passcode, setPasscode] = useState<string>(
-    appLockSettings.passcode || appLockSettings.pin || ''
-  );
-  const [recoveryKey, setRecoveryKey] = useState<string>(() => {
-    return appLockSettings.recoveryKey || generateRecoveryKey();
-  });
+  const [passcode, setPasscode] = useState<string>('');
+  const [confirmPasscode, setConfirmPasscode] = useState<string>('');
   const [showPasscode, setShowPasscode] = useState<boolean>(false);
+  const [autoLockMinutes, setAutoLockMinutes] = useState<number>(
+    appLockSettings.autoLockMinutes ?? 5
+  );
+  const [lockOnStartup, setLockOnStartup] = useState<boolean>(
+    appLockSettings.lockOnStartup ?? true
+  );
+
+  // Recovery Key (generated on demand if not existing)
+  const [activeRecoveryKey, setActiveRecoveryKey] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Initialize modal state on open
+  useEffect(() => {
+    if (isOpen) {
+      setEnabled(appLockSettings.enabled ?? false);
+      setAutoLockMinutes(appLockSettings.autoLockMinutes ?? 5);
+      setLockOnStartup(appLockSettings.lockOnStartup ?? true);
+      setPasscode('');
+      setConfirmPasscode('');
+      setErrorMsg('');
+      setCopiedKey(false);
+
+      // Generate a new unique recovery key candidate if no recovery hash exists
+      if (!appLockSettings.recoveryHash && !appLockSettings.recoveryKey) {
+        setActiveRecoveryKey(generateSecureRecoveryKey());
+      } else {
+        setActiveRecoveryKey(appLockSettings.recoveryKey || generateSecureRecoveryKey());
+      }
+    }
+  }, [isOpen, appLockSettings]);
 
   if (!isOpen) return null;
 
   const handleRegenerateRecoveryKey = () => {
     if (confirm('Recovery Key အသစ် ထုတ်ယူလိုပါသလား? ယခင်ကီး အသုံးမပြုနိုင်တော့ပါ။')) {
-      const newKey = generateRecoveryKey();
-      setRecoveryKey(newKey);
+      const newKey = generateSecureRecoveryKey();
+      setActiveRecoveryKey(newKey);
+      setCopiedKey(false);
     }
   };
 
   const handleCopyKey = () => {
-    navigator.clipboard.writeText(recoveryKey);
+    if (!activeRecoveryKey) return;
+    navigator.clipboard.writeText(activeRecoveryKey);
     setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
+    setTimeout(() => setCopiedKey(false), 2500);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (enabled && passcode.trim().length < 4) {
-      alert('လျှို့ဝှက်ကုဒ် (PIN) သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်');
+    setErrorMsg('');
+
+    // Check if enabling App Lock requires setting a PIN
+    const hasExistingPin = !!appLockSettings.pinHash || !!appLockSettings.pinSalt || !!appLockSettings.passcode;
+    const isSettingNewPin = passcode.trim().length > 0;
+
+    if (enabled && !hasExistingPin && !isSettingNewPin) {
+      setErrorMsg('App Lock ဖွင့်ရန် လျှို့ဝှက်ကုဒ် (PIN) အနည်းဆုံး ၄ လုံး သတ်မှတ်ပေးပါ');
       return;
     }
 
-    const updated: AppLockSettings = {
-      ...appLockSettings,
-      enabled,
-      passcode: passcode.trim(),
-      pin: passcode.trim(),
-      recoveryKey: recoveryKey.trim(),
-    };
+    if (isSettingNewPin) {
+      if (passcode.trim().length < 4) {
+        setErrorMsg('လျှို့ဝှက်ကုဒ် (PIN) သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်');
+        return;
+      }
+      if (passcode.trim() !== confirmPasscode.trim()) {
+        setErrorMsg('PIN နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
+        return;
+      }
+    }
 
-    onSave(updated);
-    onClose();
+    try {
+      setIsSaving(true);
+      const updated: AppLockSettings = {
+        ...appLockSettings,
+        enabled,
+        autoLockMinutes,
+        lockOnStartup,
+        failedAttempts: 0,
+        lockedUntilTimestamp: undefined,
+      };
+
+      // If user set a new PIN, derive salted cryptographic verifier
+      if (isSettingNewPin) {
+        const pinCreds = await derivePinCredentials(passcode.trim());
+        updated.pinSalt = pinCreds.salt;
+        updated.pinHash = pinCreds.hash;
+        updated.isPinInitialized = true;
+      }
+
+      // If active recovery key was newly generated or changed, derive its salted verifier
+      if (activeRecoveryKey && activeRecoveryKey.trim()) {
+        const recCreds = await deriveRecoveryCredentials(activeRecoveryKey.trim());
+        updated.recoverySalt = recCreds.salt;
+        updated.recoveryHash = recCreds.hash;
+        updated.recoveryKey = activeRecoveryKey.trim();
+      }
+
+      // Remove legacy plaintext fields
+      delete updated.passcode;
+      delete updated.pin;
+
+      onSave(updated);
+      onClose();
+    } catch {
+      setErrorMsg('ဆက်တင် သိမ်းဆည်းရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
       <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-100">
+        {/* Modal Header */}
         <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-emerald-400" />
             <div>
-              <h3 className="text-sm font-bold">App Lock & Password Key လုံခြုံရေး</h3>
-              <p className="text-[11px] text-slate-400">စကားဝှက် PIN နှင့် Recovery Key စီမံခြင်း</p>
+              <h3 className="text-sm font-bold">App Lock & လုံခြုံရေး စီမံခြင်း</h3>
+              <p className="text-[11px] text-slate-400">စကားဝှက် PIN နှင့် Recovery Key</p>
             </div>
           </div>
           <button
@@ -95,7 +175,14 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-4 space-y-4 text-xs">
+        <form onSubmit={handleSave} className="p-4 space-y-3.5 text-xs">
+          {errorMsg && (
+            <div className="p-2.5 bg-rose-50 border border-rose-300 text-rose-800 rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
           {/* Toggle Lock */}
           <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
             <div>
@@ -115,11 +202,13 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
             </label>
           </div>
 
-          {/* Passcode (PIN) */}
-          <div className="space-y-1.5">
+          {/* Passcode (PIN) Input */}
+          <div className="space-y-2 p-3 bg-slate-50/60 border border-slate-200 rounded-xl">
             <div className="flex items-center justify-between">
-              <label className="block text-slate-700 font-bold">
-                လျှို့ဝှက်ကုဒ် (Passcode / PIN) *
+              <label className="block text-slate-800 font-bold">
+                {appLockSettings.pinHash || appLockSettings.isPinInitialized
+                  ? 'PIN အသစ်ပြောင်းမည် (မပြောင်းလိုပါက ချန်ထားပါ)'
+                  : 'လျှို့ဝှက်ကုဒ် (PIN) အသစ် သတ်မှတ်ပါ *'}
               </label>
               <button
                 type="button"
@@ -130,17 +219,64 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
                 <span>{showPasscode ? 'ဝှက်မည်' : 'ပြမည်'}</span>
               </button>
             </div>
+
             <input
               type={showPasscode ? 'text' : 'password'}
               maxLength={8}
               value={passcode}
               onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ''))}
-              placeholder="ဥပမာ - 1234"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest font-bold text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="PIN အသစ် (၄~၈ လုံး)"
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono tracking-widest font-bold text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
+
+            {passcode.length > 0 && (
+              <input
+                type={showPasscode ? 'text' : 'password'}
+                maxLength={8}
+                value={confirmPasscode}
+                onChange={(e) => setConfirmPasscode(e.target.value.replace(/\D/g, ''))}
+                placeholder="PIN အသစ် ထပ်မံအတည်ပြုပါ"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono tracking-widest font-bold text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            )}
             <p className="text-[10px] text-slate-500">
-              ဂဏန်း ၄ လုံးမှ ၈ လုံးအထိ ထည့်သွင်းနိုင်ပါသည် (မူလ PIN မှာ 1234 ဖြစ်သည်)
+              ဂဏန်း ၄ လုံးမှ ၈ လုံးအထိ သတ်မှတ်နိုင်ပါသည်
             </p>
+          </div>
+
+          {/* Session / Lockout Configuration */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Auto-Lock အချိန်သတ်မှတ်ချက်</span>
+              </label>
+              <select
+                value={autoLockMinutes}
+                onChange={(e) => setAutoLockMinutes(Number(e.target.value))}
+                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value={0}>Tab ပြောင်း/ကွယ်တိုင်း ချက်ချင်း Lock မည်</option>
+                <option value={1}>၁ မိနစ် မလှုပ်ရှားပါက</option>
+                <option value={5}>၅ မိနစ် မလှုပ်ရှားပါက (ပုံမှန်)</option>
+                <option value={15}>၁၅ မိနစ် မလှုပ်ရှားပါက</option>
+                <option value={30}>၃၀ မိနစ် မလှုပ်ရှားပါက</option>
+                <option value={-1}>အလိုအလျောက် Lock မချပါ</option>
+              </select>
+            </div>
+
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block">Startup Lock</label>
+                <span className="text-[10px] text-slate-500">အက်ပ်စဖွင့်တိုင်း PIN တောင်းမည်</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={lockOnStartup}
+                onChange={(e) => setLockOnStartup(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+              />
+            </div>
           </div>
 
           {/* Password Key Reset & Recovery Option */}
@@ -165,7 +301,7 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
               <input
                 type="text"
                 readOnly
-                value={recoveryKey}
+                value={activeRecoveryKey}
                 className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-lg font-mono text-xs font-bold text-amber-950 text-center tracking-widest select-all"
               />
               <button
@@ -179,19 +315,17 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
             </div>
 
             <p className="text-[10px] text-amber-900 leading-normal">
-              PIN စကားဝှက် မေ့သွားပါက ဤ Recovery Key ကို အသုံးပြု၍ ချက်ချင်း Password Key Reset ပြုလုပ်နိုင်ပါသည်။ စာအုပ် သို့မဟုတ် လုံခြုံသောနေရာတွင် ကူးယူမှတ်သားထားပါ။
+              PIN စကားဝှက် မေ့သွားပါက ဤ Recovery Key ကို အသုံးပြု၍ ချက်ချင်း Password Reset ပြုလုပ်နိုင်ပါသည်။
             </p>
           </div>
 
           {/* Security Architecture Disclosure */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-600 leading-relaxed space-y-1">
+          <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-600 leading-relaxed space-y-1">
             <div className="font-semibold text-slate-800 flex items-center gap-1">
               <Shield className="w-3 h-3 text-slate-600" />
-              <span>လုံခြုံရေး အသိပေးချက် (Security Disclosure)</span>
+              <span>လုံခြုံရေး အသိပေးချက် (Local Screen Lock)</span>
             </div>
-            <p>
-              ဤ Passcode/PIN သည် ဖုန်း သို့မဟုတ် ကွန်ပျူတာ အနီးရှိ အခြားသူများ မတော်တဆ ဝင်ကြည့်ခြင်းမှ ကာကွယ်ရန်ဖြစ်ပါသည်။ စက်ကို အပြည့်အဝ ကိုင်တွယ်ခွင့်ရှိသူ သို့မဟုတ် Developer Tools သုံးစွဲသူများထံမှ စက်အဆင့် (OS/Hardware level) ဒေတာကုဒ်ဝှက်ခြင်းနှင့် တူညီမှုမရှိပါ။
-            </p>
+            <p>{SECURITY_DISCLOSURE_MY}</p>
           </div>
 
           {/* Lock Immediately Button */}
@@ -222,10 +356,11 @@ export const AppLockSettingsModal: React.FC<AppLockSettingsModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Save className="w-4 h-4" />
-              <span>ဆက်တင် သိမ်းဆည်းမည်</span>
+              <span>{isSaving ? 'သိမ်းဆည်းနေပါသည်...' : 'ဆက်တင် သိမ်းဆည်းမည်'}</span>
             </button>
           </div>
         </form>

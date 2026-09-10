@@ -98,6 +98,22 @@ import { ExcelImportModal, ExcelImportTarget } from './components/ExcelImportMod
 import { UpdateNotificationModal } from './components/UpdateNotificationModal';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { runOfflineStorageMigration } from './db/migration';
+import { migrateLegacyAppLockSettings } from './services/cryptoSecurity';
+import {
+  productRepo,
+  supplierRepo,
+  merchantRepo,
+  transactionRepo,
+  saleRepo,
+  purchaseRepo,
+  orderRepo,
+  peerTradeRepo,
+  stockAdjustmentRepo,
+  softDeleteRepo,
+  auditRepo,
+  settingsRepo,
+} from './repositories';
 
 export default function App() {
   // Main Navigation & Date State (Persisted across refreshes)
@@ -207,6 +223,62 @@ export default function App() {
   const [shopSettings, setShopSettings] = useState<ShopSettings>(() => loadShopSettings());
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => loadAuditLogs());
   const [deletedItems, setDeletedItems] = useState<SoftDeletedItem[]>(() => loadDeletedItems());
+
+  // Safe offline migration & IndexedDB Hydration on initial launch
+  useEffect(() => {
+    let isMounted = true;
+    async function initOfflineDatabase() {
+      try {
+        const res = await runOfflineStorageMigration();
+        if (res.success && isMounted) {
+          const [
+            dbProducts,
+            dbSuppliers,
+            dbMerchants,
+            dbTransactions,
+            dbSales,
+            dbPurchases,
+            dbOrders,
+            dbAdjustments,
+            dbPeerTrades,
+            dbDeleted,
+            dbAudit,
+          ] = await Promise.all([
+            productRepo.getAll(),
+            supplierRepo.getAll(),
+            merchantRepo.getAll(),
+            transactionRepo.getAll(),
+            saleRepo.getAll(),
+            purchaseRepo.getAll(),
+            orderRepo.getAll(),
+            stockAdjustmentRepo.getAll(),
+            peerTradeRepo.getAll(),
+            softDeleteRepo.getAll(),
+            auditRepo.getAll(),
+          ]);
+
+          if (dbProducts && dbProducts.length > 0) setProducts(dbProducts);
+          if (dbSuppliers && dbSuppliers.length > 0) setSuppliers(dbSuppliers);
+          if (dbMerchants && dbMerchants.length > 0) setMerchants(dbMerchants);
+          if (dbTransactions && dbTransactions.length > 0) setTransactions(dbTransactions);
+          if (dbSales && dbSales.length > 0) setSales(dbSales);
+          if (dbPurchases && dbPurchases.length > 0) setMerchantPurchases(dbPurchases);
+          if (dbOrders && dbOrders.length > 0) setOrders(dbOrders);
+          if (dbAdjustments && dbAdjustments.length > 0) setStockAdjustments(dbAdjustments);
+          if (dbPeerTrades && dbPeerTrades.length > 0) setPeerTrades(dbPeerTrades);
+          if (dbDeleted && dbDeleted.length > 0) setDeletedItems(dbDeleted);
+          if (dbAudit && dbAudit.length > 0) setAuditLogs(dbAudit);
+        }
+      } catch (err) {
+        console.warn('Database initialization warning:', err);
+      }
+    }
+
+    initOfflineDatabase();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Security Lock State (using sessionStorage to persist session across page refresh)
   const [appLockSettings, setAppLockSettings] = useState<AppLockSettings>(() => loadAppLockSettings());
@@ -452,6 +524,50 @@ export default function App() {
     }
   }, []);
 
+  // Audit Log Helper
+  const logAction = useCallback((action: string, details: string, entityType?: string, entityId?: string) => {
+    const newLog: AuditLogEntry = {
+      id: `log-${Date.now()}`,
+      action,
+      details,
+      timestamp: `${getTodayDateString()} ${getCurrentTimeString()}`,
+      entityType,
+      entityId,
+    };
+    setAuditLogs((prev) => [newLog, ...prev.slice(0, 199)]);
+  }, []);
+
+  // App Lock Controls (Session persistent)
+  const handleUnlock = useCallback(() => {
+    try {
+      sessionStorage.setItem('shwe_let_yar_session_unlocked', 'true');
+    } catch (e) {}
+    setIsUnlocked(true);
+    logAction('App Lock ဖွင့်လှစ်ခြင်း', 'Unlocked successfully with PIN/Recovery Key', 'SECURITY');
+  }, [logAction]);
+
+  const handleLockApp = useCallback(() => {
+    try {
+      sessionStorage.removeItem('shwe_let_yar_session_unlocked');
+    } catch (e) {}
+    setIsUnlocked(false);
+  }, []);
+
+  const handleUpdateAppLock = useCallback((updated: AppLockSettings) => {
+    setAppLockSettings(updated);
+    if (!updated.enabled) {
+      try {
+        sessionStorage.removeItem('shwe_let_yar_session_unlocked');
+      } catch (e) {}
+      setIsUnlocked(true);
+    }
+    logAction(
+      'App Lock ဆက်တင် ပြင်ဆင်ခြင်း',
+      `Enabled: ${updated.enabled ? 'Yes' : 'No'}`,
+      'SECURITY'
+    );
+  }, [logAction]);
+
   // Persist State Changes
   useEffect(() => { saveSuppliers(suppliers); }, [suppliers]);
   useEffect(() => { saveMerchants(merchants); }, [merchants]);
@@ -467,6 +583,60 @@ export default function App() {
   useEffect(() => { saveDeletedItems(deletedItems); }, [deletedItems]);
   useEffect(() => { saveAppLockSettings(appLockSettings); }, [appLockSettings]);
 
+  // Transparently migrate legacy plaintext app lock credentials to salted hashes on initial startup
+  useEffect(() => {
+    async function checkAndMigrateAppLock() {
+      if (appLockSettings?.passcode || appLockSettings?.pin) {
+        try {
+          const migrated = await migrateLegacyAppLockSettings(appLockSettings);
+          setAppLockSettings(migrated);
+        } catch (e) {
+          console.warn('AppLock migration notice:', e);
+        }
+      }
+    }
+    checkAndMigrateAppLock();
+  }, []);
+
+  // Auto-Lock Inactivity & Tab Visibility Timer
+  useEffect(() => {
+    if (!appLockSettings.enabled || !isUnlocked) return;
+
+    const autoLockMinutes = appLockSettings.autoLockMinutes ?? 5;
+    if (autoLockMinutes === -1) return; // Never auto-lock
+
+    let inactivityTimer: NodeJS.Timeout;
+    const resetTimer = () => {
+      clearTimeout(inactivityTimer);
+      if (autoLockMinutes > 0) {
+        inactivityTimer = setTimeout(() => {
+          handleLockApp();
+        }, autoLockMinutes * 60 * 1000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (autoLockMinutes === 0) {
+          // Immediate lock on backgrounding / switching tab
+          handleLockApp();
+        }
+      }
+    };
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    resetTimer();
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      activityEvents.forEach((ev) => window.removeEventListener(ev, resetTimer));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [appLockSettings.enabled, appLockSettings.autoLockMinutes, isUnlocked, handleLockApp]);
+
   // Periodic Backup Reminder Check (shows once if transactions exist and no recent backup)
   useEffect(() => {
     const lastReminded = localStorage.getItem('last_backup_reminder_shown');
@@ -480,87 +650,106 @@ export default function App() {
     }
   }, [transactions.length]);
 
-  // Audit Log Helper
-  const logAction = useCallback((action: string, details: string, entityType?: string, entityId?: string) => {
-    const newLog: AuditLogEntry = {
-      id: `log-${Date.now()}`,
-      action,
-      details,
-      timestamp: `${getTodayDateString()} ${getCurrentTimeString()}`,
-      entityType,
-      entityId,
-    };
-    setAuditLogs((prev) => [newLog, ...prev.slice(0, 199)]);
-  }, []);
+  // Inbound Collection (New Transaction) - Atomic
+  const handleSaveTransaction = useCallback(async (record: TransactionRecord) => {
+    try {
+      // Execute Atomic ACID transaction in Dexie
+      const saved = await transactionRepo.saveInboundAtomic(record);
 
-  // Inbound Collection (New Transaction)
-  const handleSaveTransaction = useCallback((record: TransactionRecord) => {
-    setTransactions((prev) => [record, ...prev]);
+      setTransactions((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
 
-    // Update Supplier's Advance Balance
-    setSuppliers((prev) =>
-      prev.map((s) => {
-        if (s.id === record.supplierId) {
-          return {
-            ...s,
-            currentAdvanceBalance: record.remainingAdvanceBalance,
-            lastSettledDate: record.date,
-          };
-        }
-        return s;
-      })
-    );
+      // Update Supplier's Advance Balance
+      setSuppliers((prev) =>
+        prev.map((s) => {
+          if (s.id === saved.supplierId) {
+            return {
+              ...s,
+              currentAdvanceBalance: saved.remainingAdvanceBalance,
+              totalGoodsValueDelivered: (s.totalGoodsValueDelivered || 0) + (saved.totalGoodsValue || 0),
+              totalAdvanceGiven: (s.totalAdvanceGiven || 0) + (saved.newAdvanceTaken || 0),
+              lastSettledDate: saved.date,
+            };
+          }
+          return s;
+        })
+      );
 
-    logAction(
-      'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း',
-      `${record.supplierName} ထံမှ ${record.items.length} မျိုး ကုန်သိမ်းခဲ့သည် (ဘောင်ချာ: ${record.voucherNo})`,
-      'TRANSACTION',
-      record.id
-    );
+      // Refresh products from repo to reflect updated stocks accurately
+      const refreshedProducts = await productRepo.getAll();
+      if (refreshedProducts && refreshedProducts.length > 0) {
+        setProducts(refreshedProducts);
+      }
 
-    // Show prompt to view voucher
-    setActionPrompt({
-      isOpen: true,
-      title: 'ကုန်သိမ်းစာရင်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ',
-      message: `${record.supplierName} ထံမှ ကုန်သိမ်းငွေရှင်းပြေစာ (Voucher #${record.voucherNo}) ကို ယခု ကြည့်ရှုလိုပါသလား?`,
-      type: 'INBOUND',
-      item: record,
-    });
+      logAction(
+        'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း (Atomic)',
+        `${saved.supplierName} ထံမှ ${saved.items.length} မျိုး ကုန်သိမ်းခဲ့သည် (ဘောင်ချာ: ${saved.voucherNo})`,
+        'TRANSACTION',
+        saved.id
+      );
+
+      // Show prompt to view voucher
+      setActionPrompt({
+        isOpen: true,
+        title: 'ကုန်သိမ်းစာရင်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ',
+        message: `${saved.supplierName} ထံမှ ကုန်သိမ်းငွေရှင်းပြေစာ (Voucher #${saved.voucherNo}) ကို ယခု ကြည့်ရှုလိုပါသလား?`,
+        type: 'INBOUND',
+        item: saved,
+      });
+    } catch (err: any) {
+      console.error('Failed to save inbound transaction atomically:', err);
+      alert(`ကုန်သိမ်းစာရင်း သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
-  // Outbound Sales (New Sale)
-  const handleSaveSale = useCallback((sale: SaleRecord) => {
-    setSales((prev) => [sale, ...prev]);
+  // Outbound Sales (New Sale) - Atomic
+  const handleSaveSale = useCallback(async (sale: SaleRecord) => {
+    try {
+      // Execute Atomic ACID transaction in Dexie
+      const saved = await saleRepo.saveSaleAtomic(sale);
 
-    // Update Merchant's Receivable Debt
-    setMerchants((prev) =>
-      prev.map((m) => {
-        if (m.id === sale.merchantId) {
-          return {
-            ...m,
-            currentReceivableBalance: (m.currentReceivableBalance || 0) + sale.remainingReceivableBalance,
-            lastPurchaseDate: sale.date,
-          };
-        }
-        return m;
-      })
-    );
+      setSales((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
 
-    logAction(
-      'ကုန်သည်အရောင်း ရေးသွင်းခြင်း',
-      `${sale.merchantName} သို့ ${sale.totalItemsCount} ထည် ရောင်းချခဲ့သည် (ဘောင်ချာ: ${sale.voucherNo})`,
-      'SALE',
-      sale.id
-    );
+      // Update Merchant's Receivable Debt
+      setMerchants((prev) =>
+        prev.map((m) => {
+          if (m.id === saved.merchantId) {
+            return {
+              ...m,
+              currentReceivableBalance: saved.remainingReceivableBalance,
+              totalPurchasesValue: (m.totalPurchasesValue || 0) + (saved.grandTotal || 0),
+              totalPaidAmount: (m.totalPaidAmount || 0) + (saved.cashPaidByMerchant || 0),
+              lastPurchaseDate: saved.date,
+            };
+          }
+          return m;
+        })
+      );
 
-    // Show prompt to view sale voucher
-    setActionPrompt({
-      isOpen: true,
-      title: 'အရောင်းဘောင်ချာ ထုတ်ယူပြီးပါပြီ',
-      message: `${sale.merchantName} သို့ ရောင်းချငွေရှင်းပြေစာ (Invoice #${sale.voucherNo}) ကို ယခု ကြည့်ရှုလိုပါသလား?`,
-      type: 'OUTBOUND',
-      item: sale,
-    });
+      // Refresh products from repo to reflect updated stocks accurately
+      const refreshedProducts = await productRepo.getAll();
+      if (refreshedProducts && refreshedProducts.length > 0) {
+        setProducts(refreshedProducts);
+      }
+
+      logAction(
+        'ကုန်သည်အရောင်း ရေးသွင်းခြင်း (Atomic)',
+        `${saved.merchantName} သို့ ${saved.totalItemsCount} ထည် ရောင်းချခဲ့သည် (ဘောင်ချာ: ${saved.voucherNo})`,
+        'SALE',
+        saved.id
+      );
+
+      // Show prompt to view sale voucher
+      setActionPrompt({
+        isOpen: true,
+        title: 'အရောင်းဘောင်ချာ ထုတ်ယူပြီးပါပြီ',
+        message: `${saved.merchantName} သို့ ရောင်းချငွေရှင်းပြေစာ (Invoice #${saved.voucherNo}) ကို ယခု ကြည့်ရှုလိုပါသလား?`,
+        type: 'OUTBOUND',
+        item: saved,
+      });
+    } catch (err: any) {
+      console.error('Failed to save sale atomically:', err);
+      alert(`အရောင်းဘောင်ချာ သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+    }
   }, [logAction]);
 
   // Suppliers CRUD
@@ -1063,37 +1252,6 @@ export default function App() {
       return updated;
     });
     logAction('Excel Bulk Import', `ကုန်သည် ${newMerchants.length} ဦး သွင်းယူခြင်း`, 'MERCHANT');
-  }, [logAction]);
-
-  // App Lock Controls (Session persistent)
-  const handleUnlock = useCallback(() => {
-    try {
-      sessionStorage.setItem('shwe_let_yar_session_unlocked', 'true');
-    } catch (e) {}
-    setIsUnlocked(true);
-    logAction('App Lock ဖွင့်လှစ်ခြင်း', 'Unlocked successfully with PIN/Recovery Key', 'SECURITY');
-  }, [logAction]);
-
-  const handleLockApp = useCallback(() => {
-    try {
-      sessionStorage.removeItem('shwe_let_yar_session_unlocked');
-    } catch (e) {}
-    setIsUnlocked(false);
-  }, []);
-
-  const handleUpdateAppLock = useCallback((updated: AppLockSettings) => {
-    setAppLockSettings(updated);
-    if (!updated.enabled) {
-      try {
-        sessionStorage.removeItem('shwe_let_yar_session_unlocked');
-      } catch (e) {}
-      setIsUnlocked(true);
-    }
-    logAction(
-      'App Lock ဆက်တင် ပြင်ဆင်ခြင်း',
-      `Enabled: ${updated.enabled ? 'Yes' : 'No'}`,
-      'SECURITY'
-    );
   }, [logAction]);
 
   // View Voucher Helpers

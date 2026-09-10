@@ -9,6 +9,9 @@ export interface Product {
   currentStock?: number; // Real-time available stock
   minStockAlert?: number; // Low stock alert threshold
   active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface Supplier {
@@ -124,7 +127,13 @@ export interface TransactionRecord {
   remainingAdvanceBalance: number; // လက်ကျန် အကြိုငွေစာရင်း
   attachmentPhotos?: string[]; // ဓာတ်ပုံ သို့မဟုတ် ပြေစာ/လက်မှတ် ပုံများ
   notes?: string;
+  status?: 'COMPLETED' | 'CANCELLED' | string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  idempotencyKey?: string;
   createdAt?: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface SaleRecord {
@@ -152,7 +161,13 @@ export interface SaleRecord {
   driverPhone?: string; // ဆက်သွယ်ရမည့် ဖုန်းနံပါတ်
   attachmentPhotos?: string[]; // ကားဂိတ်ပြေစာ သို့မဟုတ် ကုန်ပစ္စည်း ပုံများ
   notes?: string;
+  status?: 'COMPLETED' | 'CANCELLED' | string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  idempotencyKey?: string;
   createdAt?: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface StockAdjustmentRecord {
@@ -166,7 +181,11 @@ export interface StockAdjustmentRecord {
   previousStock: number;
   newStock: number;
   reason: string;
+  status?: 'COMPLETED' | 'CANCELLED' | string;
+  idempotencyKey?: string;
   createdAt: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface DailySummary {
@@ -228,7 +247,13 @@ export interface MerchantPurchaseRecord {
   remainingPayableBalance: number;
   paymentMethod?: string;
   notes?: string;
+  status?: 'COMPLETED' | 'CANCELLED' | string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  idempotencyKey?: string;
   createdAt: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface MerchantOrderItem {
@@ -315,13 +340,25 @@ export interface PeerTransaction {
 
 export interface AppLockSettings {
   enabled: boolean;
-  passcode: string; // e.g. "1234"
+  // Cryptographic Verifier Material (PBKDF2-SHA256 salted hashes)
+  pinSalt?: string;
+  pinHash?: string;
+  recoverySalt?: string;
+  recoveryHash?: string;
+  isPinInitialized?: boolean;
+  // Legacy fields (for migration only, removed once migrated)
+  passcode?: string;
   pin?: string;
+  recoveryKey?: string;
   hint?: string;
-  recoveryKey: string; // Secret Password Recovery Key e.g. "SLY-9824-7361"
-  recoveryQuestion?: string; // e.g. "ဆိုင်ပိုင်ရှင် အမည်"
+  recoveryQuestion?: string;
   recoveryAnswer?: string;
-  autoLockMinutes?: number;
+  // Lockout and Session Behavior
+  autoLockMinutes?: number; // 0 = immediate/blur, 1 = 1min, 5 = 5mins, 15 = 15mins, 30 = 30mins, -1 = never
+  lockOnStartup?: boolean;
+  failedAttempts?: number;
+  lockedUntilTimestamp?: number; // Epoch ms timestamp for exponential lockout
+  lastUnlockedAt?: string;
   lastResetAt?: string;
 }
 
@@ -447,4 +484,123 @@ export interface PeerTradeRecord {
   settledType?: 'REPAID' | 'RETRIEVED' | 'CASH_SETTLED' | string;
   settledNotes?: string;
 }
+
+export interface SettingRecord {
+  key: string;
+  value: any;
+  updatedAt: string;
+}
+
+export interface AttachmentRecord {
+  id: string;
+  voucherId: string;
+  imageBase64: string;
+  caption?: string;
+  createdAt: string;
+}
+
+export interface BackupMetadata {
+  shopName: string;
+  shopOwner?: string;
+  appName: string;
+  totalRecords: number;
+  counts: {
+    products: number;
+    suppliers: number;
+    merchants: number;
+    transactions: number;
+    sales: number;
+    merchantPurchases: number;
+    orders: number;
+    stockAdjustments: number;
+    peerTrades: number;
+    softDeletedItems: number;
+    auditLogs: number;
+    rawMaterialPresets: number;
+    attachments?: number;
+  };
+  dateRange?: {
+    earliest: string;
+    latest: string;
+  };
+  customNotes?: string;
+}
+
+export interface BackupDataPayload {
+  products: Product[];
+  suppliers: Supplier[];
+  merchants: Merchant[];
+  transactions: TransactionRecord[];
+  sales: SaleRecord[];
+  merchantPurchases: MerchantPurchaseRecord[];
+  orders: MerchantOrder[];
+  stockAdjustments: StockAdjustmentRecord[];
+  peerTrades: PeerTradeRecord[];
+  softDeletedItems: SoftDeletedItem[];
+  auditLogs: AuditLogEntry[];
+  rawMaterialPresets: RawMaterialPreset[];
+  shopSettings: ShopSettings;
+  appLockSettings?: AppLockSettings;
+  backupReminderSettings?: BackupReminderSettings;
+  productCategories?: string[];
+  rawMaterialCategories?: string[];
+  attachments?: AttachmentRecord[];
+}
+
+export interface VersionedBackupFile {
+  formatVersion: '3.0' | '2.0' | '1.0' | string;
+  appVersion: string;
+  exportedAt: string;
+  databaseSchemaVersion: number;
+  checksum?: string;
+  metadata: BackupMetadata;
+  data: BackupDataPayload;
+}
+
+export interface BackupValidationError {
+  field: string;
+  message: string;
+  code: string;
+  severity: 'ERROR' | 'FATAL';
+}
+
+export interface BackupValidationWarning {
+  field: string;
+  message: string;
+  code: string;
+}
+
+export interface EntityComparisonCount {
+  inBackup: number;
+  inCurrentDb: number;
+  toAdd: number;
+  toUpdate: number;
+  toPreserve: number;
+}
+
+export interface BackupValidationReport {
+  isValid: boolean;
+  isCorrupted: boolean;
+  formatVersion: string;
+  detectedSchemaVersion: number;
+  checksumValid: boolean;
+  exportedAt: string;
+  shopName: string;
+  appName: string;
+  totalRecords: number;
+  errors: BackupValidationError[];
+  warnings: BackupValidationWarning[];
+  counts: BackupMetadata['counts'];
+  dateRange?: { earliest: string; latest: string };
+  comparison?: {
+    products: EntityComparisonCount;
+    suppliers: EntityComparisonCount;
+    merchants: EntityComparisonCount;
+    transactions: EntityComparisonCount;
+    sales: EntityComparisonCount;
+    orders: EntityComparisonCount;
+  };
+  normalizedData?: BackupDataPayload;
+}
+
 

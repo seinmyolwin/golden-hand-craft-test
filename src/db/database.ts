@@ -44,6 +44,7 @@ export class ShweLetYarDatabase extends Dexie {
   peerTrades!: EntityTable<PeerTradeRecord, 'id'>;
   softDeletedItems!: EntityTable<SoftDeletedItem, 'id'>;
   auditLogs!: EntityTable<AuditLogEntry, 'id'>;
+  rawMaterialPresets!: EntityTable<RawMaterialPreset, 'id'>;
   settings!: EntityTable<SettingRecord, 'key'>;
   recoverySnapshots!: EntityTable<AutoRecoverySnapshot, 'id'>;
   attachments!: EntityTable<AttachmentRecord, 'id'>;
@@ -82,6 +83,25 @@ export class ShweLetYarDatabase extends Dexie {
       peerTrades: 'id, tradeType, status, productId, date',
       softDeletedItems: 'id, originalId, type, deletedAt',
       auditLogs: 'id, action, timestamp, entityType, entityId',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, createdAt',
+    });
+
+    // Version 3: Raw material presets and optimized query indices
+    this.version(3).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      rawMaterialPresets: 'id, category, name',
       settings: 'key, updatedAt',
       recoverySnapshots: 'id, timestamp, date',
       attachments: 'id, voucherId, createdAt',
