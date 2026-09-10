@@ -55,6 +55,7 @@ import {
   getTodayDateString,
   getCurrentTimeString,
 } from './utils/storage';
+import { generateStableId, generateVoucherNo } from './utils/idGenerator';
 
 // UI Components
 import { Header } from './components/Header';
@@ -257,17 +258,17 @@ export default function App() {
             auditRepo.getAll(),
           ]);
 
-          if (dbProducts && dbProducts.length > 0) setProducts(dbProducts);
-          if (dbSuppliers && dbSuppliers.length > 0) setSuppliers(dbSuppliers);
-          if (dbMerchants && dbMerchants.length > 0) setMerchants(dbMerchants);
-          if (dbTransactions && dbTransactions.length > 0) setTransactions(dbTransactions);
-          if (dbSales && dbSales.length > 0) setSales(dbSales);
-          if (dbPurchases && dbPurchases.length > 0) setMerchantPurchases(dbPurchases);
-          if (dbOrders && dbOrders.length > 0) setOrders(dbOrders);
-          if (dbAdjustments && dbAdjustments.length > 0) setStockAdjustments(dbAdjustments);
-          if (dbPeerTrades && dbPeerTrades.length > 0) setPeerTrades(dbPeerTrades);
-          if (dbDeleted && dbDeleted.length > 0) setDeletedItems(dbDeleted);
-          if (dbAudit && dbAudit.length > 0) setAuditLogs(dbAudit);
+          setProducts(dbProducts || []);
+          setSuppliers(dbSuppliers || []);
+          setMerchants(dbMerchants || []);
+          setTransactions(dbTransactions || []);
+          setSales(dbSales || []);
+          setMerchantPurchases(dbPurchases || []);
+          setOrders(dbOrders || []);
+          setStockAdjustments(dbAdjustments || []);
+          setPeerTrades(dbPeerTrades || []);
+          setDeletedItems(dbDeleted || []);
+          setAuditLogs(dbAudit || []);
         }
       } catch (err) {
         console.warn('Database initialization warning:', err);
@@ -527,7 +528,7 @@ export default function App() {
   // Audit Log Helper
   const logAction = useCallback((action: string, details: string, entityType?: string, entityId?: string) => {
     const newLog: AuditLogEntry = {
-      id: `log-${Date.now()}`,
+      id: generateStableId('log'),
       action,
       details,
       timestamp: `${getTodayDateString()} ${getCurrentTimeString()}`,
@@ -769,7 +770,7 @@ export default function App() {
 
     // Soft delete to Recycle Bin
     const softDeleted: SoftDeletedItem = {
-      id: `del-${Date.now()}`,
+      id: generateStableId('del'),
       originalId: s.id,
       name: `${s.name} (${s.village})`,
       type: 'SUPPLIER',
@@ -798,7 +799,7 @@ export default function App() {
     if (!m) return;
 
     const softDeleted: SoftDeletedItem = {
-      id: `del-${Date.now()}`,
+      id: generateStableId('del'),
       originalId: m.id,
       name: `${m.name} (${m.town})`,
       type: 'MERCHANT',
@@ -827,7 +828,7 @@ export default function App() {
     if (!p) return;
 
     const softDeleted: SoftDeletedItem = {
-      id: `del-${Date.now()}`,
+      id: generateStableId('del'),
       originalId: p.id,
       name: `${p.name} (${p.category})`,
       type: 'PRODUCT',
@@ -864,10 +865,10 @@ export default function App() {
     }));
 
     const totalItems = items.reduce((sum, it) => sum + it.quantity, 0);
-    const voucherNo = `SL-${Date.now().toString().slice(-6)}`;
+    const voucherNo = generateVoucherNo('SL');
 
     const newSale: SaleRecord = {
-      id: `sale-${Date.now()}`,
+      id: generateStableId('sale'),
       voucherNo,
       date: getTodayDateString(),
       time: getCurrentTimeString(),
@@ -924,7 +925,7 @@ export default function App() {
     if (!tx) return;
 
     const softDeleted: SoftDeletedItem = {
-      id: `del-${Date.now()}`,
+      id: generateStableId('del'),
       originalId: tx.id,
       name: `ကုန်သိမ်းဘောင်ချာ ${tx.voucherNo} (${tx.supplierName})`,
       type: 'TRANSACTION',
@@ -942,7 +943,7 @@ export default function App() {
     if (!s) return;
 
     const softDeleted: SoftDeletedItem = {
-      id: `del-${Date.now()}`,
+      id: generateStableId('del'),
       originalId: s.id,
       name: `အရောင်းဘောင်ချာ ${s.voucherNo} (${s.merchantName})`,
       type: 'SALE',
@@ -1090,7 +1091,7 @@ export default function App() {
     const target = merchantPurchases.find((p) => p.id === id);
     if (target) {
       const softDeleted: SoftDeletedItem = {
-        id: `del-${Date.now()}`,
+        id: generateStableId('del'),
         originalId: target.id,
         name: `ကုန်ကြမ်းဝယ်ယူမှု ${target.purchaseNo} (${target.merchantName})`,
         type: 'TRANSACTION',

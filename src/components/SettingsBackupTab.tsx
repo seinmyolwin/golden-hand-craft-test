@@ -34,6 +34,7 @@ import {
   DEFAULT_RAW_MATERIAL_PRESETS,
   loadShopSettings,
 } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   derivePinCredentials,
   deriveRecoveryCredentials,
@@ -269,7 +270,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       OTHER: 'အခြားကုန်ကြမ်း',
     };
     const newPreset: RawMaterialPreset = {
-      id: `preset-${Date.now()}`,
+      id: generateStableId('preset'),
       name: presetName.trim(),
       category: presetCategory,
       categoryLabel: catLabels[presetCategory] || presetCategory,
@@ -442,7 +443,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       onOpenClearDataModal();
     } else {
       if (confirm('ဒေတာအားလုံးကို အပြီးတိုင် ရှင်းထုတ်လိုပါသလား? (သတိပေးချက်: ပြန်လည်ရယူနိုင်မည် မဟုတ်ပါ)')) {
-        onRestoreData(DEFAULT_PRODUCTS, [], [], [], [], []);
+        onRestoreData([], [], [], [], [], []);
         alert('ဒေတာများအားလုံး ရှင်းလင်းပြီးပါပြီ');
       }
     }
@@ -468,7 +469,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       return;
     }
     const newSup: Supplier = {
-      id: `sup-${Date.now()}`,
+      id: generateStableId('sup'),
       code: `SUP-${String((suppliers || []).length + 1).padStart(3, '0')}`,
       name: supName.trim(),
       village: supVillage.trim() || 'မင်းနန်သူ',
@@ -500,7 +501,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       return;
     }
     const newMerch: Merchant = {
-      id: `m-${Date.now()}`,
+      id: generateStableId('m'),
       code: `M-${String((merchants || []).length + 1).padStart(3, '0')}`,
       name: merchName.trim(),
       town: merchTown.trim() || 'မန္တလေး',
@@ -571,7 +572,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       }
     } else {
       const newProd: Product = {
-        id: `p-${Date.now()}`,
+        id: generateStableId('p'),
         name: prodName.trim(),
         category: prodCategory.trim(),
         defaultPrice: Number(prodBuyPrice) || 0,

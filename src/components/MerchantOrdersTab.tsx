@@ -6,6 +6,7 @@ import {
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   ShoppingBag,
   Clock,
@@ -98,8 +99,8 @@ export const MerchantOrdersTab: React.FC<MerchantOrdersTabProps> = ({
     const totalEstValue = validItems.reduce((sum, it) => sum + it.subtotal, 0);
 
     const newOrder: MerchantOrder = {
-      id: `ord-${Date.now()}`,
-      orderNumber: `ORD-${Date.now().toString().slice(-4)}`,
+      id: generateStableId('ord'),
+      orderNumber: generateVoucherNo('ORD'),
       merchantId: merchant.id,
       merchantName: merchant.name,
       merchantTown: merchant.town,

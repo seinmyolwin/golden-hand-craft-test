@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Database,
 } from 'lucide-react';
+import { generateStableId } from '../utils/idGenerator';
 import { Product, Supplier, Merchant } from '../types';
 
 export type ExcelImportTarget = 'PRODUCTS' | 'SUPPLIERS' | 'MERCHANTS';
@@ -281,7 +282,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
     if (activeTarget === 'PRODUCTS' && onImportProducts) {
       const formatted: Product[] = parsedRows.map((row) => ({
-        id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: generateStableId('p'),
         name: row.name,
         category: row.category,
         defaultPrice: row.defaultPrice,
@@ -297,7 +298,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     } else if (activeTarget === 'SUPPLIERS' && onImportSuppliers) {
       const today = new Date().toISOString().slice(0, 10);
       const formatted: Supplier[] = parsedRows.map((row) => ({
-        id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: generateStableId('s'),
         code: row.code,
         name: row.name,
         phone: row.phone,
@@ -315,7 +316,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     } else if (activeTarget === 'MERCHANTS' && onImportMerchants) {
       const today = new Date().toISOString().slice(0, 10);
       const formatted: Merchant[] = parsedRows.map((row) => ({
-        id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: generateStableId('m'),
         code: row.code,
         name: row.name,
         phone: row.phone,

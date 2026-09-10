@@ -6,6 +6,7 @@ import {
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   ArrowRightLeft,
   Search,
@@ -124,7 +125,7 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
     const totalVal = (quantity || 0) * (agreedUnitPrice || 0);
 
     const newTrade: PeerTradeRecord = {
-      id: `pt-${Date.now()}`,
+      id: generateStableId('pt'),
       tradeType,
       date: getTodayDateString(),
       time: getCurrentTimeString(),

@@ -11,6 +11,7 @@ import {
   getCurrentTimeString,
   parseBilingualNumber,
 } from '../utils/storage';
+import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   Boxes,
   Plus,
@@ -82,7 +83,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
     setItems([
       ...items,
       {
-        id: String(Date.now()),
+        id: generateStableId('item'),
         materialName: '',
         quantity: '1',
         unit: 'လုံး',
@@ -172,11 +173,11 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
 
     setIsSubmitting(true);
 
-    const purchaseNo = `PUR-${Date.now().toString().slice(-6)}`;
+    const purchaseNo = generateVoucherNo('PUR', purchaseDate);
     const newRecord: MerchantPurchaseRecord = {
-      id: `pur-${Date.now()}`,
+      id: generateStableId('pur'),
       purchaseNo,
-      merchantId: `sel-${Date.now()}`,
+      merchantId: generateStableId('sel'),
       merchantName: sellerName.trim(),
       merchantTown: sellerAddress.trim() || 'အထွေထွေ',
       sellerPhone: sellerPhone.trim(),

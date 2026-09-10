@@ -6,6 +6,7 @@ import {
   parseBilingualNumber,
   getStoredProductCategories,
 } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   Package,
   Search,
@@ -115,7 +116,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       onUpdateProduct(updated);
     } else {
       const newProd: Product = {
-        id: `p-${Date.now()}`,
+        id: generateStableId('p'),
         name: name.trim(),
         category: category.trim() || 'ယွန်းထည်',
         defaultPrice: defaultPrice || 0,

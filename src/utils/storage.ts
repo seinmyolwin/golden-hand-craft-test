@@ -31,6 +31,7 @@ import {
 } from '../data/defaultData';
 import { db } from '../db/database';
 import { generateSecureRecoveryKey } from '../services/cryptoSecurity';
+import { generateStableId } from './idGenerator';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'ledger_products_v2',
@@ -334,27 +335,12 @@ export function saveStoredShopSettings(settings: ShopSettings): void {
 export function getStoredProducts(): Product[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(DEFAULT_PRODUCTS));
-      return DEFAULT_PRODUCTS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      const hasRawMaterials = parsed.some(
-        (p) => p.category?.includes('ကုန်ကြမ်း') || p.name?.includes('ဝါးနှီး') || p.name?.includes('ကြိမ်')
-      );
-      if (!hasRawMaterials) {
-        const rawItems = DEFAULT_PRODUCTS.filter((p) => p.category === 'ကုန်ကြမ်း (ဝါး)' || p.category === 'ကုန်ကြမ်း (ကြိမ်)');
-        const merged = [...parsed, ...rawItems];
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(merged));
-        return merged;
-      }
-      return parsed;
-    }
-    return DEFAULT_PRODUCTS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading products', e);
-    return DEFAULT_PRODUCTS;
+    return [];
   }
 }
 
@@ -370,14 +356,12 @@ export function saveStoredProducts(products: Product[]): void {
 export function getStoredSuppliers(): Supplier[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-    if (!data) {
-      return INITIAL_SUPPLIERS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_SUPPLIERS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading suppliers', e);
-    return INITIAL_SUPPLIERS;
+    return [];
   }
 }
 
@@ -393,14 +377,12 @@ export function saveStoredSuppliers(suppliers: Supplier[]): void {
 export function getStoredTransactions(): TransactionRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-    if (!data) {
-      return INITIAL_TRANSACTIONS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_TRANSACTIONS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading transactions', e);
-    return INITIAL_TRANSACTIONS;
+    return [];
   }
 }
 
@@ -416,14 +398,12 @@ export function saveStoredTransactions(transactions: TransactionRecord[]): void 
 export function getStoredMerchants(): Merchant[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.MERCHANTS);
-    if (!data) {
-      return INITIAL_MERCHANTS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_MERCHANTS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading merchants', e);
-    return INITIAL_MERCHANTS;
+    return [];
   }
 }
 
@@ -439,14 +419,12 @@ export function saveStoredMerchants(merchants: Merchant[]): void {
 export function getStoredSales(): SaleRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.SALES);
-    if (!data) {
-      return INITIAL_SALES;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_SALES;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading sales', e);
-    return INITIAL_SALES;
+    return [];
   }
 }
 
@@ -462,14 +440,12 @@ export function saveStoredSales(sales: SaleRecord[]): void {
 export function getStoredStockAdjustments(): StockAdjustmentRecord[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.STOCK_ADJUSTMENTS);
-    if (!data) {
-      return INITIAL_STOCK_ADJUSTMENTS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_STOCK_ADJUSTMENTS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading stock adjustments', e);
-    return INITIAL_STOCK_ADJUSTMENTS;
+    return [];
   }
 }
 
@@ -625,15 +601,12 @@ export function regenerateRecoveryKey(): string {
 export function getStoredMerchantOrders(): MerchantOrder[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.MERCHANT_ORDERS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.MERCHANT_ORDERS, JSON.stringify(INITIAL_MERCHANT_ORDERS));
-      return INITIAL_MERCHANT_ORDERS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : INITIAL_MERCHANT_ORDERS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading merchant orders', e);
-    return INITIAL_MERCHANT_ORDERS;
+    return [];
   }
 }
 
@@ -670,15 +643,12 @@ export function saveStoredMerchantPurchases(purchases: MerchantPurchaseRecord[])
 export function getStoredPeerTraders(): PeerTrader[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.PEER_TRADERS);
-    if (!data) {
-      localStorage.setItem(STORAGE_KEYS.PEER_TRADERS, JSON.stringify(INITIAL_PEER_TRADERS));
-      return INITIAL_PEER_TRADERS;
-    }
+    if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_PEER_TRADERS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Error reading peer traders', e);
-    return INITIAL_PEER_TRADERS;
+    return [];
   }
 }
 
@@ -748,7 +718,7 @@ export function createAutoRecoverySnapshot(
 ): AutoRecoverySnapshot {
   const existing = getStoredRecoverySnapshots();
   const snapshot: AutoRecoverySnapshot = {
-    id: `snap-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: generateStableId('snap'),
     timestamp: Date.now(),
     date: getTodayDateString(),
     time: getCurrentTimeString(),

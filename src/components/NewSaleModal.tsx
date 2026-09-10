@@ -9,6 +9,7 @@ import {
   getStoredSales,
   parseBilingualNumber,
 } from '../utils/storage';
+import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   X,
   Plus,
@@ -126,7 +127,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
 
     const newM: Merchant = {
-      id: `merchant-${Date.now()}`,
+      id: generateStableId('merch'),
       code: `M-${(merchants.length + 1).toString().padStart(3, '0')}`,
       name: newMerchantName.trim(),
       town: newMerchantTown.trim() || 'မန္တလေး',
@@ -240,10 +241,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const voucherNo = `SL-${Date.now().toString().slice(-6)}`;
+    const voucherNo = generateVoucherNo('SL', saleDate);
 
     const newSale: SaleRecord = {
-      id: `sale-${Date.now()}`,
+      id: generateStableId('sale'),
       voucherNo,
       date: saleDate,
       time: saleTime,

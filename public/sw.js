@@ -1,11 +1,16 @@
 // Service Worker for Shwe Let Yar Offline Support
-const CACHE_NAME = 'shwe-let-yar-offline-v2.5';
+const CACHE_NAME = 'shwe-let-yar-offline-v2.6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/logo.png',
   '/logo.svg',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/pwa-maskable-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon.ico'
 ];
 
 // Handle skipWaiting message from app when user clicks Update
@@ -43,16 +48,16 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Ignore chrome-extension or external cross-origin tracking
+  // Ignore non-http(s) schemes (like chrome-extension)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cached and fetch in background for update
+        // Return cached response and refresh cache in background if online
         fetch(event.request)
           .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
+            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
               caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
             }
           })
@@ -73,11 +78,15 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          // If HTML navigation, return cached root
-          if (event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/index.html');
+          // Fallback for HTML navigation or page reload requests while offline
+          if (
+            event.request.mode === 'navigate' ||
+            (event.request.headers.get('accept') && event.request.headers.get('accept').includes('text/html'))
+          ) {
+            return caches.match('/index.html') || caches.match('/');
           }
         });
     })
   );
 });
+

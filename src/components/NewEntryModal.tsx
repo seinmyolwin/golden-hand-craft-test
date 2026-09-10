@@ -9,6 +9,7 @@ import {
   getStoredTransactions,
   parseBilingualNumber,
 } from '../utils/storage';
+import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   X,
   Plus,
@@ -157,10 +158,10 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const voucherNo = `IN-${Date.now().toString().slice(-6)}`;
+    const voucherNo = generateVoucherNo('IN', entryDate);
 
     const newRecord: TransactionRecord = {
-      id: `tx-${Date.now()}`,
+      id: generateStableId('tx'),
       voucherNo,
       date: entryDate,
       time: entryTime,

@@ -1,4 +1,5 @@
 import { db } from './database';
+import { generateStableId } from '../utils/idGenerator';
 import {
   DEFAULT_PRODUCTS,
   INITIAL_SUPPLIERS,
@@ -97,7 +98,7 @@ function safeParseLocalStorage<T>(keys: string[], fallback: T): T {
  * Validate and clean array of products
  */
 export function validateProducts(items: any[]): Product[] {
-  if (!Array.isArray(items)) return DEFAULT_PRODUCTS;
+  if (!Array.isArray(items)) return [];
   const cleaned: Product[] = [];
   items.forEach((item, index) => {
     if (!item || typeof item !== 'object') return;
@@ -117,14 +118,14 @@ export function validateProducts(items: any[]): Product[] {
       active: item.active !== false,
     });
   });
-  return cleaned.length > 0 ? cleaned : DEFAULT_PRODUCTS;
+  return cleaned;
 }
 
 /**
  * Validate and clean array of suppliers
  */
 export function validateSuppliers(items: any[]): Supplier[] {
-  if (!Array.isArray(items)) return INITIAL_SUPPLIERS;
+  if (!Array.isArray(items)) return [];
   const cleaned: Supplier[] = [];
   items.forEach((item, index) => {
     if (!item || typeof item !== 'object') return;
@@ -146,14 +147,14 @@ export function validateSuppliers(items: any[]): Supplier[] {
       updatedAt: item.updatedAt || new Date().toISOString(),
     });
   });
-  return cleaned.length > 0 ? cleaned : INITIAL_SUPPLIERS;
+  return cleaned;
 }
 
 /**
  * Validate and clean merchants
  */
 export function validateMerchants(items: any[]): Merchant[] {
-  if (!Array.isArray(items)) return INITIAL_MERCHANTS;
+  if (!Array.isArray(items)) return [];
   const cleaned: Merchant[] = [];
   items.forEach((item, index) => {
     if (!item || typeof item !== 'object') return;
@@ -179,7 +180,7 @@ export function validateMerchants(items: any[]): Merchant[] {
       updatedAt: item.updatedAt || new Date().toISOString(),
     });
   });
-  return cleaned.length > 0 ? cleaned : INITIAL_MERCHANTS;
+  return cleaned;
 }
 
 /**
@@ -188,15 +189,15 @@ export function validateMerchants(items: any[]): Merchant[] {
  */
 export async function runOfflineStorageMigration(): Promise<MigrationResult> {
   try {
-    const existingFlag = typeof window !== 'undefined' ? localStorage.getItem(MIGRATION_FLAG_KEY) : null;
-    const existingProductCount = await db.products.count();
+    const existingFlag = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem(MIGRATION_FLAG_KEY) : null;
+    const isInitialized = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('shwe_let_yar_db_initialized_v1') : null;
 
-    if (existingFlag === 'COMPLETED' && existingProductCount > 0) {
+    if (existingFlag === 'COMPLETED' || isInitialized) {
       return {
         success: true,
         alreadyMigrated: true,
         migratedCounts: {
-          products: existingProductCount,
+          products: await db.products.count(),
           suppliers: await db.suppliers.count(),
           merchants: await db.merchants.count(),
           transactions: await db.transactions.count(),
@@ -212,15 +213,15 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
       };
     }
 
-    // 1. Gather raw data from localStorage with fallbacks
-    const rawProducts = safeParseLocalStorage<any[]>(['ledger_products_v2', 'ledger_products_v1'], DEFAULT_PRODUCTS);
-    const rawSuppliers = safeParseLocalStorage<any[]>(['ledger_suppliers_v2', 'ledger_suppliers_v1'], INITIAL_SUPPLIERS);
-    const rawMerchants = safeParseLocalStorage<any[]>(['ledger_merchants_v2', 'ledger_merchants_v1'], INITIAL_MERCHANTS);
-    const rawTransactions = safeParseLocalStorage<any[]>(['ledger_transactions_v2', 'ledger_transactions_v1'], INITIAL_TRANSACTIONS);
-    const rawSales = safeParseLocalStorage<any[]>(['ledger_sales_v2', 'ledger_sales_v1'], INITIAL_SALES);
+    // 1. Gather raw data from localStorage with fallbacks (default to EMPTY arrays, no automatic demo data)
+    const rawProducts = safeParseLocalStorage<any[]>(['ledger_products_v2', 'ledger_products_v1'], []);
+    const rawSuppliers = safeParseLocalStorage<any[]>(['ledger_suppliers_v2', 'ledger_suppliers_v1'], []);
+    const rawMerchants = safeParseLocalStorage<any[]>(['ledger_merchants_v2', 'ledger_merchants_v1'], []);
+    const rawTransactions = safeParseLocalStorage<any[]>(['ledger_transactions_v2', 'ledger_transactions_v1'], []);
+    const rawSales = safeParseLocalStorage<any[]>(['ledger_sales_v2', 'ledger_sales_v1'], []);
     const rawPurchases = safeParseLocalStorage<any[]>(['ledger_merchant_purchases_v1'], []);
-    const rawOrders = safeParseLocalStorage<any[]>(['ledger_merchant_orders_v1'], INITIAL_MERCHANT_ORDERS);
-    const rawAdjustments = safeParseLocalStorage<any[]>(['ledger_stock_adjustments_v2'], INITIAL_STOCK_ADJUSTMENTS);
+    const rawOrders = safeParseLocalStorage<any[]>(['ledger_merchant_orders_v1'], []);
+    const rawAdjustments = safeParseLocalStorage<any[]>(['ledger_stock_adjustments_v2'], []);
     const rawPeerTrades = safeParseLocalStorage<any[]>(['ledger_peer_trades_v1'], []);
     const rawDeletedItems = safeParseLocalStorage<any[]>(['ledger_deleted_items_v1', 'ledger_deleted_history_v1'], []);
     const rawAuditLogs = safeParseLocalStorage<any[]>(['ledger_audit_logs_v1'], []);
@@ -239,7 +240,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validTransactions: TransactionRecord[] = Array.isArray(rawTransactions)
       ? rawTransactions.map((t, i) => ({
           ...t,
-          id: String(t.id || `tx_${Date.now()}_${i}`),
+          id: String(t.id || generateStableId('tx')),
           voucherNo: String(t.voucherNo || `TX-${i + 1}`),
           supplierId: String(t.supplierId || ''),
           supplierName: String(t.supplierName || ''),
@@ -257,7 +258,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validSales: SaleRecord[] = Array.isArray(rawSales)
       ? rawSales.map((s, i) => ({
           ...s,
-          id: String(s.id || `sale_${Date.now()}_${i}`),
+          id: String(s.id || generateStableId('sale')),
           voucherNo: String(s.voucherNo || `SALE-${i + 1}`),
           merchantId: String(s.merchantId || ''),
           merchantName: String(s.merchantName || ''),
@@ -275,7 +276,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validPurchases: MerchantPurchaseRecord[] = Array.isArray(rawPurchases)
       ? rawPurchases.map((p, i) => ({
           ...p,
-          id: String(p.id || `pur_${Date.now()}_${i}`),
+          id: String(p.id || generateStableId('pur')),
           purchaseNo: String(p.purchaseNo || `PUR-${i + 1}`),
           merchantId: String(p.merchantId || ''),
           merchantName: String(p.merchantName || ''),
@@ -293,7 +294,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validOrders: MerchantOrder[] = Array.isArray(rawOrders)
       ? rawOrders.map((o, i) => ({
           ...o,
-          id: String(o.id || `ord_${Date.now()}_${i}`),
+          id: String(o.id || generateStableId('ord')),
           merchantId: String(o.merchantId || ''),
           merchantName: String(o.merchantName || ''),
           merchantTown: String(o.merchantTown || ''),
@@ -305,7 +306,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validAdjustments: StockAdjustmentRecord[] = Array.isArray(rawAdjustments)
       ? rawAdjustments.map((a, i) => ({
           ...a,
-          id: String(a.id || `adj_${Date.now()}_${i}`),
+          id: String(a.id || generateStableId('adj')),
           productId: String(a.productId || ''),
           productName: String(a.productName || ''),
           quantity: Number(a.quantity) || 0,
@@ -322,7 +323,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validPeerTrades: PeerTradeRecord[] = Array.isArray(rawPeerTrades)
       ? rawPeerTrades.map((pt, i) => ({
           ...pt,
-          id: String(pt.id || `pt_${Date.now()}_${i}`),
+          id: String(pt.id || generateStableId('pt')),
           tradeType: pt.tradeType || 'BORROW_IN',
           date: String(pt.date || new Date().toISOString().split('T')[0]),
           time: String(pt.time || '12:00'),
@@ -341,7 +342,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validDeleted: SoftDeletedItem[] = Array.isArray(rawDeletedItems)
       ? rawDeletedItems.map((d, i) => ({
           ...d,
-          id: String(d.id || `del_${Date.now()}_${i}`),
+          id: String(d.id || generateStableId('del')),
           originalId: String(d.originalId || ''),
           name: String(d.name || 'ဖျက်ထားသောမှတ်တမ်း'),
           type: String(d.type || 'RECORD'),
@@ -353,7 +354,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const validAudit: AuditLogEntry[] = Array.isArray(rawAuditLogs)
       ? rawAuditLogs.map((al, i) => ({
           ...al,
-          id: String(al.id || `audit_${Date.now()}_${i}`),
+          id: String(al.id || generateStableId('audit')),
           action: String(al.action || 'System Action'),
           details: String(al.details || ''),
           timestamp: String(al.timestamp || new Date().toISOString()),
@@ -433,6 +434,7 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     // 5. Mark migration as COMPLETED
     if (typeof window !== 'undefined' && window.localStorage) {
       localStorage.setItem(MIGRATION_FLAG_KEY, 'COMPLETED');
+      localStorage.setItem('shwe_let_yar_db_initialized_v1', new Date().toISOString());
       localStorage.setItem('shwe_let_yar_migration_time', new Date().toISOString());
     }
 

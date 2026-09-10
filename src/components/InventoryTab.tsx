@@ -9,6 +9,7 @@ import {
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   Layers,
   Package,
@@ -224,7 +225,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         : 'လက်ကျန်စာရင်းလျှော့';
 
     const adjRecord: StockAdjustmentRecord = {
-      id: `adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateStableId('adj'),
       date: getTodayDateString(),
       time: getCurrentTimeString(),
       productId: selectedProductForAdjust.id,
@@ -254,7 +255,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     if (!newProdName.trim()) return;
 
     const createdProd: Product = {
-      id: `p-${Date.now()}`,
+      id: generateStableId('p'),
       name: newProdName.trim(),
       defaultPrice: newBuyPrice || 0,
       defaultWholesalePrice: newSellPrice || Math.round((newBuyPrice || 0) * 1.25),

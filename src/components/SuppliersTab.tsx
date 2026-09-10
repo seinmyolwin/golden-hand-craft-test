@@ -8,6 +8,7 @@ import {
   getCurrentTimeString,
   getStoredRawMaterialPresets,
 } from '../utils/storage';
+import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   Users,
   Search,
@@ -183,7 +184,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
       onUpdateSupplier(updated);
     } else {
       const newS: Supplier = {
-        id: `s-${Date.now()}`,
+        id: generateStableId('s'),
         code: `RK-${String(suppliers.length + 1).padStart(3, '0')}`,
         name: name.trim(),
         village: village.trim() || 'မင်းနန်သူ',
@@ -209,7 +210,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
     const newBalance = prevBalance + totalRawVal;
 
     const rawItem: RawMaterialItem = {
-      id: `raw-${Date.now()}`,
+      id: generateStableId('raw'),
       category: rawCategory,
       name: rawItemName.trim(),
       quantity: rawQuantity,
@@ -220,8 +221,8 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
 
     const isCashAdv = rawCategory === 'CASH_ADVANCE';
     const newTx: TransactionRecord = {
-      id: `tx-raw-${Date.now()}`,
-      voucherNo: `${isCashAdv ? 'ADV' : 'RAW'}-${Date.now().toString().slice(-4)}`,
+      id: generateStableId('tx_raw'),
+      voucherNo: generateVoucherNo(isCashAdv ? 'ADV' : 'RAW'),
       date: getTodayDateString(),
       time: getCurrentTimeString(),
       supplierId: selectedSupplierForRaw.id,
@@ -279,8 +280,8 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
     const newBalance = Math.max(0, prevBalance - repayAmount);
 
     const newTx: TransactionRecord = {
-      id: `tx-repay-${Date.now()}`,
-      voucherNo: `RPY-${Date.now().toString().slice(-4)}`,
+      id: generateStableId('tx_repay'),
+      voucherNo: generateVoucherNo('RPY'),
       date: getTodayDateString(),
       time: getCurrentTimeString(),
       supplierId: selectedSupplierForRepay.id,

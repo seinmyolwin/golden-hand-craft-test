@@ -6,6 +6,7 @@ import {
   exportMerchantsCSV,
   getTodayDateString,
 } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   Building2,
   MapPin,
@@ -161,7 +162,7 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
       onUpdateMerchant(updated);
     } else {
       const newM: Merchant = {
-        id: `m-${Date.now()}`,
+        id: generateStableId('m'),
         code: `M-${String(merchants.length + 1).padStart(3, '0')}`,
         name: name.trim(),
         town: town.trim() || 'မန္တလေး',
