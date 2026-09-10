@@ -1,0 +1,92 @@
+import Dexie, { type EntityTable } from 'dexie';
+import {
+  Product,
+  Supplier,
+  Merchant,
+  TransactionRecord,
+  SaleRecord,
+  MerchantPurchaseRecord,
+  MerchantOrder,
+  StockAdjustmentRecord,
+  PeerTradeRecord,
+  SoftDeletedItem,
+  AuditLogEntry,
+  ShopSettings,
+  AppLockSettings,
+  BackupReminderSettings,
+  AutoRecoverySnapshot,
+  RawMaterialPreset,
+} from '../types';
+
+export interface SettingRecord {
+  key: string;
+  value: any;
+  updatedAt: string;
+}
+
+export interface AttachmentRecord {
+  id: string;
+  voucherId: string;
+  imageBase64: string;
+  caption?: string;
+  createdAt: string;
+}
+
+export class ShweLetYarDatabase extends Dexie {
+  products!: EntityTable<Product, 'id'>;
+  suppliers!: EntityTable<Supplier, 'id'>;
+  merchants!: EntityTable<Merchant, 'id'>;
+  transactions!: EntityTable<TransactionRecord, 'id'>;
+  sales!: EntityTable<SaleRecord, 'id'>;
+  merchantPurchases!: EntityTable<MerchantPurchaseRecord, 'id'>;
+  orders!: EntityTable<MerchantOrder, 'id'>;
+  stockAdjustments!: EntityTable<StockAdjustmentRecord, 'id'>;
+  peerTrades!: EntityTable<PeerTradeRecord, 'id'>;
+  softDeletedItems!: EntityTable<SoftDeletedItem, 'id'>;
+  auditLogs!: EntityTable<AuditLogEntry, 'id'>;
+  settings!: EntityTable<SettingRecord, 'key'>;
+  recoverySnapshots!: EntityTable<AutoRecoverySnapshot, 'id'>;
+  attachments!: EntityTable<AttachmentRecord, 'id'>;
+
+  constructor() {
+    super('ShweLetYarProductionDB');
+
+    // Version 1: Initial schema
+    this.version(1).stores({
+      products: 'id, name, category, active',
+      suppliers: 'id, code, name, phone, village, updatedAt',
+      merchants: 'id, code, name, town, phone, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, createdAt',
+    });
+
+    // Version 2: Enhanced composite indexes for offline analytics & reports
+    this.version(2).stores({
+      products: 'id, name, category, active, currentStock',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, createdAt',
+    });
+  }
+}
+
+export const db = new ShweLetYarDatabase();

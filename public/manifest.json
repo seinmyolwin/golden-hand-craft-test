@@ -1,0 +1,22 @@
+{
+  "short_name": "ရွှေလက်ရာ",
+  "name": "ရွှေလက်ရာ - မြန်မာ့လက်မှု စာရင်းကိုင်စနစ်",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#065f46",
+  "theme_color": "#065f46",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Vignette Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#232428" />
+      <stop offset="65%" stop-color="#18191c" />
+      <stop offset="100%" stop-color="#121315" />
+    </radialGradient>
+
+    <!-- Outer Gold Ring Gradient -->
+    <linearGradient id="goldRing" x1="25%" y1="15%" x2="80%" y2="85%">
+      <stop offset="0%" stop-color="#6e521e" />
+      <stop offset="25%" stop-color="#c69537" />
+      <stop offset="50%" stop-color="#fff6b3" />
+      <stop offset="75%" stop-color="#dfa93c" />
+      <stop offset="100%" stop-color="#73521b" />
+    </linearGradient>
+
+    <!-- Star Top Highlight Gradient -->
+    <linearGradient id="goldStar" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="12%" stop-color="#fff8d4" />
+      <stop offset="40%" stop-color="#fed75b" />
+      <stop offset="75%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+
+    <!-- Center Sphere Radial 3D Gradient -->
+    <radialGradient id="goldSphere" cx="36%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="25%" stop-color="#fff176" />
+      <stop offset="65%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#854d0e" />
+    </radialGradient>
+
+    <!-- Burmese Text Metallic Gold Gradient -->
+    <linearGradient id="goldText" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fffbe0" />
+      <stop offset="30%" stop-color="#ffde59" />
+      <stop offset="75%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+
+    <!-- Subtle Golden Glow Filter -->
+    <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="blur" />
+      <feColorMatrix type="matrix" values="
+        1 0 0 0 0.96
+        0 1 0 0 0.76
+        0 0 1 0 0.15
+        0 0 0 0.4 0" in="blur" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Squircle Rounded Dark Canvas Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bgGrad)" />
+
+  <!-- Outer Fine Gold Circle -->
+  <circle cx="256" cy="256" r="226" fill="none" stroke="url(#goldRing)" stroke-width="3" opacity="0.88" />
+
+  <!-- Main 4-pointed Concave Star Emblem with Center Cutout -->
+  <g filter="url(#goldGlow)">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M 256 108
+         C 286 160 322 196 374 212
+         C 322 228 286 264 256 320
+         C 226 264 190 228 138 212
+         C 190 196 226 160 256 108 Z
+         M 256 165
+         C 240 193 216 205 186 212
+         C 216 219 240 231 256 258
+         C 272 231 296 219 326 212
+         C 296 205 272 193 256 165 Z"
+      fill="url(#goldStar)"
+    />
+
+    <!-- Central Glowing Gold Sphere -->
+    <circle cx="256" cy="212" r="18" fill="url(#goldSphere)" />
+  </g>
+
+  <!-- Burmese Brand Text: ရွှေလက်ရာ -->
+  <text
+    x="256"
+    y="422"
+    text-anchor="middle"
+    font-family="'Padauk', 'Noto Sans Myanmar', 'Pyidaungsu', 'Myanmar3', sans-serif"
+    font-size="46"
+    font-weight="bold"
+    letter-spacing="1px"
+    fill="url(#goldText)"
+    filter="url(#goldGlow)"
+  >ရွှေလက်ရာ</text>
+</svg>
