@@ -18,6 +18,7 @@ import {
   AutoRecoverySnapshot,
   OrderStatus,
   MerchantPurchaseRecord,
+  ReturnRecord,
 } from './types';
 import {
   DEFAULT_SHOP_SETTINGS,
@@ -98,6 +99,9 @@ import { ZeroSettingsConfirmModal } from './components/ZeroSettingsConfirmModal'
 import { LowStockAlertModal } from './components/LowStockAlertModal';
 import { ExcelImportModal, ExcelImportTarget } from './components/ExcelImportModal';
 import { UpdateNotificationModal } from './components/UpdateNotificationModal';
+import { CashLedgerModal } from './components/CashLedgerModal';
+import { ReturnRefundModal } from './components/ReturnRefundModal';
+import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { db } from './db/database';
@@ -164,6 +168,7 @@ export default function App() {
   const [peerTrades, setPeerTrades] = useState<PeerTradeRecord[]>([]);
   const [stockAdjustments, setStockAdjustments] = useState<StockAdjustmentRecord[]>([]);
   const [merchantPurchases, setMerchantPurchases] = useState<MerchantPurchaseRecord[]>([]);
+  const [returnsAndRefunds, setReturnsAndRefunds] = useState<ReturnRecord[]>([]);
   const [backupReminderSettings, setBackupReminderSettings] = useState<BackupReminderSettings>(() => getStoredBackupReminderSettings());
   const [snapshots, setSnapshots] = useState<AutoRecoverySnapshot[]>([]);
   const [shopSettings, setShopSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
@@ -190,6 +195,7 @@ export default function App() {
             dbDeleted,
             dbAudit,
             shopRecord,
+            dbReturns,
           ] = await Promise.all([
             productRepo.getAll(),
             supplierRepo.getAll(),
@@ -203,6 +209,7 @@ export default function App() {
             softDeleteRepo.getAll(),
             auditRepo.getAll(),
             db.settings.get('shopSettings'),
+            db.returnsAndRefunds ? db.returnsAndRefunds.toArray() : Promise.resolve([]),
           ]);
 
           setProducts(dbProducts || []);
@@ -216,6 +223,7 @@ export default function App() {
           setPeerTrades(dbPeerTrades || []);
           setDeletedItems(dbDeleted || []);
           setAuditLogs(dbAudit || []);
+          setReturnsAndRefunds(dbReturns || []);
           if (shopRecord?.value) {
             setShopSettings(shopRecord.value);
           }
@@ -269,6 +277,11 @@ export default function App() {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [isZeroResetModalOpen, setIsZeroResetModalOpen] = useState<boolean>(false);
   const [isLowStockAlertModalOpen, setIsLowStockAlertModalOpen] = useState<boolean>(false);
+  const [isCashLedgerModalOpen, setIsCashLedgerModalOpen] = useState<boolean>(false);
+  const [isAuditHistoryModalOpen, setIsAuditHistoryModalOpen] = useState<boolean>(false);
+  const [isReturnRefundModalOpen, setIsReturnRefundModalOpen] = useState<boolean>(false);
+  const [selectedReturnSale, setSelectedReturnSale] = useState<SaleRecord | null>(null);
+  const [selectedReturnPurchase, setSelectedReturnPurchase] = useState<MerchantPurchaseRecord | null>(null);
   const [isExcelImportOpen, setIsExcelImportOpen] = useState<boolean>(false);
   const [excelImportTarget, setExcelImportTarget] = useState<ExcelImportTarget>('PRODUCTS');
 
@@ -487,6 +500,29 @@ export default function App() {
       entityId,
     };
     setAuditLogs((prev) => [newLog, ...prev.slice(0, 199)]);
+  }, []);
+
+  const handleOpenReturnRefundModal = useCallback((sale?: SaleRecord, purchase?: MerchantPurchaseRecord) => {
+    setSelectedReturnSale(sale || null);
+    setSelectedReturnPurchase(purchase || null);
+    setIsReturnRefundModalOpen(true);
+  }, []);
+
+  const handleReturnSuccess = useCallback(async () => {
+    if (db.returnsAndRefunds) {
+      const dbReturns = await db.returnsAndRefunds.toArray();
+      setReturnsAndRefunds(dbReturns || []);
+    }
+    const [dbProducts, dbTransactions, dbSales, dbPurchases] = await Promise.all([
+      productRepo.getAll(),
+      transactionRepo.getAll(),
+      saleRepo.getAll(),
+      purchaseRepo.getAll(),
+    ]);
+    setProducts(dbProducts || []);
+    setTransactions(dbTransactions || []);
+    setSales(dbSales || []);
+    setMerchantPurchases(dbPurchases || []);
   }, []);
 
   // App Lock Controls (Session persistent)
@@ -1353,7 +1389,6 @@ export default function App() {
       sales || [],
       stockAdjustments || [],
       [],
-      [],
       peerTrades || []
     );
     return stats.map((stat) => ({
@@ -1458,7 +1493,8 @@ export default function App() {
           onNavigateToOrders={() => setActiveTab('orders')}
           onOpenEditProfile={() => setIsShopProfileModalOpen(true)}
           onOpenBackup={() => setActiveTab('backup')}
-          onOpenAuditLogs={() => setIsDeletedHistoryModalOpen(true)}
+          onOpenAuditLogs={() => setIsAuditHistoryModalOpen(true)}
+          onOpenDeletedHistory={() => setIsDeletedHistoryModalOpen(true)}
           onOpenClearData={() => setIsClearDataModalOpen(true)}
           onOpenZeroSettings={() => setIsZeroResetModalOpen(true)}
           onOpenLocalSync={() => setIsLocalSyncModalOpen(true)}
@@ -1489,6 +1525,7 @@ export default function App() {
                 setNotificationOrder(order);
                 setIsNotificationOpen(true);
               }}
+              onOpenCashLedger={() => setIsCashLedgerModalOpen(true)}
             />
           )}
 
@@ -1530,6 +1567,7 @@ export default function App() {
               onOpenNewSale={() => handleOpenNewSale()}
               onViewSaleVoucher={handleViewSaleVoucher}
               onDeleteSale={handleDeleteSale}
+              onOpenReturnRefundModal={(sale) => handleOpenReturnRefundModal(sale)}
             />
           )}
 
@@ -1541,6 +1579,7 @@ export default function App() {
               selectedDate={selectedDate}
               onSavePurchase={handleSaveMerchantPurchase}
               onDeletePurchase={handleDeleteMerchantPurchase}
+              onOpenReturnRefundModal={(purchase) => handleOpenReturnRefundModal(undefined, purchase)}
             />
           )}
 
@@ -1615,6 +1654,8 @@ export default function App() {
               sales={sales}
               merchants={merchants}
               merchantPurchases={merchantPurchases}
+              returnsAndRefunds={returnsAndRefunds}
+              onOpenCashLedger={() => setIsCashLedgerModalOpen(true)}
             />
           )}
 
@@ -1677,6 +1718,8 @@ export default function App() {
           initialSupplierId={initialEntrySupplierId}
           selectedDate={selectedDate}
           onSave={handleSaveTransaction}
+          onAddSupplier={handleAddSupplier}
+          onAddProduct={handleAddProduct}
         />
 
         <NewSaleModal
@@ -1835,6 +1878,42 @@ export default function App() {
           onUpdate={handleApplyUpdate}
           newVersion="v2.5.0"
           isChecking={isCheckingUpdate}
+        />
+
+        <CashLedgerModal
+          isOpen={isCashLedgerModalOpen}
+          onClose={() => setIsCashLedgerModalOpen(false)}
+          onRefreshData={async () => {
+            const [dbTransactions, dbSales, dbPurchases] = await Promise.all([
+              transactionRepo.getAll(),
+              saleRepo.getAll(),
+              purchaseRepo.getAll(),
+            ]);
+            setTransactions(dbTransactions);
+            setSales(dbSales);
+            setMerchantPurchases(dbPurchases);
+          }}
+        />
+
+        <ReturnRefundModal
+          isOpen={isReturnRefundModalOpen}
+          onClose={() => {
+            setIsReturnRefundModalOpen(false);
+            setSelectedReturnSale(null);
+            setSelectedReturnPurchase(null);
+          }}
+          sales={sales}
+          merchantPurchases={merchantPurchases}
+          products={products}
+          initialSelectedSale={selectedReturnSale}
+          initialSelectedPurchase={selectedReturnPurchase}
+          onReturnSuccess={handleReturnSuccess}
+        />
+
+        <AuditHistoryModal
+          isOpen={isAuditHistoryModalOpen}
+          onClose={() => setIsAuditHistoryModalOpen(false)}
+          auditLogs={auditLogs}
         />
 
         {showExitToast && (

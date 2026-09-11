@@ -305,6 +305,20 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* Audit Trail Button */}
+            {onOpenAuditLogs && (
+              <button
+                id="header-audit-logs-btn"
+                type="button"
+                onClick={onOpenAuditLogs}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700 cursor-pointer shadow-xs transition-all"
+                title="လုပ်ငန်းဆောင်ရွက်မှု Audit မှတ်တမ်းအပြည့်အစုံ ကြည့်မည်"
+              >
+                <Shield className="w-3 h-3 text-emerald-400" />
+                <span className="hidden sm:inline whitespace-nowrap">Audit Trail</span>
+              </button>
+            )}
+
             {/* Quick Recycle Bin / Deleted Records Button */}
             {handleOpenTrash && (
               <button

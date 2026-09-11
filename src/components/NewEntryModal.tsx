@@ -23,8 +23,11 @@ import {
   ArrowUpRight,
   Sparkles,
   AlertTriangle,
+  UserPlus,
 } from 'lucide-react';
 import { PhotoAttachmentField } from './PhotoAttachmentField';
+import { SupplierMasterModal } from './master/SupplierMasterModal';
+import { ProductMasterModal } from './master/ProductMasterModal';
 
 interface NewEntryModalProps {
   isOpen: boolean;
@@ -34,6 +37,8 @@ interface NewEntryModalProps {
   initialSupplierId?: string;
   selectedDate: string;
   onSave: (record: TransactionRecord) => void;
+  onAddSupplier?: (supplier: Supplier) => void;
+  onAddProduct?: (product: Product) => void;
 }
 
 export const NewEntryModal: React.FC<NewEntryModalProps> = ({
@@ -44,10 +49,14 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
   initialSupplierId,
   selectedDate,
   onSave,
+  onAddSupplier,
+  onAddProduct,
 }) => {
   const [supplierId, setSupplierId] = useState<string>(initialSupplierId || (suppliers[0]?.id || ''));
   const [entryDate, setEntryDate] = useState<string>(selectedDate || getTodayDateString());
   const [entryTime, setEntryTime] = useState<string>(getCurrentTimeString());
+  const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState<boolean>(false);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
 
   const [items, setItems] = useState<{ productId: string; quantity: number; unitPrice: number }[]>([
     { productId: products[0]?.id || '', quantity: 10, unitPrice: products[0]?.defaultPrice || 0 },
@@ -211,7 +220,17 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
           {/* Supplier Selection & Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-slate-700 font-bold mb-1">ကုန်ပစ္စည်းပေးသွင်းသူ ရွေးချယ်ပါ *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-700 font-bold">ကုန်ပစ္စည်းပေးသွင်းသူ ရွေးချယ်ပါ *</label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddSupplierModalOpen(true)}
+                  className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200 transition-colors"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>+ ပေးသွင်းသူအသစ်</span>
+                </button>
+              </div>
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
@@ -261,14 +280,24 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-slate-700 font-bold">သိမ်းဆည်းသော ကုန်ပစ္စည်းများ</label>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ ပစ္စည်းထပ်ထည့်မည်</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddProductModalOpen(true)}
+                  className="text-[11px] text-purple-700 hover:text-purple-800 font-bold flex items-center gap-1 cursor-pointer bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md border border-purple-200 transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ ကုန်ပစ္စည်းအသစ်</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ အကွက်ထပ်ထည့်မည်</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -419,6 +448,45 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
             </button>
           </div>
         </form>
+
+        {/* Canonical Master Data Modals */}
+        <SupplierMasterModal
+          isOpen={isAddSupplierModalOpen}
+          onClose={() => setIsAddSupplierModalOpen(false)}
+          onSave={(newS) => {
+            if (onAddSupplier) onAddSupplier(newS);
+            setSupplierId(newS.id);
+            setIsAddSupplierModalOpen(false);
+          }}
+          onSaveAndSelect={(newS) => {
+            if (onAddSupplier) onAddSupplier(newS);
+            setSupplierId(newS.id);
+            setIsAddSupplierModalOpen(false);
+          }}
+          existingVillages={Array.from(new Set(suppliers.map((s) => s.village).filter(Boolean)))}
+        />
+
+        <ProductMasterModal
+          isOpen={isAddProductModalOpen}
+          onClose={() => setIsAddProductModalOpen(false)}
+          onSave={(newP) => {
+            if (onAddProduct) onAddProduct(newP);
+            setItems((prev) => [
+              ...prev,
+              { productId: newP.id, quantity: 10, unitPrice: newP.defaultPrice || 0 },
+            ]);
+            setIsAddProductModalOpen(false);
+          }}
+          onSaveAndSelect={(newP) => {
+            if (onAddProduct) onAddProduct(newP);
+            setItems((prev) => [
+              ...prev,
+              { productId: newP.id, quantity: 10, unitPrice: newP.defaultPrice || 0 },
+            ]);
+            setIsAddProductModalOpen(false);
+          }}
+          availableCategories={Array.from(new Set(products.map((p) => p.category).filter(Boolean)))}
+        />
       </div>
     </div>
   );

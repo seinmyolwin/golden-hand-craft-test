@@ -98,7 +98,14 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
 
   const allStockStats: ProductStockStats[] = useMemo(() => {
-    return computeAllProductsStock(products || [], transactions || [], sales || [], stockAdjustments || [], [], [], peerTrades || []);
+    return computeAllProductsStock(
+      products || [],
+      transactions || [],
+      sales || [],
+      stockAdjustments || [],
+      [],
+      peerTrades || []
+    );
   }, [products, transactions, sales, stockAdjustments, peerTrades]);
 
   const summaryMetrics = useMemo(() => {

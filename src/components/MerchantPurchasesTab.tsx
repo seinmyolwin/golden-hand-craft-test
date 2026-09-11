@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Clock,
   Layers,
+  RotateCcw,
 } from 'lucide-react';
 
 interface MerchantPurchasesTabProps {
@@ -36,6 +37,7 @@ interface MerchantPurchasesTabProps {
   selectedDate: string;
   onSavePurchase: (purchase: MerchantPurchaseRecord) => void;
   onDeletePurchase: (id: string) => void;
+  onOpenReturnRefundModal?: (purchase?: MerchantPurchaseRecord) => void;
 }
 
 export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
@@ -44,6 +46,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   selectedDate,
   onSavePurchase,
   onDeletePurchase,
+  onOpenReturnRefundModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState<string>('');
@@ -244,14 +247,26 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenNewModal}
-          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-amber-950 rounded-xl font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ ကုန်ကြမ်းဝယ်ယူမှု အသစ်သွင်းမည်</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenReturnRefundModal && (
+            <button
+              type="button"
+              onClick={() => onOpenReturnRefundModal()}
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-amber-900/80 hover:bg-amber-900 active:scale-95 text-amber-200 border border-amber-500/40 rounded-xl font-bold text-xs shadow-md cursor-pointer transition-all shrink-0"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>ပစ္စည်းပြန်အပ်/ငွေပြန်ရ</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleOpenNewModal}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-amber-950 rounded-xl font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ ကုန်ကြမ်းဝယ်ယူမှု အသစ်သွင်းမည်</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -388,6 +403,17 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-center">
+                  {onOpenReturnRefundModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenReturnRefundModal(rec)}
+                      className="p-1.5 text-amber-800 hover:bg-amber-100 bg-amber-50 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-amber-200"
+                      title="ပစ္စည်းပြန်အပ်မည်"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">ပြန်အပ်မည်</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setSelectedVoucher(rec)}

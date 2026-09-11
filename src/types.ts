@@ -198,7 +198,11 @@ export type StockMovementType =
   | 'DAMAGE_LOSS'
   | 'TRANSACTION_CANCELLED_REVERSAL'
   | 'SALE_CANCELLED_REVERSAL'
-  | 'PURCHASE_CANCELLED_REVERSAL';
+  | 'PURCHASE_CANCELLED_REVERSAL'
+  | 'SALES_RETURN_INBOUND'
+  | 'PURCHASE_RETURN_OUTBOUND'
+  | 'SALES_RETURN_CANCELLED_REVERSAL'
+  | 'PURCHASE_RETURN_CANCELLED_REVERSAL';
 
 export interface StockMovementRecord {
   id: string;
@@ -212,6 +216,7 @@ export interface StockMovementRecord {
   referenceId: string;
   referenceVoucherNo?: string;
   counterpartName?: string;
+  unit?: string;
   unitPrice?: number;
   totalValue?: number;
   transactionDate: string; // YYYY-MM-DD
@@ -241,6 +246,156 @@ export interface StockAdjustmentRecord {
   createdAt: string;
   updatedAt?: string;
   revision?: number;
+}
+
+export type CashMovementType =
+  | 'OPENING_FLOAT'
+  | 'SALE_PAYMENT_IN'
+  | 'SUPPLIER_PAYOUT'
+  | 'SUPPLIER_ADVANCE_GIVEN'
+  | 'SUPPLIER_REPAYMENT_IN'
+  | 'MERCHANT_PURCHASE_PAYOUT'
+  | 'MERCHANT_DEBT_COLLECTION_IN'
+  | 'EXPENSE_PAYOUT'
+  | 'INCOME_IN'
+  | 'DIRECT_CASH_IN'
+  | 'DIRECT_CASH_OUT'
+  | 'SALE_CANCELLED_CASH_REVERSAL'
+  | 'TRANSACTION_CANCELLED_CASH_REVERSAL'
+  | 'PURCHASE_CANCELLED_CASH_REVERSAL'
+  | 'MANUAL_CASH_ADJUSTMENT'
+  | 'DAILY_CLOSING_CORRECTION'
+  | 'SALES_RETURN_REFUND_OUT'
+  | 'PURCHASE_RETURN_RECOVERY_IN'
+  | 'SALES_RETURN_CANCELLED_CASH_REVERSAL'
+  | 'PURCHASE_RETURN_CANCELLED_CASH_REVERSAL';
+
+export type CashReferenceType =
+  | 'SALE'
+  | 'TRANSACTION'
+  | 'PURCHASE'
+  | 'MERCHANT_PAYMENT'
+  | 'SUPPLIER_ADVANCE'
+  | 'EXPENSE'
+  | 'INCOME'
+  | 'DIRECT'
+  | 'MANUAL_ADJUSTMENT'
+  | 'DAILY_CLOSING'
+  | 'DAILY_CLOSING_CORRECTION'
+  | 'RETURN'
+  | 'SALES_RETURN'
+  | 'PURCHASE_RETURN';
+
+export interface CashMovementRecord {
+  id: string;
+  amount: number; // Positive magnitude
+  direction: 'IN' | 'OUT';
+  signedAmount: number; // Positive for IN (+), negative for OUT (-)
+  type: CashMovementType;
+  typeLabelMy?: string;
+  referenceType: CashReferenceType;
+  referenceId: string;
+  referenceVoucherNo?: string;
+  counterpartName?: string;
+  paymentMethod?: PaymentMethod | string;
+  category?: string;
+  description: string;
+  transactionDate: string; // YYYY-MM-DD
+  transactionTime?: string; // HH:mm
+  notes?: string;
+  reversalOf?: string; // ID of original cash movement if this is a reversal
+  status: 'COMPLETED' | 'CANCELLED' | 'REVERSED';
+  idempotencyKey: string;
+  schemaVersion: number;
+  createdAt: string; // ISO string
+}
+
+export interface DailyClosingRecord {
+  id: string; // e.g. closing_2026-09-10
+  closingDate: string; // YYYY-MM-DD
+  openingCash: number;
+  totalCashIn: number;
+  totalCashOut: number;
+  expectedClosingCash: number; // openingCash + totalCashIn - totalCashOut
+  actualCountedCash: number;
+  difference: number; // actualCountedCash - expectedClosingCash (0 = balanced)
+  breakdown?: {
+    salesCash?: number;
+    debtCollectionCash?: number;
+    otherIncomeCash?: number;
+    supplierCashPayout?: number;
+    supplierAdvanceCash?: number;
+    purchaseCashPayout?: number;
+    expensesCash?: number;
+    reversalsNet?: number;
+    directCashNet?: number;
+  };
+  notes?: string;
+  status: 'CLOSED' | 'REOPENED_ADJUSTED';
+  closedAt: string; // ISO string
+  closedBy?: string;
+  deviceId?: string;
+  correctionReason?: string;
+  correctedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CashLedgerEntry {
+  id: string;
+  transactionDate: string;
+  transactionTime: string;
+  timestamp: number;
+  type: CashMovementType;
+  typeLabelMy: string;
+  direction: 'IN' | 'OUT';
+  amount: number; // Positive magnitude
+  signedAmount: number; // Positive for IN, negative for OUT
+  previousBalance: number;
+  balanceAfter: number;
+  referenceType: CashReferenceType;
+  referenceId: string;
+  referenceVoucherNo?: string;
+  counterpartName?: string;
+  paymentMethod?: string;
+  category?: string;
+  description: string;
+  notes?: string;
+  status: 'COMPLETED' | 'CANCELLED' | 'REVERSED';
+  idempotencyKey: string;
+}
+
+export interface DailyCashSummary {
+  date: string;
+  openingCash: number;
+  totalCashIn: number;
+  totalCashOut: number;
+  netCashFlow: number; // totalCashIn - totalCashOut
+  expectedClosingCash: number;
+  actualCountedCash?: number;
+  difference?: number;
+  isClosed: boolean;
+  closingRecord?: DailyClosingRecord;
+  entriesCount: number;
+  entries: CashLedgerEntry[];
+}
+
+export interface CashLedgerFilterOptions {
+  startDate?: string;
+  endDate?: string;
+  typeFilter?: 'ALL' | 'IN' | 'OUT' | CashMovementType;
+  paymentMethodFilter?: string;
+  searchQuery?: string;
+}
+
+export interface CashLedgerSummary {
+  openingBalance: number;
+  totalCashIn: number;
+  totalCashOut: number;
+  netCashFlow: number;
+  closingBalance: number;
+  totalEntriesCount: number;
+  entries: CashLedgerEntry[];
 }
 
 export interface DailySummary {
@@ -417,6 +572,52 @@ export interface AppLockSettings {
   lastResetAt?: string;
 }
 
+// ============================================================================
+// Phase 16: Returns, Refunds & Reversal Types
+// ============================================================================
+
+export type ReturnType = 'SALES_RETURN' | 'PURCHASE_RETURN';
+export type ReturnStatus = 'COMPLETED' | 'CANCELLED';
+
+export interface ReturnItem {
+  productId: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  reason?: string;
+}
+
+export interface ReturnRecord {
+  id: string;
+  returnNo: string; // e.g. RET-20260911-001 or PRET-20260911-001
+  type: ReturnType;
+  referenceType: 'SALE' | 'PURCHASE' | 'TRANSACTION';
+  referenceId: string;
+  referenceVoucherNo: string;
+  merchantId?: string;
+  merchantName?: string;
+  supplierId?: string;
+  supplierName?: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  items: ReturnItem[];
+  totalReturnAmount: number;
+  cashRefundAmount: number;
+  creditAdjustmentAmount: number;
+  refundPaymentMethod?: PaymentMethod | string;
+  reason?: string;
+  notes?: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  idempotencyKey: string;
+  status: ReturnStatus;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface AutoRecoverySnapshot {
   id: string;
   timestamp: number;
@@ -433,6 +634,9 @@ export interface AutoRecoverySnapshot {
     orders?: number;
     peerTransactions?: number;
     stockMovements?: number;
+    cashMovements?: number;
+    dailyClosings?: number;
+    returnsAndRefunds?: number;
   };
   data: {
     products: Product[];
@@ -447,6 +651,9 @@ export interface AutoRecoverySnapshot {
     peerTransactions?: PeerTransaction[];
     shopSettings: ShopSettings;
     stockMovements?: StockMovementRecord[];
+    cashMovements?: CashMovementRecord[];
+    dailyClosings?: DailyClosingRecord[];
+    returnsAndRefunds?: ReturnRecord[];
   };
 }
 
@@ -508,13 +715,42 @@ export interface SoftDeletedItem {
   data: any;
 }
 
+export type AuditActionType =
+  | 'SALE'
+  | 'PURCHASE'
+  | 'STOCK_MOVEMENT'
+  | 'CASH_MOVEMENT'
+  | 'RETURN'
+  | 'REFUND'
+  | 'REVERSAL'
+  | 'DAILY_CLOSING'
+  | 'DAILY_CLOSING_CORRECTION'
+  | 'PRODUCT_CHANGE'
+  | 'MASTER_DATA_CHANGE'
+  | 'DATABASE_REPAIR'
+  | 'DATABASE_RECOVERY'
+  | 'BACKUP_RESTORE'
+  | 'SYSTEM_ACTION'
+  | string;
+
 export interface AuditLogEntry {
   id: string;
   action: string;
+  actionType?: AuditActionType;
   details: string;
+  description?: string;
   timestamp: string;
   entityType?: string;
   entityId?: string;
+  referenceType?: string;
+  referenceId?: string;
+  referenceVoucherNo?: string;
+  amount?: number;
+  quantity?: number;
+  metadata?: Record<string, any>;
+  performer?: string;
+  createdAt?: string;
+  schemaVersion?: number;
 }
 
 export type PeerTradeStatus = 'OPEN' | 'PENDING' | 'REPAID' | 'RETRIEVED' | 'SETTLED' | string;
@@ -587,6 +823,9 @@ export interface BackupMetadata {
     rawMaterialPresets: number;
     attachments?: number;
     stockMovements?: number;
+    cashMovements?: number;
+    dailyClosings?: number;
+    returnsAndRefunds?: number;
   };
   dateRange?: {
     earliest: string;
@@ -609,6 +848,9 @@ export interface BackupDataPayload {
   auditLogs: AuditLogEntry[];
   rawMaterialPresets: RawMaterialPreset[];
   stockMovements?: StockMovementRecord[];
+  cashMovements?: CashMovementRecord[];
+  dailyClosings?: DailyClosingRecord[];
+  returnsAndRefunds?: ReturnRecord[];
   shopSettings: ShopSettings;
   appLockSettings?: AppLockSettings;
   backupReminderSettings?: BackupReminderSettings;

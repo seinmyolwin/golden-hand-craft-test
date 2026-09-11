@@ -25,7 +25,11 @@ export type StockMovementType =
   | 'DAMAGE_LOSS'
   | 'TRANSACTION_CANCELLED_REVERSAL'
   | 'SALE_CANCELLED_REVERSAL'
-  | 'PURCHASE_CANCELLED_REVERSAL';
+  | 'PURCHASE_CANCELLED_REVERSAL'
+  | 'SALES_RETURN_INBOUND'
+  | 'PURCHASE_RETURN_OUTBOUND'
+  | 'SALES_RETURN_CANCELLED_REVERSAL'
+  | 'PURCHASE_RETURN_CANCELLED_REVERSAL';
 
 export interface StockLedgerEntry {
   id: string;
@@ -109,6 +113,14 @@ export function getMovementTypeLabel(type: StockMovementType): string {
       return 'အရောင်းပယ်ဖျက် ပြန်ဖြည့် (Sale Cancelled)';
     case 'PURCHASE_CANCELLED_REVERSAL':
       return 'ဝယ်ယူမှုပယ်ဖျက် ပြန်နုတ် (Purchase Cancelled)';
+    case 'SALES_RETURN_INBOUND':
+      return 'အရောင်းပြန်လက်ခံ အဝင် (Sales Return Inbound)';
+    case 'PURCHASE_RETURN_OUTBOUND':
+      return 'ဝယ်ယူမှုပြန်အပ် အထွက် (Purchase Return Outbound)';
+    case 'SALES_RETURN_CANCELLED_REVERSAL':
+      return 'အရောင်းပြန်ပယ်ဖျက် ပြန်နုတ် (Sales Return Cancelled)';
+    case 'PURCHASE_RETURN_CANCELLED_REVERSAL':
+      return 'ဝယ်ပြန်အပ်ပယ်ဖျက် ပြန်ဖြည့် (Purchase Return Cancelled)';
     default:
       return type;
   }
@@ -643,7 +655,14 @@ export function exportAllProductsStockLedgerSummaryCSV(summaries: ProductStockLe
  * Persists a new StockMovementRecord with idempotency validation
  */
 export async function recordStockMovement(
-  movement: Omit<StockMovementRecord, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+  movement: Partial<StockMovementRecord> & {
+    productId: string;
+    movementType: StockMovementType;
+    quantity: number;
+    direction: 'IN' | 'OUT' | 'INITIAL';
+    signedQuantity: number;
+    referenceType: 'OPENING' | 'TRANSACTION' | 'SALE' | 'PURCHASE' | 'ADJUSTMENT' | 'PEER_TRADE' | 'REPAIR_RECONCILIATION';
+  }
 ): Promise<StockMovementRecord> {
   // 1. Idempotency check
   if (movement.idempotencyKey) {
@@ -655,11 +674,35 @@ export async function recordStockMovement(
 
   const id = movement.id || generateStableId('mv');
   const now = new Date().toISOString();
+  let productName = movement.productName;
+  if (!productName) {
+    const prod = await db.products.get(movement.productId);
+    productName = prod?.name || 'Unknown Product';
+  }
+
   const record: StockMovementRecord = {
-    ...movement,
     id,
-    createdAt: movement.createdAt || now,
+    productId: movement.productId,
+    productName,
+    movementType: movement.movementType,
+    quantity: movement.quantity,
+    direction: movement.direction,
+    signedQuantity: movement.signedQuantity,
+    referenceType: movement.referenceType,
+    referenceId: movement.referenceId,
+    referenceVoucherNo: movement.referenceVoucherNo,
+    counterpartName: movement.counterpartName,
+    unit: movement.unit,
+    unitPrice: movement.unitPrice,
+    totalValue: movement.totalValue,
+    transactionDate: movement.transactionDate || now.slice(0, 10),
+    transactionTime: movement.transactionTime,
+    notes: movement.notes,
+    reason: movement.reason,
+    idempotencyKey: movement.idempotencyKey,
+    status: movement.status || 'COMPLETED',
     schemaVersion: movement.schemaVersion || 1,
+    createdAt: movement.createdAt || now,
   };
 
   await db.stockMovements.put(record);

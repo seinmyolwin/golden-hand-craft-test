@@ -17,6 +17,9 @@ import {
   AutoRecoverySnapshot,
   RawMaterialPreset,
   StockMovementRecord,
+  CashMovementRecord,
+  DailyClosingRecord,
+  ReturnRecord,
 } from '../types';
 
 export interface SettingRecord {
@@ -57,6 +60,9 @@ export class ShweLetYarDatabase extends Dexie {
   recoverySnapshots!: EntityTable<AutoRecoverySnapshot, 'id'>;
   attachments!: EntityTable<AttachmentRecord, 'id'>;
   stockMovements!: EntityTable<StockMovementRecord, 'id'>;
+  cashMovements!: EntityTable<CashMovementRecord, 'id'>;
+  dailyClosings!: EntityTable<DailyClosingRecord, 'id'>;
+  returnsAndRefunds!: EntityTable<ReturnRecord, 'id'>;
 
   constructor() {
     super('ShweLetYarProductionDB');
@@ -153,6 +159,74 @@ export class ShweLetYarDatabase extends Dexie {
       recoverySnapshots: 'id, timestamp, date',
       attachments: 'id, voucherId, ownerId, createdAt',
       stockMovements: 'id, productId, movementType, referenceType, referenceId, idempotencyKey, transactionDate, [productId+transactionDate], status, createdAt',
+    });
+
+    // Version 6: Cash Ledger & Daily Closing
+    this.version(6).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      rawMaterialPresets: 'id, category, name',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, ownerId, createdAt',
+      stockMovements: 'id, productId, movementType, referenceType, referenceId, idempotencyKey, transactionDate, [productId+transactionDate], status, createdAt',
+      cashMovements: 'id, type, referenceType, referenceId, idempotencyKey, transactionDate, [transactionDate+type], status, createdAt',
+      dailyClosings: 'id, closingDate, status, closedAt, createdAt',
+    });
+
+    // Version 7: Returns, Refunds & Reversals
+    this.version(7).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      rawMaterialPresets: 'id, category, name',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, ownerId, createdAt',
+      stockMovements: 'id, productId, movementType, referenceType, referenceId, idempotencyKey, transactionDate, [productId+transactionDate], status, createdAt',
+      cashMovements: 'id, type, referenceType, referenceId, idempotencyKey, transactionDate, [transactionDate+type], status, createdAt',
+      dailyClosings: 'id, closingDate, status, closedAt, createdAt',
+      returnsAndRefunds: 'id, returnNo, type, referenceType, referenceId, merchantId, supplierId, date, status, idempotencyKey, createdAt',
+    });
+
+    // Version 8: Immutable Audit Trail & Traceability Indexing
+    this.version(8).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, actionType, timestamp, entityType, entityId, referenceType, referenceId, referenceVoucherNo, createdAt',
+      rawMaterialPresets: 'id, category, name',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, ownerId, createdAt',
+      stockMovements: 'id, productId, movementType, referenceType, referenceId, idempotencyKey, transactionDate, [productId+transactionDate], status, createdAt',
+      cashMovements: 'id, type, referenceType, referenceId, idempotencyKey, transactionDate, [transactionDate+type], status, createdAt',
+      dailyClosings: 'id, closingDate, status, closedAt, createdAt',
+      returnsAndRefunds: 'id, returnNo, type, referenceType, referenceId, merchantId, supplierId, date, status, idempotencyKey, createdAt',
     });
   }
 }

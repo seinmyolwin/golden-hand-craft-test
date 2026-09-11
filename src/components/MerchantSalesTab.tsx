@@ -20,6 +20,7 @@ import {
   TrendingUp,
   CreditCard,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 
 interface MerchantSalesTabProps {
@@ -32,6 +33,7 @@ interface MerchantSalesTabProps {
   onViewSaleVoucher: (sale: SaleRecord) => void;
   onDeleteSale?: (saleId: string) => void;
   onViewMerchantHistory?: (merchant: Merchant) => void;
+  onOpenReturnRefundModal?: (sale?: SaleRecord) => void;
 }
 
 export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
@@ -44,6 +46,7 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
   onViewSaleVoucher,
   onDeleteSale: _onDeleteSale,
   onViewMerchantHistory: _onViewMerchantHistory,
+  onOpenReturnRefundModal,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTown, setSelectedTown] = useState<string>('all');
@@ -127,6 +130,16 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenReturnRefundModal && (
+            <button
+              type="button"
+              onClick={() => onOpenReturnRefundModal()}
+              className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>ပစ္စည်းပြန်အပ်/ငွေပြန်အမ်း</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenNewSale}
@@ -306,6 +319,16 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {onOpenReturnRefundModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenReturnRefundModal(sale)}
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>ပြန်အပ်မည်</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onViewSaleVoucher(sale)}

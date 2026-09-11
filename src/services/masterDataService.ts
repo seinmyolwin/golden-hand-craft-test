@@ -103,7 +103,6 @@ export class MasterDataService {
   }
 
   async saveProduct(productData: Partial<Product>): Promise<Product> {
-    const isNew = !productData.id;
     const allProducts = await productRepo.getAll();
     const validation = this.validateProduct(productData, allProducts, productData.id);
     if (!validation.isValid) {
@@ -114,6 +113,7 @@ export class MasterDataService {
     const now = new Date().toISOString();
     const initialOpening = Math.max(0, productData.openingStock ?? 0);
     const existing = productData.id ? await productRepo.getById(productData.id) : undefined;
+    const isNew = !existing;
 
     const toSave: Product = {
       id,
@@ -285,7 +285,6 @@ export class MasterDataService {
       name: (supplierData.name || '').trim(),
       village: (supplierData.village || 'ကူနီ').trim(),
       phone: supplierData.phone || '',
-      craftType: supplierData.craftType || 'ရိုးရာလက်မှု',
       currentAdvanceBalance: existing?.currentAdvanceBalance ?? supplierData.currentAdvanceBalance ?? 0,
       totalGoodsValueDelivered: existing?.totalGoodsValueDelivered ?? supplierData.totalGoodsValueDelivered ?? 0,
       totalAdvanceGiven: existing?.totalAdvanceGiven ?? supplierData.totalAdvanceGiven ?? 0,

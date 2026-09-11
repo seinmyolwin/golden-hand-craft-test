@@ -14,6 +14,8 @@ import {
   SettingRecord,
   AttachmentRecord,
   StockMovementRecord,
+  CashMovementRecord,
+  DailyClosingRecord,
 } from '../types';
 
 export interface IProductRepository {
@@ -200,6 +202,27 @@ export interface IStockMovementRepository {
   getByIdempotencyKey(key: string): Promise<StockMovementRecord | undefined>;
   recordMovement(movement: StockMovementRecord): Promise<string>;
   recordMovementsMany(movements: StockMovementRecord[]): Promise<void>;
+  count(): Promise<number>;
+  clear(): Promise<void>;
+}
+
+export interface ICashMovementRepository {
+  getAll(): Promise<CashMovementRecord[]>;
+  getById(id: string): Promise<CashMovementRecord | undefined>;
+  getByDate(date: string): Promise<CashMovementRecord[]>;
+  getByReference(referenceType: string, referenceId: string): Promise<CashMovementRecord[]>;
+  getByIdempotencyKey(key: string): Promise<CashMovementRecord | undefined>;
+  recordMovement(movement: CashMovementRecord): Promise<string>;
+  recordMovementsMany(movements: CashMovementRecord[]): Promise<void>;
+  count(): Promise<number>;
+  clear(): Promise<void>;
+}
+
+export interface IDailyClosingRepository {
+  getAll(): Promise<DailyClosingRecord[]>;
+  getByDate(date: string): Promise<DailyClosingRecord | undefined>;
+  save(closing: DailyClosingRecord): Promise<string>;
+  saveMany(closings: DailyClosingRecord[]): Promise<void>;
   count(): Promise<number>;
   clear(): Promise<void>;
 }

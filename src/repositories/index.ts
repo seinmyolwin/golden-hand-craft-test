@@ -22,6 +22,8 @@ import {
   SettingRecord,
   AttachmentRecord,
   StockMovementRecord,
+  CashMovementRecord,
+  DailyClosingRecord,
 } from '../types';
 import {
   IProductRepository,
@@ -39,6 +41,8 @@ import {
   ISettingsRepository,
   IAttachmentRepository,
   IStockMovementRepository,
+  ICashMovementRepository,
+  IDailyClosingRepository,
 } from './types';
 import {
   BusinessIntegrityError,
@@ -48,6 +52,7 @@ import {
   AccountingInvariantError,
 } from './errors';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
+import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
 
 export * from './types';
 export * from './errors';
@@ -239,30 +244,55 @@ export class MerchantRepository implements IMerchantRepository {
 
     return this.database.transaction(
       'rw',
-      [this.database.merchants, this.database.auditLogs],
+      [this.database.merchants, this.database.auditLogs, this.database.cashMovements],
       async () => {
         const merchant = await this.database.merchants.get(merchantId);
         if (!merchant) {
           throw new EntityNotFoundError('Merchant', merchantId);
         }
 
+        const now = new Date().toISOString();
         const prevBalance = merchant.currentReceivableBalance || 0;
         const newBalance = Math.max(0, prevBalance - paymentAmount);
         const updatedMerchant: Merchant = {
           ...merchant,
           currentReceivableBalance: newBalance,
           totalPaidAmount: (merchant.totalPaidAmount || 0) + paymentAmount,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         };
 
         await this.database.merchants.put(updatedMerchant);
+
+        // Record Cash Movement in Cash Ledger
+        const cashId = generateStableId('csh');
+        const idempotencyKey = buildCashIdempotencyKey('MERCHANT_DEBT_COLLECTION_IN', merchant.id, Date.now().toString());
+        await this.database.cashMovements.put({
+          id: cashId,
+          amount: Math.abs(paymentAmount),
+          direction: 'IN',
+          signedAmount: Math.abs(paymentAmount),
+          type: 'MERCHANT_DEBT_COLLECTION_IN',
+          typeLabelMy: getCashMovementTypeLabel('MERCHANT_DEBT_COLLECTION_IN'),
+          referenceType: 'MERCHANT_PAYMENT',
+          referenceId: merchant.id,
+          counterpartName: merchant.name,
+          paymentMethod: paymentMethod || 'CASH',
+          description: `ကုန်သည်ကြွေးဟောင်းဆပ်ငွေ: ${merchant.name} (${merchant.town})`,
+          transactionDate: now.slice(0, 10),
+          transactionTime: now.slice(11, 16),
+          notes,
+          status: 'COMPLETED',
+          idempotencyKey,
+          schemaVersion: 1,
+          createdAt: now,
+        });
 
         // Audit Log
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
           action: 'ကုန်သည်ကြွေးကျန် ပေးဆပ်ခြင်း (Atomic)',
           details: `${merchant.name} (${merchant.town}): ပေးဆပ်ငွေ ${paymentAmount.toLocaleString()} ကျပ် (${paymentMethod}) | လက်ကျန်ကြွေး: ${newBalance.toLocaleString()} ကျပ်${notes ? ` | မှတ်ချက်: ${notes}` : ''}`,
-          timestamp: new Date().toISOString(),
+          timestamp: now,
           entityType: 'MERCHANT',
           entityId: merchant.id,
         };
@@ -328,6 +358,7 @@ export class TransactionRepository implements ITransactionRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         // 1. Idempotency protection
@@ -408,10 +439,64 @@ export class TransactionRepository implements ITransactionRepository {
         };
         await this.database.suppliers.put(updatedSupplier);
 
-        // 5. Save transaction record
+        // 5. Cash Ledger Recording
+        const cashPaid = tx.cashPaidToSupplier || tx.netCashPaidToSupplier || (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) || 0;
+        if (cashPaid > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_PAYOUT', enrichedTx.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(cashPaid),
+            direction: 'OUT',
+            signedAmount: -Math.abs(cashPaid),
+            type: 'SUPPLIER_PAYOUT',
+            typeLabelMy: getCashMovementTypeLabel('SUPPLIER_PAYOUT'),
+            referenceType: 'TRANSACTION',
+            referenceId: enrichedTx.id,
+            referenceVoucherNo: enrichedTx.voucherNo,
+            counterpartName: tx.supplierName || supplier.name,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကုန်သိမ်းငွေပေးချေမှု: ${tx.supplierName || supplier.name} (ဘောင်ချာ ${enrichedTx.voucherNo})`,
+            transactionDate: tx.date || now.slice(0, 10),
+            transactionTime: tx.time || now.slice(11, 16),
+            notes: tx.notes,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        if (tx.cashRepaymentReceived && tx.cashRepaymentReceived > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_REPAYMENT_IN', enrichedTx.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(tx.cashRepaymentReceived),
+            direction: 'IN',
+            signedAmount: Math.abs(tx.cashRepaymentReceived),
+            type: 'SUPPLIER_REPAYMENT_IN',
+            typeLabelMy: getCashMovementTypeLabel('SUPPLIER_REPAYMENT_IN'),
+            referenceType: 'TRANSACTION',
+            referenceId: enrichedTx.id,
+            referenceVoucherNo: enrichedTx.voucherNo,
+            counterpartName: tx.supplierName || supplier.name,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကြိုတင်ငွေပြန်ဆပ်မှု: ${tx.supplierName || supplier.name} (ဘောင်ချာ ${enrichedTx.voucherNo})`,
+            transactionDate: tx.date || now.slice(0, 10),
+            transactionTime: tx.time || now.slice(11, 16),
+            notes: tx.notes,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        // 6. Save transaction record
         await this.database.transactions.put(enrichedTx);
 
-        // 6. Audit Log
+        // 7. Audit Log
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
           action: 'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း (Atomic)',
@@ -431,9 +516,10 @@ export class TransactionRepository implements ITransactionRepository {
    * Atomic Inbound Goods Cancellation (Purchase Reversal)
    * 1. Decrements finished goods stock (reverses stock addition)
    * 2. Reverses supplier balance and aggregates
-   * 3. Marks transaction as CANCELLED
-   * 4. Appends reversal stock movements to ledger
-   * 5. Logs audit entry
+   * 3. Reverses cash ledger movements with compensating entries
+   * 4. Marks transaction as CANCELLED
+   * 5. Appends reversal stock movements to ledger
+   * 6. Logs audit entry
    */
   async cancelInboundAtomic(txId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<TransactionRecord> {
     return this.database.transaction(
@@ -444,6 +530,7 @@ export class TransactionRepository implements ITransactionRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         const tx = await this.database.transactions.get(txId);
@@ -495,7 +582,63 @@ export class TransactionRepository implements ITransactionRepository {
           }
         }
 
-        // 2. Revert supplier balance
+        // 2. Compensating Cash Ledger Reversals
+        const cashPaid = tx.cashPaidToSupplier || tx.netCashPaidToSupplier || (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) || 0;
+        if (cashPaid > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'PAYOUT_REV');
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(cashPaid),
+            direction: 'IN',
+            signedAmount: Math.abs(cashPaid),
+            type: 'TRANSACTION_CANCELLED_CASH_REVERSAL',
+            typeLabelMy: getCashMovementTypeLabel('TRANSACTION_CANCELLED_CASH_REVERSAL'),
+            referenceType: 'TRANSACTION',
+            referenceId: tx.id,
+            referenceVoucherNo: tx.voucherNo,
+            counterpartName: tx.supplierName,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကုန်သိမ်းဖျက်သိမ်းငွေပြန်ရ (Reversal): ${tx.supplierName} (ဘောင်ချာ ${tx.voucherNo || tx.id})`,
+            transactionDate: now.slice(0, 10),
+            transactionTime: now.slice(11, 16),
+            reversalOf: tx.id,
+            notes: reason,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        if (tx.cashRepaymentReceived && tx.cashRepaymentReceived > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'REP_REV');
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(tx.cashRepaymentReceived),
+            direction: 'OUT',
+            signedAmount: -Math.abs(tx.cashRepaymentReceived),
+            type: 'TRANSACTION_CANCELLED_CASH_REVERSAL',
+            typeLabelMy: getCashMovementTypeLabel('TRANSACTION_CANCELLED_CASH_REVERSAL'),
+            referenceType: 'TRANSACTION',
+            referenceId: tx.id,
+            referenceVoucherNo: tx.voucherNo,
+            counterpartName: tx.supplierName,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကြိုတင်ငွေပြန်ဆပ်မှုဖျက်သိမ်း (Reversal): ${tx.supplierName} (ဘောင်ချာ ${tx.voucherNo || tx.id})`,
+            transactionDate: now.slice(0, 10),
+            transactionTime: now.slice(11, 16),
+            reversalOf: tx.id,
+            notes: reason,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        // 3. Revert supplier balance
         const supplier = await this.database.suppliers.get(tx.supplierId);
         if (supplier) {
           // Re-add deducted advance or revert to previous balance
@@ -516,7 +659,7 @@ export class TransactionRepository implements ITransactionRepository {
           await this.database.suppliers.put(updatedSupplier);
         }
 
-        // 3. Mark transaction as CANCELLED
+        // 4. Mark transaction as CANCELLED
         const cancelledTx: TransactionRecord = {
           ...tx,
           status: 'CANCELLED',
@@ -526,7 +669,7 @@ export class TransactionRepository implements ITransactionRepository {
         };
         await this.database.transactions.put(cancelledTx);
 
-        // 4. Audit Log
+        // 5. Audit Log
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
           action: 'ကုန်သိမ်းစာရင်း ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
@@ -558,7 +701,7 @@ export class TransactionRepository implements ITransactionRepository {
 
     return this.database.transaction(
       'rw',
-      [this.database.transactions, this.database.suppliers, this.database.auditLogs],
+      [this.database.transactions, this.database.suppliers, this.database.auditLogs, this.database.cashMovements],
       async () => {
         const supplier = await this.database.suppliers.get(supplierId);
         if (!supplier) {
@@ -602,6 +745,31 @@ export class TransactionRepository implements ITransactionRepository {
           updatedAt: now.toISOString(),
         };
         await this.database.transactions.put(tx);
+
+        // Record Cash Movement in Cash Ledger
+        const cashId = generateStableId('csh');
+        const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_ADVANCE_GIVEN', tx.id);
+        await this.database.cashMovements.put({
+          id: cashId,
+          amount: Math.abs(advanceAmount),
+          direction: 'OUT',
+          signedAmount: -Math.abs(advanceAmount),
+          type: 'SUPPLIER_ADVANCE_GIVEN',
+          typeLabelMy: getCashMovementTypeLabel('SUPPLIER_ADVANCE_GIVEN'),
+          referenceType: 'SUPPLIER_ADVANCE',
+          referenceId: tx.id,
+          referenceVoucherNo: tx.voucherNo,
+          counterpartName: supplier.name,
+          paymentMethod: 'CASH',
+          description: `အကြိုငွေထုတ်ပေးမှု: ${supplier.name} (${supplier.village || ''})`,
+          transactionDate: date,
+          transactionTime: time,
+          notes: reason,
+          status: 'COMPLETED',
+          idempotencyKey,
+          schemaVersion: 1,
+          createdAt: now.toISOString(),
+        });
 
         // Audit Log
         const auditEntry: AuditLogEntry = {
@@ -679,6 +847,7 @@ export class SaleRepository implements ISaleRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         // 1. Idempotency check
@@ -762,10 +931,38 @@ export class SaleRepository implements ISaleRepository {
           await this.database.merchants.put(updatedMerchant);
         }
 
-        // 5. Save sale record
+        // 5. Cash Ledger Recording
+        const paidAmount = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+        if (paidAmount > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('SALE_PAYMENT_IN', enrichedSale.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(paidAmount),
+            direction: 'IN',
+            signedAmount: Math.abs(paidAmount),
+            type: 'SALE_PAYMENT_IN',
+            typeLabelMy: getCashMovementTypeLabel('SALE_PAYMENT_IN'),
+            referenceType: 'SALE',
+            referenceId: enrichedSale.id,
+            referenceVoucherNo: enrichedSale.voucherNo,
+            counterpartName: sale.merchantName || merchant?.name || 'ကုန်သည်',
+            paymentMethod: sale.paymentMethod || 'CASH',
+            description: `အရောင်းရငွေ: ${sale.merchantName || merchant?.name || 'ကုန်သည်'} (ဘောင်ချာ ${enrichedSale.voucherNo})`,
+            transactionDate: sale.date || now.slice(0, 10),
+            transactionTime: sale.time || now.slice(11, 16),
+            notes: sale.notes,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        // 6. Save sale record
         await this.database.sales.put(enrichedSale);
 
-        // 6. Audit Log
+        // 7. Audit Log
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
           action: 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း (Atomic)',
@@ -785,9 +982,10 @@ export class SaleRepository implements ISaleRepository {
    * Atomic Sale Cancellation
    * 1. Restores product inventory for all sold items
    * 2. Reverses merchant debt and purchase aggregates
-   * 3. Marks sale as CANCELLED
-   * 4. Appends reversal stock movements to ledger
-   * 5. Logs audit entry
+   * 3. Reverses cash received with compensating cash ledger entry
+   * 4. Marks sale as CANCELLED
+   * 5. Appends reversal stock movements to ledger
+   * 6. Logs audit entry
    */
   async cancelSaleAtomic(saleId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<SaleRecord> {
     return this.database.transaction(
@@ -798,6 +996,7 @@ export class SaleRepository implements ISaleRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         const sale = await this.database.sales.get(saleId);
@@ -849,7 +1048,36 @@ export class SaleRepository implements ISaleRepository {
           }
         }
 
-        // 2. Reverse merchant balance
+        // 2. Compensating Cash Ledger Reversal
+        const paidAmount = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+        if (paidAmount > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('SALE_CANCELLED_CASH_REVERSAL', sale.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(paidAmount),
+            direction: 'OUT',
+            signedAmount: -Math.abs(paidAmount),
+            type: 'SALE_CANCELLED_CASH_REVERSAL',
+            typeLabelMy: getCashMovementTypeLabel('SALE_CANCELLED_CASH_REVERSAL'),
+            referenceType: 'SALE',
+            referenceId: sale.id,
+            referenceVoucherNo: sale.voucherNo,
+            counterpartName: sale.merchantName,
+            paymentMethod: sale.paymentMethod || 'CASH',
+            description: `အရောင်းဖျက်သိမ်းငွေပြန်ထုတ် (Reversal): ${sale.merchantName} (ဘောင်ချာ ${sale.voucherNo || sale.id})`,
+            transactionDate: now.slice(0, 10),
+            transactionTime: now.slice(11, 16),
+            reversalOf: sale.id,
+            notes: reason,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        // 3. Reverse merchant balance
         if (sale.merchantId) {
           const merchant = await this.database.merchants.get(sale.merchantId);
           if (merchant) {
@@ -866,7 +1094,7 @@ export class SaleRepository implements ISaleRepository {
           }
         }
 
-        // 3. Mark sale as CANCELLED
+        // 4. Mark sale as CANCELLED
         const cancelledSale: SaleRecord = {
           ...sale,
           status: 'CANCELLED',
@@ -876,7 +1104,7 @@ export class SaleRepository implements ISaleRepository {
         };
         await this.database.sales.put(cancelledSale);
 
-        // 4. Audit Log
+        // 5. Audit Log
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
           action: 'အရောင်းဘောင်ချာ ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
@@ -941,6 +1169,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         // Idempotency check
@@ -1013,6 +1242,33 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           }
         }
 
+        // Record Cash Ledger Movement
+        if (purchase.paidAmount && purchase.paidAmount > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('MERCHANT_PURCHASE_PAYOUT', enrichedPurchase.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(purchase.paidAmount),
+            direction: 'OUT',
+            signedAmount: -Math.abs(purchase.paidAmount),
+            type: 'MERCHANT_PURCHASE_PAYOUT',
+            typeLabelMy: getCashMovementTypeLabel('MERCHANT_PURCHASE_PAYOUT'),
+            referenceType: 'PURCHASE',
+            referenceId: enrichedPurchase.id,
+            referenceVoucherNo: enrichedPurchase.purchaseNo,
+            counterpartName: purchase.merchantName || merchant.name,
+            paymentMethod: purchase.paymentMethod || 'CASH',
+            description: `ကုန်ကြမ်းဝယ်ယူငွေပေးချေမှု: ${purchase.merchantName || merchant.name} (ဘောင်ချာ ${enrichedPurchase.purchaseNo})`,
+            transactionDate: purchase.date || now.slice(0, 10),
+            transactionTime: purchase.time || now.slice(11, 16),
+            notes: purchase.notes,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
         await this.database.merchantPurchases.put(enrichedPurchase);
 
         const auditEntry: AuditLogEntry = {
@@ -1042,6 +1298,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         this.database.products,
         this.database.auditLogs,
         this.database.stockMovements,
+        this.database.cashMovements,
       ],
       async () => {
         const purchase = await this.database.merchantPurchases.get(purchaseId);
@@ -1102,6 +1359,34 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
               });
             }
           }
+        }
+
+        // Compensating Cash Ledger Reversal
+        if (purchase.paidAmount && purchase.paidAmount > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('PURCHASE_CANCELLED_CASH_REVERSAL', purchase.id);
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(purchase.paidAmount),
+            direction: 'IN',
+            signedAmount: Math.abs(purchase.paidAmount),
+            type: 'PURCHASE_CANCELLED_CASH_REVERSAL',
+            typeLabelMy: getCashMovementTypeLabel('PURCHASE_CANCELLED_CASH_REVERSAL'),
+            referenceType: 'PURCHASE',
+            referenceId: purchase.id,
+            referenceVoucherNo: purchase.purchaseNo,
+            counterpartName: purchase.merchantName,
+            paymentMethod: purchase.paymentMethod || 'CASH',
+            description: `ကုန်ကြမ်းဝယ်ယူမှုဖျက်သိမ်းငွေပြန်ရ (Reversal): ${purchase.merchantName} (ဘောင်ချာ ${purchase.purchaseNo || purchase.id})`,
+            transactionDate: now.slice(0, 10),
+            transactionTime: now.slice(11, 16),
+            reversalOf: purchase.id,
+            notes: reason,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
         }
 
         const cancelledPurchase: MerchantPurchaseRecord = {
@@ -1809,8 +2094,16 @@ export class StockMovementRepository implements IStockMovementRepository {
     return this.database.stockMovements.get(id);
   }
 
-  async getByProductId(productId: string): Promise<StockMovementRecord[]> {
+  async getByProduct(productId: string): Promise<StockMovementRecord[]> {
     return this.database.stockMovements.where('productId').equals(productId).reverse().sortBy('transactionDate');
+  }
+
+  async getByProductId(productId: string): Promise<StockMovementRecord[]> {
+    return this.getByProduct(productId);
+  }
+
+  async getByIdempotencyKey(key: string): Promise<StockMovementRecord | undefined> {
+    return this.database.stockMovements.where('idempotencyKey').equals(key).first();
   }
 
   async getByReference(referenceType: string, referenceId: string): Promise<StockMovementRecord[]> {
@@ -1840,6 +2133,10 @@ export class StockMovementRepository implements IStockMovementRepository {
     return movement.id;
   }
 
+  async recordMovementsMany(movements: StockMovementRecord[]): Promise<void> {
+    return this.recordMovementsAtomic(movements);
+  }
+
   async recordMovementsAtomic(movements: StockMovementRecord[]): Promise<void> {
     return this.database.transaction('rw', [this.database.stockMovements], async () => {
       for (const m of movements) {
@@ -1861,6 +2158,94 @@ export class StockMovementRepository implements IStockMovementRepository {
   }
 }
 
+export class CashMovementRepository implements ICashMovementRepository {
+  constructor(private database: ShweLetYarDatabase = db) {}
+
+  async getAll(): Promise<CashMovementRecord[]> {
+    return this.database.cashMovements.reverse().sortBy('transactionDate');
+  }
+
+  async getById(id: string): Promise<CashMovementRecord | undefined> {
+    return this.database.cashMovements.get(id);
+  }
+
+  async getByDate(date: string): Promise<CashMovementRecord[]> {
+    return this.database.cashMovements.where('transactionDate').equals(date).toArray();
+  }
+
+  async getByReference(referenceType: string, referenceId: string): Promise<CashMovementRecord[]> {
+    return this.database.cashMovements
+      .where('referenceType')
+      .equals(referenceType)
+      .filter((m) => m.referenceId === referenceId)
+      .toArray();
+  }
+
+  async getByIdempotencyKey(key: string): Promise<CashMovementRecord | undefined> {
+    return this.database.cashMovements.where('idempotencyKey').equals(key).first();
+  }
+
+  async recordMovement(movement: CashMovementRecord): Promise<string> {
+    if (movement.idempotencyKey) {
+      const existing = await this.database.cashMovements.where('idempotencyKey').equals(movement.idempotencyKey).first();
+      if (existing) {
+        return existing.id;
+      }
+    }
+    await this.database.cashMovements.put(movement);
+    return movement.id;
+  }
+
+  async recordMovementsMany(movements: CashMovementRecord[]): Promise<void> {
+    return this.database.transaction('rw', [this.database.cashMovements], async () => {
+      for (const m of movements) {
+        if (m.idempotencyKey) {
+          const existing = await this.database.cashMovements.where('idempotencyKey').equals(m.idempotencyKey).first();
+          if (existing) continue;
+        }
+        await this.database.cashMovements.put(m);
+      }
+    });
+  }
+
+  async count(): Promise<number> {
+    return this.database.cashMovements.count();
+  }
+
+  async clear(): Promise<void> {
+    await this.database.cashMovements.clear();
+  }
+}
+
+export class DailyClosingRepository implements IDailyClosingRepository {
+  constructor(private database: ShweLetYarDatabase = db) {}
+
+  async getAll(): Promise<DailyClosingRecord[]> {
+    return this.database.dailyClosings.reverse().sortBy('closingDate');
+  }
+
+  async getByDate(date: string): Promise<DailyClosingRecord | undefined> {
+    return this.database.dailyClosings.where('closingDate').equals(date).first();
+  }
+
+  async save(closing: DailyClosingRecord): Promise<string> {
+    await this.database.dailyClosings.put(closing);
+    return closing.id;
+  }
+
+  async saveMany(closings: DailyClosingRecord[]): Promise<void> {
+    await this.database.dailyClosings.bulkPut(closings);
+  }
+
+  async count(): Promise<number> {
+    return this.database.dailyClosings.count();
+  }
+
+  async clear(): Promise<void> {
+    await this.database.dailyClosings.clear();
+  }
+}
+
 // Singleton instances for presentation / application consumption
 export const productRepo = new ProductRepository();
 export const supplierRepo = new SupplierRepository();
@@ -1872,6 +2257,8 @@ export const orderRepo = new OrderRepository();
 export const peerTradeRepo = new PeerTradeRepository();
 export const stockAdjustmentRepo = new StockAdjustmentRepository();
 export const stockMovementRepo = new StockMovementRepository();
+export const cashMovementRepo = new CashMovementRepository();
+export const dailyClosingRepo = new DailyClosingRepository();
 export const softDeleteRepo = new SoftDeleteRepository();
 export const auditRepo = new AuditRepository();
 export const rawMaterialPresetRepo = new RawMaterialPresetRepository();

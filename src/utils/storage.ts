@@ -829,7 +829,6 @@ export function computeAllProductsStock(
   sales: SaleRecord[] = [],
   adjustments: StockAdjustmentRecord[] = [],
   merchantPurchases: MerchantPurchaseRecord[] = [],
-  peerTransactions: PeerTransaction[] = [],
   peerTrades: PeerTradeRecord[] = []
 ): ProductStockStats[] {
   const summaries = calculateAllProductsStockLedgerSummaries(
@@ -838,21 +837,30 @@ export function computeAllProductsStock(
     sales,
     adjustments,
     merchantPurchases,
-    peerTrades,
-    peerTransactions
+    peerTrades
   );
 
-  return summaries.map((s) => ({
-    product: s.product,
-    openingStock: s.openingStock,
-    totalInflow: s.totalInflow,
-    totalOutflow: s.totalOutflow,
-    adjustments: s.adjustments,
-    currentStock: s.currentStock,
-    procurementValue: s.procurementValue,
-    potentialSalesValue: s.potentialSalesValue,
-    status: s.status,
-  }));
+  return summaries.map((s) => {
+    const minAlert = s.product.minStockAlert ?? 10;
+    let status: 'OUT_OF_STOCK' | 'LOW_STOCK' | 'IN_STOCK' = 'IN_STOCK';
+    if (s.calculatedClosingBalance <= 0) {
+      status = 'OUT_OF_STOCK';
+    } else if (s.calculatedClosingBalance <= minAlert) {
+      status = 'LOW_STOCK';
+    }
+
+    return {
+      product: s.product,
+      openingStock: s.openingBalance,
+      totalInflow: s.totalInflowQty,
+      totalOutflow: s.totalOutflowQty,
+      adjustments: s.totalAdjustmentNetQty,
+      currentStock: s.calculatedClosingBalance,
+      procurementValue: s.currentStockCostValuation,
+      potentialSalesValue: s.currentStockWholesaleValuation,
+      status,
+    };
+  });
 }
 
 export async function saveFileWithLocationPrompt(

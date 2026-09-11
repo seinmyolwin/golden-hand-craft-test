@@ -29,6 +29,10 @@ import {
   SettingRecord,
   SoftDeletedItem,
   RawMaterialPreset,
+  ReturnRecord,
+  StockMovementRecord,
+  CashMovementRecord,
+  DailyClosingRecord,
 } from '../types';
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_ATTACHMENT_SIZE_BYTES } from './attachmentService';
 import { CURRENT_APP_VERSION, CURRENT_DATABASE_SCHEMA_VERSION } from './backupService';
@@ -49,6 +53,10 @@ export const EXPECTED_DATABASE_TABLES = [
   'settings',
   'recoverySnapshots',
   'attachments',
+  'stockMovements',
+  'cashMovements',
+  'dailyClosings',
+  'returnsAndRefunds',
 ] as const;
 
 /**
@@ -193,6 +201,10 @@ export async function runDatabaseDiagnostics(
   let settings: SettingRecord[] = [];
   let recoverySnapshots: AutoRecoverySnapshot[] = [];
   let attachments: AttachmentRecord[] = [];
+  let stockMovements: StockMovementRecord[] = [];
+  let cashMovements: CashMovementRecord[] = [];
+  let dailyClosings: DailyClosingRecord[] = [];
+  let returnsAndRefunds: ReturnRecord[] = [];
 
   let readFailed = false;
 
@@ -213,6 +225,10 @@ export async function runDatabaseDiagnostics(
       settings,
       recoverySnapshots,
       attachments,
+      stockMovements,
+      cashMovements,
+      dailyClosings,
+      returnsAndRefunds,
     ] = await Promise.all([
       targetDb.products.toArray(),
       targetDb.suppliers.toArray(),
@@ -229,6 +245,10 @@ export async function runDatabaseDiagnostics(
       targetDb.settings.toArray(),
       targetDb.recoverySnapshots.toArray(),
       targetDb.attachments.toArray(),
+      targetDb.stockMovements.toArray(),
+      targetDb.cashMovements.toArray(),
+      targetDb.dailyClosings.toArray(),
+      targetDb.returnsAndRefunds ? targetDb.returnsAndRefunds.toArray() : Promise.resolve([]),
     ]);
 
     tableCounts.products = products.length;
@@ -246,6 +266,10 @@ export async function runDatabaseDiagnostics(
     tableCounts.settings = settings.length;
     tableCounts.recoverySnapshots = recoverySnapshots.length;
     tableCounts.attachments = attachments.length;
+    tableCounts.stockMovements = stockMovements.length;
+    tableCounts.cashMovements = cashMovements.length;
+    tableCounts.dailyClosings = dailyClosings.length;
+    tableCounts.returnsAndRefunds = returnsAndRefunds.length;
   } catch (err: any) {
     readFailed = true;
     results.push({
@@ -1415,6 +1439,236 @@ export async function runDatabaseDiagnostics(
     };
     checkBrokenAttachmentRefs(transactions, 'Transaction');
     checkBrokenAttachmentRefs(sales, 'Sale');
+
+    // -------------------------------------------------------------
+    // Returns & Refunds Integrity Checks (Phase 16)
+    // -------------------------------------------------------------
+    if (returnsAndRefunds && returnsAndRefunds.length > 0) {
+      const returnKeySet = new Set<string>();
+      const stockMovementReversalMap = new Map<string, boolean>();
+      const cashMovementReversalMap = new Map<string, boolean>();
+
+      for (const sm of stockMovements) {
+        if (sm.reversalOf) stockMovementReversalMap.set(sm.reversalOf, true);
+      }
+      for (const cm of cashMovements) {
+        if (cm.reversalOf) cashMovementReversalMap.set(cm.reversalOf, true);
+      }
+
+      for (const ret of returnsAndRefunds) {
+        // 1. Orphan Return Reference Check
+        let refExists = false;
+        if (ret.type === 'SALES_RETURN' || ret.referenceType === 'SALE') {
+          refExists = saleIdSet.has(ret.referenceId);
+        } else if (
+          ret.type === 'PURCHASE_RETURN' ||
+          ret.referenceType === 'PURCHASE' ||
+          ret.referenceType === 'TRANSACTION'
+        ) {
+          refExists = purchaseIdSet.has(ret.referenceId) || transactionIdSet.has(ret.referenceId);
+        }
+
+        if (!refExists) {
+          results.push({
+            id: makeCheckId('orphan_ret_ref'),
+            category: 'REFERENCES',
+            severity: 'ERROR',
+            code: 'ORPHAN_RETURN_REFERENCE',
+            title: 'Orphan Return Voucher Reference',
+            message: `Return record #${ret.returnNo} references non-existent ${ret.referenceType} voucher ID "${ret.referenceId}".`,
+            entity: 'ReturnRecord',
+            recordId: ret.id,
+            detectedAt,
+          });
+        }
+
+        // 2. Duplicate Idempotency Key Check
+        if (ret.idempotencyKey) {
+          if (returnKeySet.has(ret.idempotencyKey)) {
+            results.push({
+              id: makeCheckId('dup_ret_key'),
+              category: 'DATA_INTEGRITY',
+              severity: 'ERROR',
+              code: 'DUPLICATE_RETURN_IDEMPOTENCY_KEY',
+              title: 'Duplicate Return Idempotency Key',
+              message: `Multiple return records share identical idempotency key "${ret.idempotencyKey}".`,
+              entity: 'ReturnRecord',
+              recordId: ret.id,
+              detectedAt,
+            });
+          } else {
+            returnKeySet.add(ret.idempotencyKey);
+          }
+        }
+
+        // 3. Invalid Return Quantities
+        if (!Array.isArray(ret.items) || ret.items.length === 0) {
+          results.push({
+            id: makeCheckId('ret_no_items'),
+            category: 'DATA_INTEGRITY',
+            severity: 'ERROR',
+            code: 'INVALID_QUANTITY',
+            title: 'Return Record Has No Items',
+            message: `Return record #${ret.returnNo} contains an empty items list.`,
+            entity: 'ReturnRecord',
+            recordId: ret.id,
+            detectedAt,
+          });
+        } else {
+          for (const item of ret.items) {
+            if (typeof item.quantity !== 'number' || item.quantity <= 0) {
+              results.push({
+                id: makeCheckId('ret_inv_qty'),
+                category: 'DATA_INTEGRITY',
+                severity: 'ERROR',
+                code: 'INVALID_QUANTITY',
+                title: 'Invalid Return Item Quantity',
+                message: `Return record #${ret.returnNo} item "${item.productName}" has invalid quantity ${item.quantity}.`,
+                entity: 'ReturnRecord',
+                recordId: ret.id,
+                detectedAt,
+              });
+            }
+          }
+        }
+
+        // 4. Missing Reversal Links for Cancelled Returns
+        if (ret.status === 'CANCELLED') {
+          const hasStockRev = stockMovementReversalMap.has(ret.id);
+          const hasCashRev = ret.cashRefundAmount > 0 ? cashMovementReversalMap.has(ret.id) : true;
+
+          if (!hasStockRev || !hasCashRev) {
+            results.push({
+              id: makeCheckId('missing_ret_rev'),
+              category: 'FINANCIAL',
+              severity: 'CRITICAL',
+              code: 'MISSING_RETURN_REVERSAL_LINK',
+              title: 'Missing Cancelled Return Reversal Entry',
+              message: `Cancelled return record #${ret.returnNo} is missing compensating stock or cash ledger reversal records.`,
+              entity: 'ReturnRecord',
+              recordId: ret.id,
+              detectedAt,
+            });
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Audit Trail & Activity History Diagnostics (Phase 17)
+    // -------------------------------------------------------------
+    const auditSeenIds = new Set<string>();
+    const returnIdSet = new Set<string>((returnsAndRefunds || []).map((r) => r.id));
+    const dailyClosingIdSet = new Set<string>((dailyClosings || []).map((d) => d.id));
+
+    for (const log of auditLogs) {
+      if (!log.id) {
+        results.push({
+          id: makeCheckId('audit_no_id'),
+          category: 'AUDIT_TRAIL',
+          severity: 'ERROR',
+          code: 'MISSING_REQUIRED_FIELD',
+          title: 'Audit Log Missing ID',
+          message: 'An audit log record is missing an ID.',
+          entity: 'AuditLog',
+          recordId: 'unknown',
+          detectedAt,
+        });
+        continue;
+      }
+
+      if (auditSeenIds.has(log.id)) {
+        results.push({
+          id: makeCheckId('audit_dup_id'),
+          category: 'AUDIT_TRAIL',
+          severity: 'ERROR',
+          code: 'DUPLICATE_AUDIT_ID',
+          title: 'Duplicate Audit Log ID',
+          message: `Multiple audit log entries share identical ID "${log.id}".`,
+          entity: 'AuditLog',
+          recordId: log.id,
+          detectedAt,
+        });
+      }
+      auditSeenIds.add(log.id);
+
+      const refType = log.referenceType || log.entityType;
+      const refId = log.referenceId || log.entityId;
+
+      if (!refType || !refId) {
+        results.push({
+          id: makeCheckId('audit_invalid_ref'),
+          category: 'AUDIT_TRAIL',
+          severity: 'WARN',
+          code: 'INVALID_AUDIT_REFERENCE',
+          title: 'Invalid Audit Reference',
+          message: `Audit log "${log.id}" is missing referenceType or referenceId.`,
+          entity: 'AuditLog',
+          recordId: log.id,
+          detectedAt,
+        });
+      } else if (refId !== 'system' && refType !== 'SYSTEM') {
+        let exists = true;
+        if (refType === 'SALE') exists = saleIdSet.has(refId);
+        else if (refType === 'PURCHASE') exists = purchaseIdSet.has(refId);
+        else if (refType === 'TRANSACTION') exists = transactionIdSet.has(refId);
+        else if (refType === 'PRODUCT') exists = productIdSet.has(refId);
+        else if (refType === 'SUPPLIER') exists = supIdSet.has(refId);
+        else if (refType === 'MERCHANT') exists = merchIdSet.has(refId);
+        else if (refType === 'RETURN') exists = returnIdSet.has(refId);
+        else if (refType === 'DAILY_CLOSING') exists = dailyClosingIdSet.has(refId);
+
+        if (!exists && !delIdSet.has(refId)) {
+          results.push({
+            id: makeCheckId('audit_orphan_ref'),
+            category: 'AUDIT_TRAIL',
+            severity: 'WARN',
+            code: 'ORPHAN_AUDIT_REFERENCE',
+            title: 'Orphan Audit Reference',
+            message: `Audit log "${log.id}" references non-existent ${refType} record "${refId}".`,
+            entity: 'AuditLog',
+            recordId: log.id,
+            relatedRecordIds: [refId],
+            detectedAt,
+          });
+        }
+      }
+
+      // Reversal & Correction traceability links
+      const isReversal =
+        log.actionType === 'REVERSAL' ||
+        (log.action || '').toUpperCase().includes('REVERSAL') ||
+        (log.action || '').toUpperCase().includes('CANCEL');
+      const isCorrection =
+        log.actionType === 'DAILY_CLOSING_CORRECTION' ||
+        (log.action || '').toUpperCase().includes('CLOSING_CORRECT') ||
+        (log.action || '').toUpperCase().includes('REOPEN');
+
+      if (isReversal || isCorrection) {
+        const meta = log.metadata || {};
+        const hasLink =
+          meta.reversalOf ||
+          meta.originalSaleId ||
+          meta.originalRecordId ||
+          meta.originalVoucherNo ||
+          meta.originalAuditId ||
+          (log.referenceId && log.referenceId !== 'system') ||
+          (log.entityId && log.entityId !== 'system');
+        if (!hasLink) {
+          results.push({
+            id: makeCheckId('audit_missing_rev_link'),
+            category: 'AUDIT_TRAIL',
+            severity: 'WARN',
+            code: 'MISSING_REVERSAL_LINK',
+            title: 'Missing Reversal / Correction Link',
+            message: `Reversal or correction audit log "${log.id}" does not specify an original target record or reversal link.`,
+            entity: 'AuditLog',
+            recordId: log.id,
+            detectedAt,
+          });
+        }
+      }
+    }
 
     // -------------------------------------------------------------
     // K: Backup & Safety Snapshots Health

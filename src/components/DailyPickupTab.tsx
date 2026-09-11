@@ -18,6 +18,7 @@ import {
   Eye,
   ArrowRight,
   X,
+  Wallet,
 } from 'lucide-react';
 
 interface DailyPickupTabProps {
@@ -32,6 +33,7 @@ interface DailyPickupTabProps {
   pendingOrders?: MerchantOrder[];
   onNavigateToOrders?: () => void;
   onOpenOrderNotificationModal?: (order: MerchantOrder) => void;
+  onOpenCashLedger?: () => void;
 }
 
 export const DailyPickupTab: React.FC<DailyPickupTabProps> = ({
@@ -46,6 +48,7 @@ export const DailyPickupTab: React.FC<DailyPickupTabProps> = ({
   pendingOrders = [],
   onNavigateToOrders,
   onOpenOrderNotificationModal,
+  onOpenCashLedger,
 }) => {
   const [filterVillage, setFilterVillage] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -163,6 +166,17 @@ export const DailyPickupTab: React.FC<DailyPickupTabProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {onOpenCashLedger && (
+              <button
+                type="button"
+                onClick={onOpenCashLedger}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs rounded-lg flex items-center gap-1.5 cursor-pointer border border-slate-700 transition-colors"
+                title="ငွေစာရင်းလယ်ဂျာ နှင့် နေ့ချုပ်စာရင်း ကြည့်ရှုရန်"
+              >
+                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ငွေစာရင်း & နေ့ချုပ်</span>
+              </button>
+            )}
             {todayTransactions.length > 0 && (
               <button
                 type="button"

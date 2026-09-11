@@ -10,6 +10,10 @@ import {
   MerchantOrder,
   StockAdjustmentRecord,
   PeerTradeRecord,
+  StockMovementRecord,
+  CashMovementRecord,
+  DailyClosingRecord,
+  ReturnRecord,
   SoftDeletedItem,
   AuditLogEntry,
   RawMaterialPreset,
@@ -93,6 +97,10 @@ export async function createCompleteBackup(options?: {
     auditLogs,
     rawMaterialPresets,
     attachments,
+    stockMovements,
+    cashMovements,
+    dailyClosings,
+    returnsAndRefunds,
   ] = await Promise.all([
     db.products.toArray(),
     db.suppliers.toArray(),
@@ -107,6 +115,10 @@ export async function createCompleteBackup(options?: {
     db.auditLogs.toArray(),
     db.rawMaterialPresets.toArray(),
     db.attachments.toArray(),
+    db.stockMovements.toArray(),
+    db.cashMovements.toArray(),
+    db.dailyClosings.toArray(),
+    db.returnsAndRefunds ? db.returnsAndRefunds.toArray() : Promise.resolve([]),
   ]);
 
   const shopSettings = options?.shopSettings || getStoredShopSettings();
@@ -129,6 +141,9 @@ export async function createCompleteBackup(options?: {
   sales.forEach((s) => s.date && allDates.push(s.date));
   merchantPurchases.forEach((p) => p.date && allDates.push(p.date));
   orders.forEach((o) => (o.date || o.orderDate) && allDates.push(o.date || o.orderDate || ''));
+  cashMovements.forEach((c) => c.transactionDate && allDates.push(c.transactionDate));
+  dailyClosings.forEach((d) => d.closingDate && allDates.push(d.closingDate));
+  returnsAndRefunds.forEach((r) => r.date && allDates.push(r.date));
   const validDates = allDates.filter(Boolean).sort();
   const dateRange = validDates.length > 0
     ? { earliest: validDates[0], latest: validDates[validDates.length - 1] }
@@ -147,7 +162,11 @@ export async function createCompleteBackup(options?: {
     softDeletedItems.length +
     auditLogs.length +
     presetsFromStore.length +
-    attachments.length;
+    attachments.length +
+    stockMovements.length +
+    cashMovements.length +
+    dailyClosings.length +
+    returnsAndRefunds.length;
 
   const metadata: BackupMetadata = {
     shopName: shopSettings.shopName || 'ရွှေလက်ရာ',
@@ -168,6 +187,10 @@ export async function createCompleteBackup(options?: {
       auditLogs: auditLogs.length,
       rawMaterialPresets: presetsFromStore.length,
       attachments: attachments.length,
+      stockMovements: stockMovements.length,
+      cashMovements: cashMovements.length,
+      dailyClosings: dailyClosings.length,
+      returnsAndRefunds: returnsAndRefunds.length,
     },
     dateRange,
     customNotes: options?.customNotes,
@@ -214,6 +237,10 @@ export async function createCompleteBackup(options?: {
     productCategories,
     rawMaterialCategories,
     attachments: serializableAttachments,
+    stockMovements,
+    cashMovements,
+    dailyClosings,
+    returnsAndRefunds,
   };
 
   const dataPayloadString = JSON.stringify(data);
@@ -319,6 +346,9 @@ export function normalizeRawBackup(raw: any): {
   const auditLogs: AuditLogEntry[] = Array.isArray(rawData.auditLogs) ? rawData.auditLogs : [];
   const rawMaterialPresets: RawMaterialPreset[] = Array.isArray(rawData.rawMaterialPresets || rawData.rawMaterials) ? (rawData.rawMaterialPresets || rawData.rawMaterials) : [];
   const attachments: AttachmentRecord[] = Array.isArray(rawData.attachments) ? rawData.attachments : [];
+  const stockMovements: StockMovementRecord[] = Array.isArray(rawData.stockMovements) ? rawData.stockMovements : [];
+  const cashMovements: CashMovementRecord[] = Array.isArray(rawData.cashMovements) ? rawData.cashMovements : [];
+  const dailyClosings: DailyClosingRecord[] = Array.isArray(rawData.dailyClosings) ? rawData.dailyClosings : [];
 
   const shopSettings: ShopSettings = {
     ...DEFAULT_SHOP_SETTINGS,
@@ -343,7 +373,10 @@ export function normalizeRawBackup(raw: any): {
     softDeletedItems.length +
     auditLogs.length +
     rawMaterialPresets.length +
-    attachments.length;
+    attachments.length +
+    stockMovements.length +
+    cashMovements.length +
+    dailyClosings.length;
 
   const counts = {
     products: products.length,
@@ -359,6 +392,9 @@ export function normalizeRawBackup(raw: any): {
     auditLogs: auditLogs.length,
     rawMaterialPresets: rawMaterialPresets.length,
     attachments: attachments.length,
+    stockMovements: stockMovements.length,
+    cashMovements: cashMovements.length,
+    dailyClosings: dailyClosings.length,
   };
 
   const allDates: string[] = [];
@@ -366,6 +402,8 @@ export function normalizeRawBackup(raw: any): {
   sales.forEach((s) => s.date && allDates.push(s.date));
   merchantPurchases.forEach((p) => p.date && allDates.push(p.date));
   orders.forEach((o) => (o.date || o.orderDate) && allDates.push(o.date || o.orderDate || ''));
+  cashMovements.forEach((c) => c.transactionDate && allDates.push(c.transactionDate));
+  dailyClosings.forEach((d) => d.closingDate && allDates.push(d.closingDate));
   const validDates = allDates.filter(Boolean).sort();
   const dateRange = validDates.length > 0
     ? { earliest: validDates[0], latest: validDates[validDates.length - 1] }
@@ -410,6 +448,9 @@ export function normalizeRawBackup(raw: any): {
     productCategories,
     rawMaterialCategories,
     attachments,
+    stockMovements,
+    cashMovements,
+    dailyClosings,
   };
 
   return { normalized, metadata, formatVersion, checksum };
@@ -971,6 +1012,10 @@ export async function createAutoRecoverySnapshot(
     merchantOrders,
     merchantPurchases,
     peerTrades,
+    stockMovements,
+    cashMovements,
+    dailyClosings,
+    returnsAndRefunds,
   ] = await Promise.all([
     targetDb.products.toArray(),
     targetDb.suppliers.toArray(),
@@ -981,6 +1026,10 @@ export async function createAutoRecoverySnapshot(
     targetDb.orders.toArray(),
     targetDb.merchantPurchases.toArray(),
     targetDb.peerTrades.toArray(),
+    targetDb.stockMovements.toArray(),
+    targetDb.cashMovements.toArray(),
+    targetDb.dailyClosings.toArray(),
+    targetDb.returnsAndRefunds ? targetDb.returnsAndRefunds.toArray() : Promise.resolve([]),
   ]);
 
   const shopSettings = getStoredShopSettings();
@@ -1012,6 +1061,10 @@ export async function createAutoRecoverySnapshot(
       peerTraders: [],
       peerTransactions: [],
       shopSettings,
+      stockMovements,
+      cashMovements,
+      dailyClosings,
+      returnsAndRefunds,
     },
   };
 
@@ -1064,6 +1117,9 @@ export async function executeSafeRestore(
     ordersRestored: data.orders.length,
     stockAdjustmentsRestored: data.stockAdjustments.length,
     peerTradesRestored: data.peerTrades.length,
+    stockMovementsRestored: data.stockMovements?.length || 0,
+    cashMovementsRestored: data.cashMovements?.length || 0,
+    dailyClosingsRestored: data.dailyClosings?.length || 0,
   };
 
   // Step 2: Atomic Dexie Transaction
@@ -1085,6 +1141,10 @@ export async function executeSafeRestore(
         db.rawMaterialPresets,
         db.settings,
         db.attachments,
+        db.stockMovements,
+        db.cashMovements,
+        db.dailyClosings,
+        db.returnsAndRefunds,
       ],
       async () => {
         // Prepare attachments with native IndexedDB Blobs
@@ -1138,7 +1198,12 @@ export async function executeSafeRestore(
             db.stockAdjustments.clear(),
             db.peerTrades.clear(),
             db.softDeletedItems.clear(),
+            db.auditLogs.clear(),
             db.attachments.clear(),
+            db.stockMovements.clear(),
+            db.cashMovements.clear(),
+            db.dailyClosings.clear(),
+            db.returnsAndRefunds ? db.returnsAndRefunds.clear() : Promise.resolve(),
           ]);
 
           if (data.products.length > 0) await db.products.bulkPut(data.products);
@@ -1151,7 +1216,14 @@ export async function executeSafeRestore(
           if (data.stockAdjustments.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
           if (data.peerTrades.length > 0) await db.peerTrades.bulkPut(data.peerTrades);
           if (data.softDeletedItems.length > 0) await db.softDeletedItems.bulkPut(data.softDeletedItems);
+          if (data.auditLogs && data.auditLogs.length > 0) await db.auditLogs.bulkPut(data.auditLogs);
           if (restoredAttachments.length > 0) await db.attachments.bulkPut(restoredAttachments);
+          if (data.stockMovements && data.stockMovements.length > 0) await db.stockMovements.bulkPut(data.stockMovements);
+          if (data.cashMovements && data.cashMovements.length > 0) await db.cashMovements.bulkPut(data.cashMovements);
+          if (data.dailyClosings && data.dailyClosings.length > 0) await db.dailyClosings.bulkPut(data.dailyClosings);
+          if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && db.returnsAndRefunds) {
+            await db.returnsAndRefunds.bulkPut(data.returnsAndRefunds);
+          }
           if (data.rawMaterialPresets.length > 0) {
             await db.rawMaterialPresets.clear();
             await db.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
@@ -1180,7 +1252,14 @@ export async function executeSafeRestore(
           if (data.stockAdjustments.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
           if (data.peerTrades.length > 0) await db.peerTrades.bulkPut(data.peerTrades);
           if (data.softDeletedItems.length > 0) await db.softDeletedItems.bulkPut(data.softDeletedItems);
+          if (data.auditLogs && data.auditLogs.length > 0) await db.auditLogs.bulkPut(data.auditLogs);
           if (restoredAttachments.length > 0) await db.attachments.bulkPut(restoredAttachments);
+          if (data.stockMovements && data.stockMovements.length > 0) await db.stockMovements.bulkPut(data.stockMovements);
+          if (data.cashMovements && data.cashMovements.length > 0) await db.cashMovements.bulkPut(data.cashMovements);
+          if (data.dailyClosings && data.dailyClosings.length > 0) await db.dailyClosings.bulkPut(data.dailyClosings);
+          if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && db.returnsAndRefunds) {
+            await db.returnsAndRefunds.bulkPut(data.returnsAndRefunds);
+          }
           if (data.rawMaterialPresets.length > 0) await db.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
 
           // Merge categories
@@ -1280,6 +1359,10 @@ export async function restoreFromSnapshot(
       targetDb.stockAdjustments,
       targetDb.peerTrades,
       targetDb.auditLogs,
+      targetDb.stockMovements,
+      targetDb.cashMovements,
+      targetDb.dailyClosings,
+      targetDb.returnsAndRefunds,
     ],
     async () => {
       await Promise.all([
@@ -1292,6 +1375,10 @@ export async function restoreFromSnapshot(
         targetDb.orders.clear(),
         targetDb.stockAdjustments.clear(),
         targetDb.peerTrades.clear(),
+        targetDb.stockMovements.clear(),
+        targetDb.cashMovements.clear(),
+        targetDb.dailyClosings.clear(),
+        targetDb.returnsAndRefunds ? targetDb.returnsAndRefunds.clear() : Promise.resolve(),
       ]);
 
       if (data.products?.length > 0) await targetDb.products.bulkPut(data.products);
@@ -1306,6 +1393,18 @@ export async function restoreFromSnapshot(
         await targetDb.orders.bulkPut(data.merchantOrders);
       }
       if (data.stockAdjustments?.length > 0) await targetDb.stockAdjustments.bulkPut(data.stockAdjustments);
+      if (data.stockMovements && data.stockMovements.length > 0) {
+        await targetDb.stockMovements.bulkPut(data.stockMovements);
+      }
+      if (data.cashMovements && data.cashMovements.length > 0) {
+        await targetDb.cashMovements.bulkPut(data.cashMovements);
+      }
+      if (data.dailyClosings && data.dailyClosings.length > 0) {
+        await targetDb.dailyClosings.bulkPut(data.dailyClosings);
+      }
+      if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && targetDb.returnsAndRefunds) {
+        await targetDb.returnsAndRefunds.bulkPut(data.returnsAndRefunds);
+      }
 
       if (data.shopSettings) saveStoredShopSettings(data.shopSettings);
 
