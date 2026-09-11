@@ -638,11 +638,16 @@ export interface AutoRecoverySnapshot {
     sales: number;
     stockAdjustments: number;
     orders?: number;
+    peerTrades?: number;
     peerTransactions?: number;
     stockMovements?: number;
     cashMovements?: number;
     dailyClosings?: number;
     returnsAndRefunds?: number;
+    auditLogs?: number;
+    softDeletedItems?: number;
+    attachments?: number;
+    rawMaterialPresets?: number;
   };
   data: {
     products: Product[];
@@ -655,11 +660,16 @@ export interface AutoRecoverySnapshot {
     merchantPurchases?: MerchantPurchaseRecord[];
     peerTraders?: PeerTrader[];
     peerTransactions?: PeerTransaction[];
+    peerTrades?: PeerTradeRecord[];
     shopSettings: ShopSettings;
     stockMovements?: StockMovementRecord[];
     cashMovements?: CashMovementRecord[];
     dailyClosings?: DailyClosingRecord[];
     returnsAndRefunds?: ReturnRecord[];
+    auditLogs?: AuditLogEntry[];
+    softDeletedItems?: SoftDeletedItem[];
+    attachments?: AttachmentRecord[];
+    rawMaterialPresets?: RawMaterialPreset[];
   };
 }
 

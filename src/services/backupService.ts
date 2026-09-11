@@ -594,17 +594,96 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
     };
   }
 
-  // 1. Checksum validation (if v3.0 has checksum)
+  // 1. Checksum & Structural Integrity validation
   let checksumValid = true;
-  if (formatVersion === '3.0' && checksum && parsedObj.data) {
-    const calculatedChecksum = await computeChecksum(JSON.stringify(parsedObj.data));
-    if (calculatedChecksum !== checksum) {
+  if (formatVersion === '3.0') {
+    if (checksum && parsedObj.data) {
+      const calculatedChecksum = await computeChecksum(JSON.stringify(parsedObj.data));
+      if (calculatedChecksum !== checksum) {
+        checksumValid = false;
+        warnings.push({
+          field: 'checksum',
+          message: 'ဖိုင်အတွင်း အချက်အလက်များ ပြင်ဆင်ခံထားရနိုင်သည် (Checksum mismatch, continuing with deep field validation)',
+          code: 'CHECKSUM_MISMATCH',
+        });
+      }
+    } else if (!checksum) {
       checksumValid = false;
       warnings.push({
         field: 'checksum',
-        message: 'ဖိုင်အတွင်း အချက်အလက်များ ပြင်ဆင်ခံထားရနိုင်သည် (Checksum mismatch, continuing with deep field validation)',
-        code: 'CHECKSUM_MISMATCH',
+        message: 'v3.0 ဖိုင်ဖြစ်သော်လည်း Checksum မပါရှိပါ',
+        code: 'MISSING_CHECKSUM',
       });
+    }
+  } else if (formatVersion === '2.0' || formatVersion === '1.0') {
+    // Backward-compatibility: v1/v2 legacy backups
+    if (checksum) {
+      const payloadToCheck = parsedObj.data || parsedObj;
+      const calculatedChecksum = await computeChecksum(JSON.stringify(payloadToCheck));
+      if (calculatedChecksum !== checksum) {
+        checksumValid = false;
+        warnings.push({
+          field: 'checksum',
+          message: 'Legacy backup checksum မကိုက်ညီပါ (Checksum mismatch)',
+          code: 'CHECKSUM_MISMATCH',
+        });
+      }
+    } else {
+      // Legacy format without cryptographic checksum:
+      // Perform strict structural integrity verification
+      let structuralFailure = false;
+      const checkCollectionStructure = (items: any[], entityName: string) => {
+        if (!Array.isArray(items)) {
+          structuralFailure = true;
+          errors.push({
+            field: entityName,
+            message: `Legacy format တွင် ${entityName} စာရင်းသည် array မဟုတ်ပါ`,
+            code: 'INVALID_COLLECTION_STRUCTURE',
+            severity: 'FATAL',
+          });
+          return;
+        }
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (!item || typeof item !== 'object') {
+            structuralFailure = true;
+            errors.push({
+              field: `${entityName}[${i}]`,
+              message: `Legacy format ရှိ ${entityName} အမှတ် (${i + 1}) သည် object မဟုတ်ပါ`,
+              code: 'INVALID_ENTITY_STRUCTURE',
+              severity: 'FATAL',
+            });
+            break;
+          }
+          if (!item.id || typeof item.id !== 'string') {
+            structuralFailure = true;
+            errors.push({
+              field: `${entityName}[${i}].id`,
+              message: `Legacy format ရှိ ${entityName} အမှတ် (${i + 1}) တွင် ID မပါရှိပါ`,
+              code: 'MISSING_ENTITY_ID',
+              severity: 'FATAL',
+            });
+            break;
+          }
+        }
+      };
+
+      checkCollectionStructure(normalized.products, 'products');
+      checkCollectionStructure(normalized.suppliers, 'suppliers');
+      checkCollectionStructure(normalized.merchants, 'merchants');
+      checkCollectionStructure(normalized.transactions, 'transactions');
+      checkCollectionStructure(normalized.sales, 'sales');
+
+      if (structuralFailure) {
+        checksumValid = false;
+      } else {
+        checksumValid = true;
+        warnings.push({
+          field: 'formatVersion',
+          message: `v${formatVersion} Legacy format: Cryptographic checksum မပါရှိပါ (v3.0 သို့ အလိုအလျောက် အဆင့်မြှင့်တင်ပါမည်)။ Structural integrity စစ်ဆေးမှု အောင်မြင်ပါသည်။`,
+          code: 'LEGACY_BACKUP_STRUCTURAL_INTEGRITY_VERIFIED',
+        });
+      }
     }
   }
 
@@ -1022,6 +1101,10 @@ export async function createAutoRecoverySnapshot(
     merchantOrders,
     merchantPurchases,
     peerTrades,
+    softDeletedItems,
+    auditLogs,
+    rawMaterialPresets,
+    attachments,
     stockMovements,
     cashMovements,
     dailyClosings,
@@ -1036,6 +1119,10 @@ export async function createAutoRecoverySnapshot(
     targetDb.orders.toArray(),
     targetDb.merchantPurchases.toArray(),
     targetDb.peerTrades.toArray(),
+    targetDb.softDeletedItems.toArray(),
+    targetDb.auditLogs.toArray(),
+    targetDb.rawMaterialPresets.toArray(),
+    targetDb.attachments.toArray(),
     targetDb.stockMovements.toArray(),
     targetDb.cashMovements.toArray(),
     targetDb.dailyClosings.toArray(),
@@ -1058,6 +1145,15 @@ export async function createAutoRecoverySnapshot(
       sales: sales.length,
       stockAdjustments: stockAdjustments.length,
       orders: merchantOrders.length,
+      peerTrades: peerTrades.length,
+      stockMovements: stockMovements.length,
+      cashMovements: cashMovements.length,
+      dailyClosings: dailyClosings.length,
+      returnsAndRefunds: returnsAndRefunds.length,
+      auditLogs: auditLogs.length,
+      softDeletedItems: softDeletedItems.length,
+      attachments: attachments.length,
+      rawMaterialPresets: rawMaterialPresets.length,
     },
     data: {
       products,
@@ -1070,11 +1166,16 @@ export async function createAutoRecoverySnapshot(
       merchantPurchases,
       peerTraders: [],
       peerTransactions: [],
+      peerTrades,
       shopSettings,
       stockMovements,
       cashMovements,
       dailyClosings,
       returnsAndRefunds,
+      auditLogs,
+      softDeletedItems,
+      attachments,
+      rawMaterialPresets,
     },
   };
 
@@ -1093,6 +1194,72 @@ export async function createAutoRecoverySnapshot(
   }
 
   return snapshotId;
+}
+
+/**
+ * Extracts a numeric timestamp from an entity for conflict resolution
+ */
+function getEntityTimestamp(entity: any): number {
+  if (!entity) return 0;
+  const dateCandidate =
+    entity.updatedAt ||
+    entity.createdAt ||
+    entity.timestamp ||
+    (entity.date && entity.time ? `${entity.date}T${entity.time}:00` : entity.date);
+  if (dateCandidate) {
+    const parsed = new Date(dateCandidate).getTime();
+    if (!isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
+/**
+ * Resolves conflict for entity collections during SMART_MERGE:
+ * - If record doesn't exist: insert (added)
+ * - If record exists: compare timestamps (updatedAt > createdAt > date)
+ *   Only overwrite if incoming is strictly newer; preserve local if local is newer or equal
+ */
+async function smartMergeCollection<T extends { id: string }>(
+  table: any,
+  incomingItems: T[]
+): Promise<{ added: number; updated: number; preserved: number }> {
+  if (!incomingItems || incomingItems.length === 0) {
+    return { added: 0, updated: 0, preserved: 0 };
+  }
+
+  let added = 0;
+  let updated = 0;
+  let preserved = 0;
+  const toPut: T[] = [];
+
+  const incomingIds = incomingItems.map((i) => i.id).filter(Boolean);
+  const existingItems = await table.where('id').anyOf(incomingIds).toArray();
+  const existingMap = new Map<string, any>(existingItems.map((item: any) => [item.id, item]));
+
+  for (const incoming of incomingItems) {
+    if (!incoming.id) continue;
+    const existing = existingMap.get(incoming.id);
+    if (!existing) {
+      toPut.push(incoming);
+      added++;
+    } else {
+      const existingTs = getEntityTimestamp(existing);
+      const incomingTs = getEntityTimestamp(incoming);
+
+      if (incomingTs > existingTs) {
+        toPut.push(incoming);
+        updated++;
+      } else {
+        preserved++;
+      }
+    }
+  }
+
+  if (toPut.length > 0) {
+    await table.bulkPut(toPut);
+  }
+
+  return { added, updated, preserved };
 }
 
 /**
@@ -1117,7 +1284,7 @@ export async function executeSafeRestore(
   const snapshotReason = `Pre-Restore Snapshot before ${mode === 'OVERWRITE' ? 'Full Overwrite' : 'Smart Merge'} (${data.shopSettings.shopName || 'Backup'})`;
   const snapshotId = await createAutoRecoverySnapshot(snapshotReason);
 
-  const stats = {
+  const stats: Record<string, number> = {
     productsRestored: data.products.length,
     suppliersRestored: data.suppliers.length,
     merchantsRestored: data.merchants.length,
@@ -1251,26 +1418,43 @@ export async function executeSafeRestore(
             saveStoredRawMaterialPresets(data.rawMaterialPresets);
           }
         } else {
-          // SMART MERGE: Put records with de-duplication
-          if (data.products.length > 0) await db.products.bulkPut(data.products);
-          if (data.suppliers.length > 0) await db.suppliers.bulkPut(data.suppliers);
-          if (data.merchants.length > 0) await db.merchants.bulkPut(data.merchants);
-          if (data.transactions.length > 0) await db.transactions.bulkPut(data.transactions);
-          if (data.sales.length > 0) await db.sales.bulkPut(data.sales);
-          if (data.merchantPurchases.length > 0) await db.merchantPurchases.bulkPut(data.merchantPurchases);
-          if (data.orders.length > 0) await db.orders.bulkPut(data.orders);
-          if (data.stockAdjustments.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
-          if (data.peerTrades.length > 0) await db.peerTrades.bulkPut(data.peerTrades);
-          if (data.softDeletedItems.length > 0) await db.softDeletedItems.bulkPut(data.softDeletedItems);
-          if (data.auditLogs && data.auditLogs.length > 0) await db.auditLogs.bulkPut(data.auditLogs);
-          if (restoredAttachments.length > 0) await db.attachments.bulkPut(restoredAttachments);
-          if (data.stockMovements && data.stockMovements.length > 0) await db.stockMovements.bulkPut(data.stockMovements);
-          if (data.cashMovements && data.cashMovements.length > 0) await db.cashMovements.bulkPut(data.cashMovements);
-          if (data.dailyClosings && data.dailyClosings.length > 0) await db.dailyClosings.bulkPut(data.dailyClosings);
-          if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && db.returnsAndRefunds) {
-            await db.returnsAndRefunds.bulkPut(data.returnsAndRefunds);
+          // SMART MERGE: Timestamp-based conflict resolution (newer wins, local preserved if newer/equal)
+          const mergeResults = await Promise.all([
+            smartMergeCollection(db.products, data.products),
+            smartMergeCollection(db.suppliers, data.suppliers),
+            smartMergeCollection(db.merchants, data.merchants),
+            smartMergeCollection(db.transactions, data.transactions),
+            smartMergeCollection(db.sales, data.sales),
+            smartMergeCollection(db.merchantPurchases, data.merchantPurchases),
+            smartMergeCollection(db.orders, data.orders),
+            smartMergeCollection(db.stockAdjustments, data.stockAdjustments),
+            smartMergeCollection(db.peerTrades, data.peerTrades),
+            smartMergeCollection(db.softDeletedItems, data.softDeletedItems),
+            smartMergeCollection(db.attachments, restoredAttachments),
+            data.stockMovements?.length ? smartMergeCollection(db.stockMovements, data.stockMovements) : Promise.resolve({ added: 0, updated: 0, preserved: 0 }),
+            data.cashMovements?.length ? smartMergeCollection(db.cashMovements, data.cashMovements) : Promise.resolve({ added: 0, updated: 0, preserved: 0 }),
+            data.dailyClosings?.length ? smartMergeCollection(db.dailyClosings, data.dailyClosings) : Promise.resolve({ added: 0, updated: 0, preserved: 0 }),
+            data.returnsAndRefunds?.length && db.returnsAndRefunds ? smartMergeCollection(db.returnsAndRefunds, data.returnsAndRefunds) : Promise.resolve({ added: 0, updated: 0, preserved: 0 }),
+            data.rawMaterialPresets?.length ? smartMergeCollection(db.rawMaterialPresets, data.rawMaterialPresets) : Promise.resolve({ added: 0, updated: 0, preserved: 0 }),
+          ]);
+
+          stats.mergeAdded = mergeResults.reduce((acc, r) => acc + r.added, 0);
+          stats.mergeUpdated = mergeResults.reduce((acc, r) => acc + r.updated, 0);
+          stats.mergePreserved = mergeResults.reduce((acc, r) => acc + r.preserved, 0);
+
+          // Audit trail immutability: Never overwrite existing audit logs, deduplicate incoming
+          if (data.auditLogs && data.auditLogs.length > 0) {
+            const incomingLogIds = data.auditLogs.map((l) => l.id).filter(Boolean);
+            const existingLogs = await db.auditLogs.where('id').anyOf(incomingLogIds).toArray();
+            const existingLogIdSet = new Set(existingLogs.map((l) => l.id));
+
+            const newAuditLogs = data.auditLogs.filter((l) => !existingLogIdSet.has(l.id));
+            if (newAuditLogs.length > 0) {
+              await db.auditLogs.bulkAdd(newAuditLogs);
+            }
+            stats.auditLogsAdded = newAuditLogs.length;
+            stats.auditLogsPreserved = existingLogs.length;
           }
-          if (data.rawMaterialPresets.length > 0) await db.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
 
           // Merge categories
           if (data.productCategories) {
@@ -1305,19 +1489,113 @@ export async function executeSafeRestore(
           },
         });
 
-        // Verification: Ensure database is healthy and records exist
-        const [verProds, verSupps, verMerchs] = await Promise.all([
-          db.products.count(),
-          db.suppliers.count(),
-          db.merchants.count(),
-        ]);
-
+        // Post-Restore Integrity Verification
         if (mode === 'OVERWRITE') {
-          if (data.products.length > 0 && verProds !== data.products.length) {
-            throw new Error(`Database verification failed: Product count mismatch (expected ${data.products.length}, found ${verProds})`);
+          // 1. Table record count checks
+          const [
+            cntProds,
+            cntSupps,
+            cntMerchs,
+            cntTxs,
+            cntSales,
+            cntPurchs,
+            cntOrders,
+            cntAdjs,
+            cntTrades,
+            cntSoft,
+            cntAtts,
+          ] = await Promise.all([
+            db.products.count(),
+            db.suppliers.count(),
+            db.merchants.count(),
+            db.transactions.count(),
+            db.sales.count(),
+            db.merchantPurchases.count(),
+            db.orders.count(),
+            db.stockAdjustments.count(),
+            db.peerTrades.count(),
+            db.softDeletedItems.count(),
+            db.attachments.count(),
+          ]);
+
+          if (data.products.length !== cntProds) {
+            throw new Error(`Post-restore count mismatch on products (expected ${data.products.length}, found ${cntProds})`);
           }
-          if (data.suppliers.length > 0 && verSupps !== data.suppliers.length) {
-            throw new Error(`Database verification failed: Supplier count mismatch (expected ${data.suppliers.length}, found ${verSupps})`);
+          if (data.suppliers.length !== cntSupps) {
+            throw new Error(`Post-restore count mismatch on suppliers (expected ${data.suppliers.length}, found ${cntSupps})`);
+          }
+          if (data.merchants.length !== cntMerchs) {
+            throw new Error(`Post-restore count mismatch on merchants (expected ${data.merchants.length}, found ${cntMerchs})`);
+          }
+          if (data.sales.length !== cntSales) {
+            throw new Error(`Post-restore count mismatch on sales (expected ${data.sales.length}, found ${cntSales})`);
+          }
+          if (data.transactions.length !== cntTxs) {
+            throw new Error(`Post-restore count mismatch on transactions (expected ${data.transactions.length}, found ${cntTxs})`);
+          }
+          if (data.merchantPurchases.length !== cntPurchs) {
+            throw new Error(`Post-restore count mismatch on merchantPurchases (expected ${data.merchantPurchases.length}, found ${cntPurchs})`);
+          }
+          if (data.orders.length !== cntOrders) {
+            throw new Error(`Post-restore count mismatch on orders (expected ${data.orders.length}, found ${cntOrders})`);
+          }
+          if (data.stockAdjustments.length !== cntAdjs) {
+            throw new Error(`Post-restore count mismatch on stockAdjustments (expected ${data.stockAdjustments.length}, found ${cntAdjs})`);
+          }
+          if (data.peerTrades.length !== cntTrades) {
+            throw new Error(`Post-restore count mismatch on peerTrades (expected ${data.peerTrades.length}, found ${cntTrades})`);
+          }
+          if (data.softDeletedItems.length !== cntSoft) {
+            throw new Error(`Post-restore count mismatch on softDeletedItems (expected ${data.softDeletedItems.length}, found ${cntSoft})`);
+          }
+          if (restoredAttachments.length !== cntAtts) {
+            throw new Error(`Post-restore count mismatch on attachments (expected ${restoredAttachments.length}, found ${cntAtts})`);
+          }
+
+          // 2. Exact primary key matching verification
+          if (data.products.length > 0) {
+            const restoredProdIds = new Set((await db.products.toArray()).map((p) => p.id));
+            for (const p of data.products) {
+              if (!restoredProdIds.has(p.id)) {
+                throw new Error(`Post-restore integrity check failed: Product ID ${p.id} missing in database`);
+              }
+            }
+          }
+          if (data.sales.length > 0) {
+            const restoredSaleIds = new Set((await db.sales.toArray()).map((s) => s.id));
+            for (const s of data.sales) {
+              if (!restoredSaleIds.has(s.id)) {
+                throw new Error(`Post-restore integrity check failed: Sale ID ${s.id} missing in database`);
+              }
+            }
+          }
+          if (data.transactions.length > 0) {
+            const restoredTxIds = new Set((await db.transactions.toArray()).map((t) => t.id));
+            for (const t of data.transactions) {
+              if (!restoredTxIds.has(t.id)) {
+                throw new Error(`Post-restore integrity check failed: Transaction ID ${t.id} missing in database`);
+              }
+            }
+          }
+        } else {
+          // SMART_MERGE post-restore integrity check:
+          // 1. Verify all incoming IDs are present in DB
+          if (data.products.length > 0) {
+            const restoredProdIds = new Set((await db.products.toArray()).map((p) => p.id));
+            for (const p of data.products) {
+              if (!restoredProdIds.has(p.id)) {
+                throw new Error(`Post-restore smart-merge check failed: Product ID ${p.id} missing in database`);
+              }
+            }
+          }
+          // 2. Verify audit logs contain no duplicates
+          const allLogs = await db.auditLogs.toArray();
+          const logIdSet = new Set<string>();
+          for (const log of allLogs) {
+            if (logIdSet.has(log.id)) {
+              throw new Error(`Post-restore audit log integrity check failed: Duplicate audit log ID ${log.id}`);
+            }
+            logIdSet.add(log.id);
           }
         }
       }
@@ -1334,7 +1612,13 @@ export async function executeSafeRestore(
     };
   } catch (err: any) {
     console.error('Dexie Transaction Restore Failed:', err);
-    throw new Error(`Restore လုပ်ဆောင်မှု မအောင်မြင်ပါ (${err.message})။ ယခင်ဒေတာများကို ထိခိုက်မှုမရှိစေရန် မူလအတိုင်း ထိန်းသိမ်းထားရှိပါသည်။`);
+    // Automatic fallback & recovery from pre-restore snapshot
+    try {
+      await restoreFromSnapshot(snapshotId, db);
+    } catch (recoveryErr) {
+      console.error('Pre-restore snapshot auto-recovery error:', recoveryErr);
+    }
+    throw new Error(`Restore လုပ်ဆောင်မှု မအောင်မြင်ပါ (${err.message})။ Pre-restore snapshot (${snapshotId}) မှ မူလဒေတာများကို အလိုအလျောက် ပြန်လည်ရယူထိန်းသိမ်းထားပါသည်။`);
   }
 }
 
@@ -1380,6 +1664,9 @@ export async function restoreFromSnapshot(
       targetDb.orders,
       targetDb.stockAdjustments,
       targetDb.peerTrades,
+      targetDb.softDeletedItems,
+      targetDb.attachments,
+      targetDb.rawMaterialPresets,
       targetDb.auditLogs,
       targetDb.stockMovements,
       targetDb.cashMovements,
@@ -1397,6 +1684,10 @@ export async function restoreFromSnapshot(
         targetDb.orders.clear(),
         targetDb.stockAdjustments.clear(),
         targetDb.peerTrades.clear(),
+        targetDb.softDeletedItems.clear(),
+        targetDb.attachments.clear(),
+        targetDb.rawMaterialPresets.clear(),
+        targetDb.auditLogs.clear(),
         targetDb.stockMovements.clear(),
         targetDb.cashMovements.clear(),
         targetDb.dailyClosings.clear(),
@@ -1415,6 +1706,11 @@ export async function restoreFromSnapshot(
         await targetDb.orders.bulkPut(data.merchantOrders);
       }
       if (data.stockAdjustments?.length > 0) await targetDb.stockAdjustments.bulkPut(data.stockAdjustments);
+      if (data.peerTrades && data.peerTrades.length > 0) await targetDb.peerTrades.bulkPut(data.peerTrades);
+      if (data.softDeletedItems && data.softDeletedItems.length > 0) await targetDb.softDeletedItems.bulkPut(data.softDeletedItems);
+      if (data.attachments && data.attachments.length > 0) await targetDb.attachments.bulkPut(data.attachments);
+      if (data.rawMaterialPresets && data.rawMaterialPresets.length > 0) await targetDb.rawMaterialPresets.bulkPut(data.rawMaterialPresets);
+      if (data.auditLogs && data.auditLogs.length > 0) await targetDb.auditLogs.bulkPut(data.auditLogs);
       if (data.stockMovements && data.stockMovements.length > 0) {
         await targetDb.stockMovements.bulkPut(data.stockMovements);
       }
@@ -1433,6 +1729,7 @@ export async function restoreFromSnapshot(
       await targetDb.auditLogs.put({
         id: generateStableId('aud'),
         action: 'ROLLBACK_TO_SNAPSHOT',
+        actionType: 'DATABASE_RECOVERY',
         details: `Snapshot ${snapshot.date} ${snapshot.time} (${snapshot.reason}) သို့ ဒေတာများ ပြန်လည်ပြောင်းလဲခဲ့သည်`,
         timestamp: new Date().toISOString(),
         entityType: 'RECOVERY_SNAPSHOT',
