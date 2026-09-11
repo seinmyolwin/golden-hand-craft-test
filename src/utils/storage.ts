@@ -1453,19 +1453,6 @@ export function savePeerTrades(trades: any[]): void {
   }
 }
 
-export function loadAuditLogs(): any[] {
-  return safeLocalStorageGet('ledger_audit_logs_v1', []);
-}
-
-export function saveAuditLogs(logs: any[]): void {
-  try {
-    const list = logs || [];
-    db.auditLogs.clear().then(() => db.auditLogs.bulkPut(list)).catch((err) => console.error('Dexie save audit logs error:', err));
-  } catch (e) {
-    console.error('Error saving audit logs', e);
-  }
-}
-
 export function loadDeletedItems(): any[] {
   return safeLocalStorageGet('ledger_deleted_items_v1', []);
 }

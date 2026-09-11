@@ -53,6 +53,7 @@ import {
 } from './errors';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
+import { recordAuditEvent } from '../services/auditTrailService';
 
 export * from './types';
 export * from './errors';
@@ -288,17 +289,19 @@ export class MerchantRepository implements IMerchantRepository {
         });
 
         // Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'ကုန်သည်ကြွေးကျန် ပေးဆပ်ခြင်း (Atomic)',
-          details: `${merchant.name} (${merchant.town}): ပေးဆပ်ငွေ ${paymentAmount.toLocaleString()} ကျပ် (${paymentMethod}) | လက်ကျန်ကြွေး: ${newBalance.toLocaleString()} ကျပ်${notes ? ` | မှတ်ချက်: ${notes}` : ''}`,
-          timestamp: now,
-          entityType: 'MERCHANT',
-          entityId: merchant.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'ကုန်သည်ကြွေးကျန် ပေးဆပ်ခြင်း (Atomic)',
+            actionType: 'CASH_MOVEMENT',
+            details: `${merchant.name} (${merchant.town}): ပေးဆပ်ငွေ ${paymentAmount.toLocaleString()} ကျပ် (${paymentMethod}) | လက်ကျန်ကြွေး: ${newBalance.toLocaleString()} ကျပ်${notes ? ` | မှတ်ချက်: ${notes}` : ''}`,
+            referenceType: 'MERCHANT',
+            referenceId: merchant.id,
+            amount: paymentAmount,
+          },
+          this.database
+        );
 
-        return updatedMerchant;
+        return { ...updatedMerchant, auditEntry };
       }
     );
   }
@@ -497,17 +500,21 @@ export class TransactionRepository implements ITransactionRepository {
         await this.database.transactions.put(enrichedTx);
 
         // 7. Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း (Atomic)',
-          details: `ဘောင်ချာ ${enrichedTx.voucherNo} - ${tx.supplierName}: တန်ဖိုး ${(tx.totalGoodsValue || 0).toLocaleString()} ကျပ် | အကြိုငွေနုတ်: ${(tx.advanceDeducted || 0).toLocaleString()} ကျပ် | လက်ကျန်: ${tx.remainingAdvanceBalance.toLocaleString()} ကျပ်`,
-          timestamp: `${tx.date} ${tx.time || ''}`.trim() || now,
-          entityType: 'TRANSACTION',
-          entityId: enrichedTx.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း (Atomic)',
+            actionType: 'PURCHASE',
+            details: `ဘောင်ချာ ${enrichedTx.voucherNo} - ${tx.supplierName}: တန်ဖိုး ${(tx.totalGoodsValue || 0).toLocaleString()} ကျပ် | အကြိုငွေနုတ်: ${(tx.advanceDeducted || 0).toLocaleString()} ကျပ် | လက်ကျန်: ${tx.remainingAdvanceBalance.toLocaleString()} ကျပ်`,
+            referenceType: 'TRANSACTION',
+            referenceId: enrichedTx.id,
+            referenceVoucherNo: enrichedTx.voucherNo,
+            amount: tx.totalGoodsValue || 0,
+            timestamp: `${tx.date} ${tx.time || ''}`.trim() || now,
+          },
+          this.database
+        );
 
-        return enrichedTx;
+        return { ...enrichedTx, auditEntry };
       }
     );
   }
@@ -670,17 +677,20 @@ export class TransactionRepository implements ITransactionRepository {
         await this.database.transactions.put(cancelledTx);
 
         // 5. Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'ကုန်သိမ်းစာရင်း ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
-          details: `ဘောင်ချာ ${tx.voucherNo || tx.id} (${tx.supplierName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
-          timestamp: now,
-          entityType: 'TRANSACTION',
-          entityId: tx.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'ကုန်သိမ်းစာရင်း ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
+            actionType: 'REVERSAL',
+            details: `ဘောင်ချာ ${tx.voucherNo || tx.id} (${tx.supplierName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+            referenceType: 'TRANSACTION',
+            referenceId: tx.id,
+            referenceVoucherNo: tx.voucherNo,
+            amount: tx.totalGoodsValue || 0,
+          },
+          this.database
+        );
 
-        return cancelledTx;
+        return { ...cancelledTx, auditEntry };
       }
     );
   }
@@ -772,17 +782,20 @@ export class TransactionRepository implements ITransactionRepository {
         });
 
         // Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'အကြိုငွေသီးသန့် ထုတ်ပေးခြင်း (Atomic)',
-          details: `${supplier.name} (${supplier.village}): အကြိုငွေ ${advanceAmount.toLocaleString()} ကျပ် | အကြောင်းပြချက်: ${reason} | လက်ကျန်: ${newBalance.toLocaleString()} ကျပ်`,
-          timestamp: now.toISOString(),
-          entityType: 'SUPPLIER',
-          entityId: supplierId,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'အကြိုငွေသီးသန့် ထုတ်ပေးခြင်း (Atomic)',
+            actionType: 'CASH_MOVEMENT',
+            details: `${supplier.name} (${supplier.village}): အကြိုငွေ ${advanceAmount.toLocaleString()} ကျပ် | အကြောင်းပြချက်: ${reason} | လက်ကျန်: ${newBalance.toLocaleString()} ကျပ်`,
+            referenceType: 'SUPPLIER_ADVANCE',
+            referenceId: tx.id,
+            referenceVoucherNo: tx.voucherNo,
+            amount: advanceAmount,
+          },
+          this.database
+        );
 
-        return tx;
+        return { ...tx, auditEntry };
       }
     );
   }
@@ -963,17 +976,21 @@ export class SaleRepository implements ISaleRepository {
         await this.database.sales.put(enrichedSale);
 
         // 7. Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း (Atomic)',
-          details: `ဘောင်ချာ ${enrichedSale.voucherNo} - ${sale.merchantName}: ကျသင့်ငွေ ${(sale.grandTotal || 0).toLocaleString()} ကျပ် | ပေးငွေ: ${(sale.cashPaidByMerchant || 0).toLocaleString()} ကျပ် | ကျန်ငွေ: ${sale.remainingReceivableBalance.toLocaleString()} ကျပ်`,
-          timestamp: `${sale.date} ${sale.time || ''}`.trim() || now,
-          entityType: 'SALE',
-          entityId: enrichedSale.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း (Atomic)',
+            actionType: 'SALE',
+            details: `ဘောင်ချာ ${enrichedSale.voucherNo} - ${sale.merchantName}: ကျသင့်ငွေ ${(sale.grandTotal || 0).toLocaleString()} ကျပ် | ပေးငွေ: ${(sale.cashPaidByMerchant || 0).toLocaleString()} ကျပ် | ကျန်ငွေ: ${sale.remainingReceivableBalance.toLocaleString()} ကျပ်`,
+            referenceType: 'SALE',
+            referenceId: enrichedSale.id,
+            referenceVoucherNo: enrichedSale.voucherNo,
+            amount: sale.grandTotal || 0,
+            timestamp: `${sale.date} ${sale.time || ''}`.trim() || now,
+          },
+          this.database
+        );
 
-        return enrichedSale;
+        return { ...enrichedSale, auditEntry };
       }
     );
   }
@@ -1105,17 +1122,20 @@ export class SaleRepository implements ISaleRepository {
         await this.database.sales.put(cancelledSale);
 
         // 5. Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'အရောင်းဘောင်ချာ ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
-          details: `ဘောင်ချာ ${sale.voucherNo || sale.id} (${sale.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
-          timestamp: now,
-          entityType: 'SALE',
-          entityId: sale.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'အရောင်းဘောင်ချာ ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
+            actionType: 'REVERSAL',
+            details: `ဘောင်ချာ ${sale.voucherNo || sale.id} (${sale.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+            referenceType: 'SALE',
+            referenceId: sale.id,
+            referenceVoucherNo: sale.voucherNo,
+            amount: sale.grandTotal || 0,
+          },
+          this.database
+        );
 
-        return cancelledSale;
+        return { ...cancelledSale, auditEntry };
       }
     );
   }
@@ -1271,17 +1291,21 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
 
         await this.database.merchantPurchases.put(enrichedPurchase);
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း (Atomic)',
-          details: `ဘောင်ချာ ${enrichedPurchase.purchaseNo} - ${purchase.merchantName}: စုစုပေါင်း ${(purchase.totalAmount || 0).toLocaleString()} ကျပ် | ပေးရန်ကျန်: ${(purchase.remainingPayableBalance || 0).toLocaleString()} ကျပ်`,
-          timestamp: `${purchase.date} ${purchase.time || ''}`.trim() || now,
-          entityType: 'PURCHASE',
-          entityId: enrichedPurchase.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း (Atomic)',
+            actionType: 'PURCHASE',
+            details: `ဘောင်ချာ ${enrichedPurchase.purchaseNo} - ${purchase.merchantName}: စုစုပေါင်း ${(purchase.totalAmount || 0).toLocaleString()} ကျပ် | ပေးရန်ကျန်: ${(purchase.remainingPayableBalance || 0).toLocaleString()} ကျပ်`,
+            referenceType: 'PURCHASE',
+            referenceId: enrichedPurchase.id,
+            referenceVoucherNo: enrichedPurchase.purchaseNo,
+            amount: purchase.totalAmount || 0,
+            timestamp: `${purchase.date} ${purchase.time || ''}`.trim() || now,
+          },
+          this.database
+        );
 
-        return enrichedPurchase;
+        return { ...enrichedPurchase, auditEntry };
       }
     );
   }
@@ -1398,17 +1422,20 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         };
         await this.database.merchantPurchases.put(cancelledPurchase);
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'ကုန်ကြမ်းဝယ်ယူမှု ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
-          details: `ဘောင်ချာ ${purchase.purchaseNo} (${purchase.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
-          timestamp: now,
-          entityType: 'PURCHASE',
-          entityId: purchase.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'ကုန်ကြမ်းဝယ်ယူမှု ပြန်လည်ဖျက်သိမ်းခြင်း (Atomic Rollback)',
+            actionType: 'REVERSAL',
+            details: `ဘောင်ချာ ${purchase.purchaseNo} (${purchase.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+            referenceType: 'PURCHASE',
+            referenceId: purchase.id,
+            referenceVoucherNo: purchase.purchaseNo,
+            amount: purchase.totalAmount || 0,
+          },
+          this.database
+        );
 
-        return cancelledPurchase;
+        return { ...cancelledPurchase, auditEntry };
       }
     );
   }
@@ -1491,17 +1518,19 @@ export class OrderRepository implements IOrderRepository {
         };
         await this.database.orders.put(updatedOrder);
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'အော်ဒါပို့ဆောင်ပြီးမြောက်ခြင်း (Atomic)',
-          details: `အော်ဒါ ${order.orderNo || order.id} - ${order.merchantName}: အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ${createdSaleId ? ` (အရောင်းဘောင်ချာ ID: ${createdSaleId})` : ''}`,
-          timestamp: now,
-          entityType: 'ORDER',
-          entityId: order.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'အော်ဒါပို့ဆောင်ပြီးမြောက်ခြင်း (Atomic)',
+            actionType: 'SALE',
+            details: `အော်ဒါ ${order.orderNo || order.id} - ${order.merchantName}: အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ${createdSaleId ? ` (အရောင်းဘောင်ချာ ID: ${createdSaleId})` : ''}`,
+            referenceType: 'ORDER',
+            referenceId: order.id,
+            referenceVoucherNo: order.orderNo,
+          },
+          this.database
+        );
 
-        return updatedOrder;
+        return { ...updatedOrder, auditEntry };
       }
     );
   }
@@ -1527,17 +1556,19 @@ export class OrderRepository implements IOrderRepository {
         };
         await this.database.orders.put(updatedOrder);
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'အော်ဒါပယ်ဖျက်ခြင်း (Atomic)',
-          details: `အော်ဒါ ${order.orderNo || order.id} (${order.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
-          timestamp: now,
-          entityType: 'ORDER',
-          entityId: order.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'အော်ဒါပယ်ဖျက်ခြင်း (Atomic)',
+            actionType: 'REVERSAL',
+            details: `အော်ဒါ ${order.orderNo || order.id} (${order.merchantName}) အား ပယ်ဖျက်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+            referenceType: 'ORDER',
+            referenceId: order.id,
+            referenceVoucherNo: order.orderNo,
+          },
+          this.database
+        );
 
-        return updatedOrder;
+        return { ...updatedOrder, auditEntry };
       }
     );
   }
@@ -1627,17 +1658,21 @@ export class PeerTradeRepository implements IPeerTradeRepository {
           });
         }
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'မိတ်ဖက်ဆိုင် ကုန်လွှဲပြောင်းမှု (Atomic)',
-          details: `${trade.tradeType === 'BORROW_IN' ? 'အဝင်ချေးယူ' : 'အထွက်ချေးငှား'} - ${trade.productName} (${trade.quantity} ${trade.unit}) [${trade.peerShopName}]`,
-          timestamp: `${trade.date} ${trade.time || ''}`.trim() || now,
-          entityType: 'PEER_TRADE',
-          entityId: enrichedTrade.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'မိတ်ဖက်ဆိုင် ကုန်လွှဲပြောင်းမှု (Atomic)',
+            actionType: 'STOCK_MOVEMENT',
+            details: `${trade.tradeType === 'BORROW_IN' ? 'အဝင်ချေးယူ' : 'အထွက်ချေးငှား'} - ${trade.productName} (${trade.quantity} ${trade.unit}) [${trade.peerShopName}]`,
+            referenceType: 'PEER_TRADE',
+            referenceId: enrichedTrade.id,
+            referenceVoucherNo: enrichedTrade.voucherNo,
+            quantity: trade.quantity,
+            timestamp: `${trade.date} ${trade.time || ''}`.trim() || now,
+          },
+          this.database
+        );
 
-        return enrichedTrade;
+        return { ...enrichedTrade, auditEntry };
       }
     );
   }
@@ -1735,17 +1770,21 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
           schemaVersion: 1,
         });
 
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: 'လက်ကျန်စာရင်းညှိနှိုင်းခြင်း (Atomic)',
-          details: `${adj.productName}: ${adj.previousStock} -> ${adj.newStock} (${adj.reason})`,
-          timestamp: `${adj.date} ${adj.time || ''}`.trim() || now,
-          entityType: 'STOCK_ADJUSTMENT',
-          entityId: enrichedAdj.id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: 'လက်ကျန်စာရင်းညှိနှိုင်းခြင်း (Atomic)',
+            actionType: 'STOCK_MOVEMENT',
+            details: `${adj.productName}: ${adj.previousStock} -> ${adj.newStock} (${adj.reason})`,
+            referenceType: 'STOCK_ADJUSTMENT',
+            referenceId: enrichedAdj.id,
+            referenceVoucherNo: `ADJ-${enrichedAdj.id.slice(0, 6)}`,
+            quantity: Math.abs(Number(adj.quantity) || 0),
+            timestamp: `${adj.date} ${adj.time || ''}`.trim() || now,
+          },
+          this.database
+        );
 
-        return enrichedAdj;
+        return { ...enrichedAdj, auditEntry };
       }
     );
   }
@@ -1864,17 +1903,18 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
         await this.database.softDeletedItems.put(softItem);
 
         // Audit Log
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: `${entityType} အား အမှိုက်ပုံးသို့ ရွှေ့ပြောင်းခြင်း (Atomic Soft Delete)`,
-          details: `${displayName} (ID: ${id}) | အကြောင်းပြချက်: ${reason}`,
-          timestamp: now,
-          entityType,
-          entityId: id,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: `${entityType} အား အမှိုက်ပုံးသို့ ရွှေ့ပြောင်းခြင်း (Atomic Soft Delete)`,
+            actionType: 'SYSTEM_ACTION',
+            details: `${displayName} (ID: ${id}) | အကြောင်းပြချက်: ${reason}`,
+            referenceType: entityType,
+            referenceId: id,
+          },
+          this.database
+        );
 
-        return softItem;
+        return { ...softItem, auditEntry };
       }
     );
   }
@@ -1926,18 +1966,18 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
         await this.database.softDeletedItems.delete(softDeleteId);
 
         // Audit Log
-        const now = new Date().toISOString();
-        const auditEntry: AuditLogEntry = {
-          id: generateStableId('audit'),
-          action: `${type} အား အမှိုက်ပုံးမှ ပြန်လည်ဆယ်ယူခြင်း (Atomic Restore)`,
-          details: `${name} (ID: ${originalId}) အား မူလနေရာသို့ ပြန်လည်ထည့်သွင်းခဲ့သည်`,
-          timestamp: now,
-          entityType: type,
-          entityId: originalId,
-        };
-        await this.database.auditLogs.put(auditEntry);
+        const auditEntry = await recordAuditEvent(
+          {
+            action: `${type} အား အမှိုက်ပုံးမှ ပြန်လည်ဆယ်ယူခြင်း (Atomic Restore)`,
+            actionType: 'SYSTEM_ACTION',
+            details: `${name} (ID: ${originalId}) အား မူလနေရာသို့ ပြန်လည်ထည့်သွင်းခဲ့သည်`,
+            referenceType: type,
+            referenceId: originalId,
+          },
+          this.database
+        );
 
-        return data;
+        return { ...data, auditEntry };
       }
     );
   }
@@ -1967,15 +2007,15 @@ export class AuditRepository implements IAuditRepository {
   }
 
   async log(action: string, details: string, entityType?: string, entityId?: string): Promise<void> {
-    const entry: AuditLogEntry = {
-      id: generateStableId('audit'),
-      action,
-      details,
-      timestamp: new Date().toISOString(),
-      entityType,
-      entityId,
-    };
-    await this.database.auditLogs.put(entry);
+    await recordAuditEvent(
+      {
+        action,
+        details,
+        entityType,
+        entityId,
+      },
+      this.database
+    );
   }
 
   async saveMany(logs: AuditLogEntry[]): Promise<void> {

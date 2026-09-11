@@ -56,6 +56,7 @@ export interface Merchant {
   totalPaidAmount?: number; // Cumulative total payment made by merchant
   totalPurchasedFromMerchant?: number; // ကုန်သည်ထံမှ ဝယ်ယူခဲ့သော ကုန်ကြမ်းတန်ဖိုး
   active?: boolean;
+  auditEntry?: AuditLogEntry;
   createdAt: string;
   updatedAt: string;
 }
@@ -145,6 +146,7 @@ export interface TransactionRecord {
   createdAt?: string;
   updatedAt?: string;
   revision?: number;
+  auditEntry?: AuditLogEntry;
 }
 
 export interface SaleRecord {
@@ -182,6 +184,7 @@ export interface SaleRecord {
   createdAt?: string;
   updatedAt?: string;
   revision?: number;
+  auditEntry?: AuditLogEntry;
 }
 
 export type StockMovementType =
@@ -246,6 +249,7 @@ export interface StockAdjustmentRecord {
   createdAt: string;
   updatedAt?: string;
   revision?: number;
+  auditEntry?: AuditLogEntry;
 }
 
 export type CashMovementType =
@@ -464,6 +468,7 @@ export interface MerchantPurchaseRecord {
   createdAt: string;
   updatedAt?: string;
   revision?: number;
+  auditEntry?: AuditLogEntry;
 }
 
 export interface MerchantOrderItem {
@@ -499,6 +504,7 @@ export interface MerchantOrder {
   saleVoucherId?: string;
   destinationNote?: string; // e.g. အောင်မင်္ဂလာ အဝေးပြေးဂိတ်
   notes?: string;
+  auditEntry?: AuditLogEntry;
   createdAt?: string;
 }
 
@@ -713,6 +719,7 @@ export interface SoftDeletedItem {
   type: string;
   deletedAt: string;
   data: any;
+  auditEntry?: AuditLogEntry;
 }
 
 export type AuditActionType =
@@ -780,6 +787,7 @@ export interface PeerTradeRecord {
   settledNotes?: string;
   createdAt?: string;
   updatedAt?: string;
+  auditEntry?: AuditLogEntry;
 }
 
 export interface SettingRecord {

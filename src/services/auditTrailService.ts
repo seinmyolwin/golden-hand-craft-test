@@ -101,19 +101,64 @@ export function buildAuditLogEntry(input: CreateAuditInput): AuditLogEntry {
 /**
  * Records an immutable audit event to Dexie IndexedDB.
  * Supports passing a custom Dexie database instance or an active transaction target object.
+ * Uses add(entry) to enforce append-only immutability. If an ID collision occurs,
+ * it safely catches the error and retries with a salted unique ID.
  */
 export async function recordAuditEvent(
   input: CreateAuditInput,
   txOrDb?: ShweLetYarDatabase | any
 ): Promise<AuditLogEntry> {
-  const entry = buildAuditLogEntry(input);
+  let entry = buildAuditLogEntry(input);
 
-  if (txOrDb && txOrDb.auditLogs) {
-    await txOrDb.auditLogs.put(entry);
-  } else if (txOrDb && typeof txOrDb.put === 'function') {
-    await txOrDb.put(entry);
-  } else {
-    await db.auditLogs.put(entry);
+  const getTable = () => {
+    if (txOrDb && txOrDb.auditLogs) return txOrDb.auditLogs;
+    if (txOrDb && typeof txOrDb.table === 'function') {
+      try {
+        const t = txOrDb.table('auditLogs');
+        if (t) return t;
+      } catch {
+        // continue to fallback
+      }
+    }
+    if (txOrDb && typeof txOrDb.add === 'function') return txOrDb;
+    return db.auditLogs;
+  };
+
+  const table = getTable();
+  const maxRetries = 3;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    try {
+      // Proactively check if ID already exists in table to avoid ConstraintError
+      // which could bubble and abort an active Dexie transaction
+      if (typeof table.get === 'function') {
+        const existing = await table.get(entry.id);
+        if (existing) {
+          const salt = Math.random().toString(36).substring(2, 8);
+          entry = { ...entry, id: `${generateStableId('audit')}_${Date.now()}_${salt}` };
+          attempt++;
+          continue;
+        }
+      }
+
+      if (typeof table.add === 'function') {
+        await table.add(entry);
+      } else if (typeof table.put === 'function') {
+        await table.put(entry);
+      }
+      return entry;
+    } catch (err: any) {
+      attempt++;
+      if (attempt >= maxRetries) {
+        console.error('Failed to record immutable audit event after retries:', err);
+        throw err;
+      }
+      // Re-generate ID with timestamp and random salt to guarantee uniqueness
+      const salt = Math.random().toString(36).substring(2, 8);
+      const uniqueId = `${generateStableId('audit')}_${Date.now()}_${salt}`;
+      entry = { ...entry, id: uniqueId };
+    }
   }
 
   return entry;

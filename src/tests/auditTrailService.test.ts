@@ -198,4 +198,40 @@ describe('Phase 17 - Canonical Audit Trail & Traceability Engine', () => {
     expect(restoredEvent).toBeDefined();
     expect(restoredEvent?.amount).toBe(12345);
   });
+
+  it('regression: allows inserting 250 audit records without data loss (no 200-item truncation bug)', async () => {
+    // Clear audit table to start from 0
+    await db.auditLogs.clear();
+    expect(await db.auditLogs.count()).toBe(0);
+
+    // Concurrently or sequentially insert 250 records
+    const promises = [];
+    for (let i = 1; i <= 250; i++) {
+      promises.push(
+        recordAuditEvent({
+          action: `Event Number #${i}`,
+          details: `Batch event test ${i}`,
+          referenceType: 'SYSTEM',
+          referenceId: `batch-test-${i}`,
+          amount: i * 100,
+        })
+      );
+    }
+    await Promise.all(promises);
+
+    // Verify exactly 250 records exist in IndexedDB without any 200-item truncation
+    const count = await db.auditLogs.count();
+    expect(count).toBe(250);
+
+    // Verify getAuditTrail with limit > 200 retrieves all 250 records
+    const allRecords = await getAuditTrail({ limit: 500 });
+    expect(allRecords.length).toBe(250);
+
+    // Verify first and last entries exist
+    const foundFirst = allRecords.some((r) => r.action === 'Event Number #1');
+    const found250 = allRecords.some((r) => r.action === 'Event Number #250');
+    expect(foundFirst).toBe(true);
+    expect(found250).toBe(true);
+  });
 });
+
