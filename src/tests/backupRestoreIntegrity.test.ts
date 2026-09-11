@@ -814,7 +814,7 @@ describe('Backup and Restore Reliability Audit', () => {
 
     await db.products.put({
       id: prodId,
-      name: 'ယွန်းထည် ပန်းကန်',
+      name: 'ရွှေလက်ရာ ပန်းကန်',
       category: 'အလှဆင်',
       unit: 'ချပ်',
       defaultPrice: 25000,
@@ -831,7 +831,7 @@ describe('Backup and Restore Reliability Audit', () => {
       merchantTown: 'မန္တလေး',
       date: '2026-09-11',
       time: '10:00',
-      items: [{ productId: prodId, productName: 'ယွန်းထည် ပန်းကန်', unit: 'ချပ်', quantity: 5, unitPrice: 25000, subtotal: 125000 }],
+      items: [{ productId: prodId, productName: 'ရွှေလက်ရာ ပန်းကန်', unit: 'ချပ်', quantity: 5, unitPrice: 25000, subtotal: 125000 }],
       totalAmount: 125000,
       paidAmount: 125000,
       remainingReceivableBalance: 0,
@@ -849,7 +849,7 @@ describe('Backup and Restore Reliability Audit', () => {
       merchantName: 'ကိုစိုးမိုး',
       date: '2026-09-11',
       time: '14:30',
-      items: [{ productId: prodId, productName: 'ယွန်းထည် ပန်းကန်', unit: 'ချပ်', quantity: 2, unitPrice: 25000, totalAmount: 50000 }],
+      items: [{ productId: prodId, productName: 'ရွှေလက်ရာ ပန်းကန်', unit: 'ချပ်', quantity: 2, unitPrice: 25000, totalAmount: 50000 }],
       totalReturnAmount: 50000,
       cashRefundAmount: 50000,
       creditAdjustmentAmount: 0,

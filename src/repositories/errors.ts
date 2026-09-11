@@ -44,3 +44,14 @@ export class AccountingInvariantError extends BusinessIntegrityError {
     Object.setPrototypeOf(this, AccountingInvariantError.prototype);
   }
 }
+
+export class DailyClosingLockedError extends BusinessIntegrityError {
+  constructor(date: string, operation?: string) {
+    const msg = `Date ${date} has already been closed and locked. Mutation ${operation ? `(${operation})` : ''} is rejected.`;
+    const userMsg = `ရက်စွဲ ${date} အတွက် နေ့စဉ်စာရင်း ပိတ်သိမ်းပြီးဖြစ်သဖြင့် စာရင်းအသစ်ရေးသွင်းခြင်း သို့မဟုတ် ပြင်ဆင်ခြင်း မပြုလုပ်နိုင်ပါ`;
+    super(msg, 'CLOSED_PERIOD_LOCKED', userMsg);
+    this.name = 'DailyClosingLockedError';
+    Object.setPrototypeOf(this, DailyClosingLockedError.prototype);
+  }
+}
+

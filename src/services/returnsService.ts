@@ -27,6 +27,7 @@ import {
 } from '../types';
 import { db } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
+import { DailyClosingLockedError } from '../repositories/errors';
 
 export interface ProcessSalesReturnParams {
   saleId: string;
@@ -323,8 +324,14 @@ export async function processSalesReturnAtomic(
       db.cashMovements,
       db.returnsAndRefunds,
       db.auditLogs,
+      db.dailyClosings,
     ],
     async () => {
+      const closing = await db.dailyClosings.get(`closing_${txDate}`);
+      if (closing && closing.status === 'CLOSED') {
+        throw new DailyClosingLockedError(txDate, 'အရောင်းပြန်သွင်းစာရင်း');
+      }
+
       // Re-verify idempotency inside transaction lock
       const doubleCheck = await db.returnsAndRefunds.where('idempotencyKey').equals(key).first();
       if (doubleCheck) return doubleCheck;
@@ -501,8 +508,14 @@ export async function processPurchaseReturnAtomic(
       db.cashMovements,
       db.returnsAndRefunds,
       db.auditLogs,
+      db.dailyClosings,
     ],
     async () => {
+      const closing = await db.dailyClosings.get(`closing_${txDate}`);
+      if (closing && closing.status === 'CLOSED') {
+        throw new DailyClosingLockedError(txDate, 'ကုန်ဝယ်ပြန်ပို့စာရင်း');
+      }
+
       const doubleCheck = await db.returnsAndRefunds.where('idempotencyKey').equals(key).first();
       if (doubleCheck) return doubleCheck;
 

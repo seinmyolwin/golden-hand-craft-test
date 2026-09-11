@@ -50,6 +50,7 @@ import {
   EntityNotFoundError,
   InvalidStateTransitionError,
   AccountingInvariantError,
+  DailyClosingLockedError,
 } from './errors';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
@@ -362,8 +363,15 @@ export class TransactionRepository implements ITransactionRepository {
         this.database.auditLogs,
         this.database.stockMovements,
         this.database.cashMovements,
+        this.database.dailyClosings,
       ],
       async () => {
+        const txDate = tx.date || new Date().toISOString().slice(0, 10);
+        const closing = await this.database.dailyClosings.get(`closing_${txDate}`);
+        if (closing && closing.status === 'CLOSED') {
+          throw new DailyClosingLockedError(txDate, 'ကုန်သိမ်းစာရင်းသွင်းခြင်း');
+        }
+
         // 1. Idempotency protection
         if (tx.id) {
           const existing = await this.database.transactions.get(tx.id);
@@ -711,16 +719,21 @@ export class TransactionRepository implements ITransactionRepository {
 
     return this.database.transaction(
       'rw',
-      [this.database.transactions, this.database.suppliers, this.database.auditLogs, this.database.cashMovements],
+      [this.database.transactions, this.database.suppliers, this.database.auditLogs, this.database.cashMovements, this.database.dailyClosings],
       async () => {
+        const now = new Date();
+        const date = dateStr || now.toISOString().split('T')[0];
+        const time = timeStr || now.toTimeString().slice(0, 5);
+
+        const closing = await this.database.dailyClosings.get(`closing_${date}`);
+        if (closing && closing.status === 'CLOSED') {
+          throw new DailyClosingLockedError(date, 'အကြိုငွေထုတ်ပေးခြင်း');
+        }
+
         const supplier = await this.database.suppliers.get(supplierId);
         if (!supplier) {
           throw new EntityNotFoundError('Supplier', supplierId);
         }
-
-        const now = new Date();
-        const date = dateStr || now.toISOString().split('T')[0];
-        const time = timeStr || now.toTimeString().slice(0, 5);
 
         const prevBalance = supplier.currentAdvanceBalance || 0;
         const newBalance = prevBalance + advanceAmount;
@@ -861,8 +874,15 @@ export class SaleRepository implements ISaleRepository {
         this.database.auditLogs,
         this.database.stockMovements,
         this.database.cashMovements,
+        this.database.dailyClosings,
       ],
       async () => {
+        const saleDate = sale.date || new Date().toISOString().slice(0, 10);
+        const closing = await this.database.dailyClosings.get(`closing_${saleDate}`);
+        if (closing && closing.status === 'CLOSED') {
+          throw new DailyClosingLockedError(saleDate, 'အရောင်းဘောင်ချာသွင်းခြင်း');
+        }
+
         // 1. Idempotency check
         if (sale.id) {
           const existing = await this.database.sales.get(sale.id);
