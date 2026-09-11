@@ -313,9 +313,20 @@ export function sanitizeSnapshot(obj: any): any {
     'authhash',
   ]);
 
+  const isSensitive = (key: string) => {
+    const lk = key.toLowerCase();
+    return (
+      sensitiveKeys.has(lk) ||
+      lk.includes('passcode') ||
+      lk.includes('password') ||
+      lk.includes('secret') ||
+      lk.includes('token')
+    );
+  };
+
   const sanitized: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (sensitiveKeys.has(key.toLowerCase())) {
+    if (isSensitive(key)) {
       // Exclude entirely or mask
       continue;
     }
@@ -795,8 +806,14 @@ export async function executeAtomicRepair(
   let snapshotId: string;
   try {
     snapshotId = await createAutoRecoverySnapshot(
-      `Pre-Repair Snapshot [${repairAction.repairType}] for ${repairAction.targetEntity} ${repairAction.targetRecordId}`
+      `Pre-Repair Snapshot [${repairAction.repairType}] for ${repairAction.targetEntity} ${repairAction.targetRecordId}`,
+      targetDb
     );
+    // 3. Verify backup integrity / existence in storage
+    const verifiedSnapshot = await targetDb.recoverySnapshots.get(snapshotId);
+    if (!verifiedSnapshot) {
+      throw new Error(`Safety backup snapshot "${snapshotId}" could not be verified in storage.`);
+    }
     repairAction.backupId = snapshotId;
   } catch (err: any) {
     repairAction.status = 'FAILED';
@@ -1163,7 +1180,7 @@ export async function executeAtomicRepair(
       }
 
       case 'RESTORE_MISSING_UNIT': {
-        const unit = repairAction.selectedOption || 'ခု';
+        const unit = repairAction.selectedOption ?? 'ခု';
         await targetDb.transaction('rw', [targetDb.products, targetDb.auditLogs], async () => {
           const prod = await targetDb.products.get(repairAction.targetRecordId);
           if (!prod) throw new Error(`Product "${repairAction.targetRecordId}" not found.`);
@@ -1308,7 +1325,7 @@ export async function executeAtomicRepair(
     // Database unreadable after mutation -> Critical rollback to snapshot!
     repairAction.status = 'ROLLED_BACK';
     try {
-      await restoreFromSnapshot(snapshotId);
+      await restoreFromSnapshot(snapshotId, targetDb);
     } catch (restoreErr) {
       console.error('Fatal emergency rollback error:', restoreErr);
     }
@@ -1331,7 +1348,7 @@ export async function executeAtomicRepair(
     // New critical issues introduced! Rollback!
     repairAction.status = 'ROLLED_BACK';
     try {
-      await restoreFromSnapshot(snapshotId);
+      await restoreFromSnapshot(snapshotId, targetDb);
     } catch (restoreErr) {
       console.error('Fatal emergency rollback error:', restoreErr);
     }

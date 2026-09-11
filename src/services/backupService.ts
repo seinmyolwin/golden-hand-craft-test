@@ -1,4 +1,4 @@
-import { db } from '../db/database';
+import { db, ShweLetYarDatabase } from '../db/database';
 import { blobToBase64, processImageInput, base64ToBlob } from './attachmentService';
 import {
   Product,
@@ -952,7 +952,10 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
 /**
  * Creates an automatic recovery snapshot of the entire database prior to restore or danger zone operations
  */
-export async function createAutoRecoverySnapshot(reason: string): Promise<string> {
+export async function createAutoRecoverySnapshot(
+  reason: string,
+  targetDb: ShweLetYarDatabase = db
+): Promise<string> {
   const snapshotId = generateStableId('rec');
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -969,15 +972,15 @@ export async function createAutoRecoverySnapshot(reason: string): Promise<string
     merchantPurchases,
     peerTrades,
   ] = await Promise.all([
-    db.products.toArray(),
-    db.suppliers.toArray(),
-    db.merchants.toArray(),
-    db.transactions.toArray(),
-    db.sales.toArray(),
-    db.stockAdjustments.toArray(),
-    db.orders.toArray(),
-    db.merchantPurchases.toArray(),
-    db.peerTrades.toArray(),
+    targetDb.products.toArray(),
+    targetDb.suppliers.toArray(),
+    targetDb.merchants.toArray(),
+    targetDb.transactions.toArray(),
+    targetDb.sales.toArray(),
+    targetDb.stockAdjustments.toArray(),
+    targetDb.orders.toArray(),
+    targetDb.merchantPurchases.toArray(),
+    targetDb.peerTrades.toArray(),
   ]);
 
   const shopSettings = getStoredShopSettings();
@@ -1013,16 +1016,17 @@ export async function createAutoRecoverySnapshot(reason: string): Promise<string
   };
 
   try {
-    await db.recoverySnapshots.put(snapshot);
+    await targetDb.recoverySnapshots.put(snapshot);
     // Keep max 20 snapshots to prevent excessive IndexedDB storage use
-    const allSnapshots = await db.recoverySnapshots.toArray();
+    const allSnapshots = await targetDb.recoverySnapshots.toArray();
     if (allSnapshots.length > 20) {
       allSnapshots.sort((a, b) => a.timestamp - b.timestamp);
       const toDelete = allSnapshots.slice(0, allSnapshots.length - 20);
-      await Promise.all(toDelete.map((s) => db.recoverySnapshots.delete(s.id)));
+      await Promise.all(toDelete.map((s) => targetDb.recoverySnapshots.delete(s.id)));
     }
   } catch (err) {
     console.warn('Failed to save auto recovery snapshot to IndexedDB', err);
+    throw new Error(`Failed to save auto recovery snapshot: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return snapshotId;
@@ -1249,60 +1253,63 @@ export async function getRecoverySnapshots(): Promise<AutoRecoverySnapshot[]> {
 /**
  * Restores database to a specific recovery snapshot
  */
-export async function restoreFromSnapshot(snapshotId: string): Promise<{ success: boolean; message: string }> {
-  const snapshot = await db.recoverySnapshots.get(snapshotId);
+export async function restoreFromSnapshot(
+  snapshotId: string,
+  targetDb: ShweLetYarDatabase = db
+): Promise<{ success: boolean; message: string }> {
+  const snapshot = await targetDb.recoverySnapshots.get(snapshotId);
   if (!snapshot) {
     throw new Error('အဆိုပါ Snapshot မတွေ့ရှိပါ');
   }
 
   // Take emergency safety snapshot of right now before rollback
-  await createAutoRecoverySnapshot(`Emergency Snapshot before rollback to snapshot ${snapshotId}`);
+  await createAutoRecoverySnapshot(`Emergency Snapshot before rollback to snapshot ${snapshotId}`, targetDb);
 
   const data = snapshot.data;
 
-  await db.transaction(
+  await targetDb.transaction(
     'rw',
     [
-      db.products,
-      db.suppliers,
-      db.merchants,
-      db.transactions,
-      db.sales,
-      db.merchantPurchases,
-      db.orders,
-      db.stockAdjustments,
-      db.peerTrades,
-      db.auditLogs,
+      targetDb.products,
+      targetDb.suppliers,
+      targetDb.merchants,
+      targetDb.transactions,
+      targetDb.sales,
+      targetDb.merchantPurchases,
+      targetDb.orders,
+      targetDb.stockAdjustments,
+      targetDb.peerTrades,
+      targetDb.auditLogs,
     ],
     async () => {
       await Promise.all([
-        db.products.clear(),
-        db.suppliers.clear(),
-        db.merchants.clear(),
-        db.transactions.clear(),
-        db.sales.clear(),
-        db.merchantPurchases.clear(),
-        db.orders.clear(),
-        db.stockAdjustments.clear(),
-        db.peerTrades.clear(),
+        targetDb.products.clear(),
+        targetDb.suppliers.clear(),
+        targetDb.merchants.clear(),
+        targetDb.transactions.clear(),
+        targetDb.sales.clear(),
+        targetDb.merchantPurchases.clear(),
+        targetDb.orders.clear(),
+        targetDb.stockAdjustments.clear(),
+        targetDb.peerTrades.clear(),
       ]);
 
-      if (data.products?.length > 0) await db.products.bulkPut(data.products);
-      if (data.suppliers?.length > 0) await db.suppliers.bulkPut(data.suppliers);
-      if (data.merchants?.length > 0) await db.merchants.bulkPut(data.merchants);
-      if (data.transactions?.length > 0) await db.transactions.bulkPut(data.transactions);
-      if (data.sales?.length > 0) await db.sales.bulkPut(data.sales);
+      if (data.products?.length > 0) await targetDb.products.bulkPut(data.products);
+      if (data.suppliers?.length > 0) await targetDb.suppliers.bulkPut(data.suppliers);
+      if (data.merchants?.length > 0) await targetDb.merchants.bulkPut(data.merchants);
+      if (data.transactions?.length > 0) await targetDb.transactions.bulkPut(data.transactions);
+      if (data.sales?.length > 0) await targetDb.sales.bulkPut(data.sales);
       if (data.merchantPurchases && data.merchantPurchases.length > 0) {
-        await db.merchantPurchases.bulkPut(data.merchantPurchases);
+        await targetDb.merchantPurchases.bulkPut(data.merchantPurchases);
       }
       if (data.merchantOrders && data.merchantOrders.length > 0) {
-        await db.orders.bulkPut(data.merchantOrders);
+        await targetDb.orders.bulkPut(data.merchantOrders);
       }
-      if (data.stockAdjustments?.length > 0) await db.stockAdjustments.bulkPut(data.stockAdjustments);
+      if (data.stockAdjustments?.length > 0) await targetDb.stockAdjustments.bulkPut(data.stockAdjustments);
 
       if (data.shopSettings) saveStoredShopSettings(data.shopSettings);
 
-      await db.auditLogs.put({
+      await targetDb.auditLogs.put({
         id: generateStableId('aud'),
         action: 'ROLLBACK_TO_SNAPSHOT',
         details: `Snapshot ${snapshot.date} ${snapshot.time} (${snapshot.reason}) သို့ ဒေတာများ ပြန်လည်ပြောင်းလဲခဲ့သည်`,

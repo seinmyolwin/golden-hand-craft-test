@@ -16,6 +16,7 @@ import {
   BackupReminderSettings,
   AutoRecoverySnapshot,
   RawMaterialPreset,
+  StockMovementRecord,
 } from '../types';
 
 export interface SettingRecord {
@@ -55,6 +56,7 @@ export class ShweLetYarDatabase extends Dexie {
   settings!: EntityTable<SettingRecord, 'key'>;
   recoverySnapshots!: EntityTable<AutoRecoverySnapshot, 'id'>;
   attachments!: EntityTable<AttachmentRecord, 'id'>;
+  stockMovements!: EntityTable<StockMovementRecord, 'id'>;
 
   constructor() {
     super('ShweLetYarProductionDB');
@@ -131,6 +133,26 @@ export class ShweLetYarDatabase extends Dexie {
       settings: 'key, updatedAt',
       recoverySnapshots: 'id, timestamp, date',
       attachments: 'id, voucherId, ownerId, createdAt',
+    });
+
+    // Version 5: Professional Stock Ledger (stockMovements table)
+    this.version(5).stores({
+      products: 'id, name, category, active, currentStock, minStockAlert',
+      suppliers: 'id, code, name, phone, village, currentAdvanceBalance, updatedAt',
+      merchants: 'id, code, name, town, phone, currentReceivableBalance, payableBalance, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, [date+supplierId], createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, [date+merchantId], createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, [date+merchantId], createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType, entityId',
+      rawMaterialPresets: 'id, category, name',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, ownerId, createdAt',
+      stockMovements: 'id, productId, movementType, referenceType, referenceId, idempotencyKey, transactionDate, [productId+transactionDate], status, createdAt',
     });
   }
 }

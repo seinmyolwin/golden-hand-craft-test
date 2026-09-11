@@ -13,6 +13,7 @@ import {
   RawMaterialPreset,
   SettingRecord,
   AttachmentRecord,
+  StockMovementRecord,
 } from '../types';
 
 export interface IProductRepository {
@@ -190,3 +191,16 @@ export interface IAttachmentRepository {
   cleanupOrphans?(): Promise<number>;
   migrateLegacy?(): Promise<number>;
 }
+
+export interface IStockMovementRepository {
+  getAll(): Promise<StockMovementRecord[]>;
+  getById(id: string): Promise<StockMovementRecord | undefined>;
+  getByProduct(productId: string): Promise<StockMovementRecord[]>;
+  getByReference(referenceType: string, referenceId: string): Promise<StockMovementRecord[]>;
+  getByIdempotencyKey(key: string): Promise<StockMovementRecord | undefined>;
+  recordMovement(movement: StockMovementRecord): Promise<string>;
+  recordMovementsMany(movements: StockMovementRecord[]): Promise<void>;
+  count(): Promise<number>;
+  clear(): Promise<void>;
+}
+

@@ -21,6 +21,7 @@ import {
   RawMaterialPreset,
   SettingRecord,
   AttachmentRecord,
+  StockMovementRecord,
 } from '../types';
 import {
   IProductRepository,
@@ -37,6 +38,7 @@ import {
   IRawMaterialPresetRepository,
   ISettingsRepository,
   IAttachmentRepository,
+  IStockMovementRepository,
 } from './types';
 import {
   BusinessIntegrityError,
@@ -320,7 +322,13 @@ export class TransactionRepository implements ITransactionRepository {
   async saveInboundAtomic(tx: TransactionRecord): Promise<TransactionRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.transactions, this.database.suppliers, this.database.products, this.database.auditLogs],
+      [
+        this.database.transactions,
+        this.database.suppliers,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         // 1. Idempotency protection
         if (tx.id) {
@@ -336,7 +344,18 @@ export class TransactionRepository implements ITransactionRepository {
           throw new EntityNotFoundError('Supplier', tx.supplierId);
         }
 
-        // 3. Validate products & adjust inventory for collected items
+        const now = new Date().toISOString();
+        const enrichedTx: TransactionRecord = {
+          ...tx,
+          id: tx.id || generateStableId('tx'),
+          voucherNo: tx.voucherNo || generateVoucherNo('TX', tx.date),
+          status: 'COMPLETED',
+          createdAt: tx.createdAt || now,
+          updatedAt: now,
+          revision: (tx.revision || 0) + 1,
+        };
+
+        // 3. Validate products, adjust inventory & record ledger movement for collected items
         if (Array.isArray(tx.items)) {
           for (const item of tx.items) {
             if (!item.productId) continue;
@@ -348,7 +367,31 @@ export class TransactionRepository implements ITransactionRepository {
             const updatedStock = currentStock + (item.quantity || 0);
             await this.database.products.update(item.productId, {
               currentStock: updatedStock,
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
+            });
+
+            // Write stock movement ledger
+            const mvId = generateStableId('mv');
+            await this.database.stockMovements.put({
+              id: mvId,
+              productId: item.productId,
+              productName: product.name,
+              movementType: 'SUPPLIER_INBOUND',
+              quantity: item.quantity || 0,
+              direction: 'IN',
+              signedQuantity: item.quantity || 0,
+              referenceType: 'TRANSACTION',
+              referenceId: enrichedTx.id,
+              referenceVoucherNo: enrichedTx.voucherNo,
+              counterpartName: tx.supplierName || supplier.name,
+              unitPrice: item.unitPrice,
+              totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+              transactionDate: tx.date || now.slice(0, 10),
+              transactionTime: tx.time,
+              createdAt: now,
+              status: 'COMPLETED',
+              idempotencyKey: `INBOUND_${enrichedTx.id}_${item.productId}`,
+              schemaVersion: 1,
             });
           }
         }
@@ -361,21 +404,11 @@ export class TransactionRepository implements ITransactionRepository {
             (supplier.totalGoodsValueDelivered || supplier.totalGoodsDeliveredValue || 0) + (tx.totalGoodsValue || 0),
           totalAdvanceGiven:
             (supplier.totalAdvanceGiven || supplier.totalAdvancesGiven || 0) + (tx.newAdvanceTaken || 0),
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         };
         await this.database.suppliers.put(updatedSupplier);
 
         // 5. Save transaction record
-        const now = new Date().toISOString();
-        const enrichedTx: TransactionRecord = {
-          ...tx,
-          id: tx.id || generateStableId('tx'),
-          voucherNo: tx.voucherNo || generateVoucherNo('TX', tx.date),
-          status: 'COMPLETED',
-          createdAt: tx.createdAt || now,
-          updatedAt: now,
-          revision: (tx.revision || 0) + 1,
-        };
         await this.database.transactions.put(enrichedTx);
 
         // 6. Audit Log
@@ -399,12 +432,19 @@ export class TransactionRepository implements ITransactionRepository {
    * 1. Decrements finished goods stock (reverses stock addition)
    * 2. Reverses supplier balance and aggregates
    * 3. Marks transaction as CANCELLED
-   * 4. Logs audit entry
+   * 4. Appends reversal stock movements to ledger
+   * 5. Logs audit entry
    */
   async cancelInboundAtomic(txId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<TransactionRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.transactions, this.database.suppliers, this.database.products, this.database.auditLogs],
+      [
+        this.database.transactions,
+        this.database.suppliers,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         const tx = await this.database.transactions.get(txId);
         if (!tx) {
@@ -414,7 +454,9 @@ export class TransactionRepository implements ITransactionRepository {
           throw new InvalidStateTransitionError('ဤကုန်သိမ်းစာရင်းအား ဖျက်သိမ်းပြီးဖြစ်ပါသည်');
         }
 
-        // 1. Revert product stocks
+        const now = new Date().toISOString();
+
+        // 1. Revert product stocks & record cancellation reversal in ledger
         if (Array.isArray(tx.items)) {
           for (const item of tx.items) {
             if (!item.productId) continue;
@@ -424,7 +466,30 @@ export class TransactionRepository implements ITransactionRepository {
               const newStock = Math.max(0, currentStock - (item.quantity || 0));
               await this.database.products.update(item.productId, {
                 currentStock: newStock,
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
+              });
+
+              await this.database.stockMovements.put({
+                id: generateStableId('mv'),
+                productId: item.productId,
+                productName: product.name,
+                movementType: 'TRANSACTION_CANCELLED_REVERSAL',
+                quantity: item.quantity || 0,
+                direction: 'OUT',
+                signedQuantity: -(item.quantity || 0),
+                referenceType: 'TRANSACTION',
+                referenceId: tx.id,
+                referenceVoucherNo: tx.voucherNo,
+                counterpartName: tx.supplierName,
+                unitPrice: item.unitPrice,
+                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                transactionDate: now.slice(0, 10),
+                transactionTime: now.slice(11, 16),
+                createdAt: now,
+                reason,
+                status: 'COMPLETED',
+                idempotencyKey: `INBOUND_REV_${tx.id}_${item.productId}`,
+                schemaVersion: 1,
               });
             }
           }
@@ -446,13 +511,12 @@ export class TransactionRepository implements ITransactionRepository {
               0,
               (supplier.totalAdvanceGiven || supplier.totalAdvancesGiven || 0) - (tx.newAdvanceTaken || 0)
             ),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
           await this.database.suppliers.put(updatedSupplier);
         }
 
         // 3. Mark transaction as CANCELLED
-        const now = new Date().toISOString();
         const cancelledTx: TransactionRecord = {
           ...tx,
           status: 'CANCELLED',
@@ -609,7 +673,13 @@ export class SaleRepository implements ISaleRepository {
   async saveSaleAtomic(sale: SaleRecord): Promise<SaleRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.sales, this.database.merchants, this.database.products, this.database.auditLogs],
+      [
+        this.database.sales,
+        this.database.merchants,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         // 1. Idempotency check
         if (sale.id) {
@@ -628,7 +698,18 @@ export class SaleRepository implements ISaleRepository {
           }
         }
 
-        // 3. Validate products & decrement inventory
+        const now = new Date().toISOString();
+        const enrichedSale: SaleRecord = {
+          ...sale,
+          id: sale.id || generateStableId('sale'),
+          voucherNo: sale.voucherNo || generateVoucherNo('SALE', sale.date),
+          status: 'COMPLETED',
+          createdAt: sale.createdAt || now,
+          updatedAt: now,
+          revision: (sale.revision || 0) + 1,
+        };
+
+        // 3. Validate products & decrement inventory & record ledger movement
         if (Array.isArray(sale.items) && sale.items.length > 0) {
           for (const item of sale.items) {
             if (!item.productId) continue;
@@ -640,7 +721,31 @@ export class SaleRepository implements ISaleRepository {
             const newStock = currentStock - (item.quantity || 0);
             await this.database.products.update(item.productId, {
               currentStock: newStock,
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
+            });
+
+            // Write stock movement ledger
+            const mvId = generateStableId('mv');
+            await this.database.stockMovements.put({
+              id: mvId,
+              productId: item.productId,
+              productName: product.name,
+              movementType: 'MERCHANT_OUTBOUND',
+              quantity: item.quantity || 0,
+              direction: 'OUT',
+              signedQuantity: -(item.quantity || 0),
+              referenceType: 'SALE',
+              referenceId: enrichedSale.id,
+              referenceVoucherNo: enrichedSale.voucherNo,
+              counterpartName: sale.merchantName || merchant?.name || 'ကုန်သည်',
+              unitPrice: item.unitPrice,
+              totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+              transactionDate: sale.date || now.slice(0, 10),
+              transactionTime: sale.time,
+              createdAt: now,
+              status: 'COMPLETED',
+              idempotencyKey: `SALE_${enrichedSale.id}_${item.productId}`,
+              schemaVersion: 1,
             });
           }
         }
@@ -652,22 +757,12 @@ export class SaleRepository implements ISaleRepository {
             currentReceivableBalance: sale.remainingReceivableBalance,
             totalPurchasesValue: (merchant.totalPurchasesValue || 0) + (sale.grandTotal || 0),
             totalPaidAmount: (merchant.totalPaidAmount || 0) + (sale.cashPaidByMerchant || 0),
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           };
           await this.database.merchants.put(updatedMerchant);
         }
 
         // 5. Save sale record
-        const now = new Date().toISOString();
-        const enrichedSale: SaleRecord = {
-          ...sale,
-          id: sale.id || generateStableId('sale'),
-          voucherNo: sale.voucherNo || generateVoucherNo('SALE', sale.date),
-          status: 'COMPLETED',
-          createdAt: sale.createdAt || now,
-          updatedAt: now,
-          revision: (sale.revision || 0) + 1,
-        };
         await this.database.sales.put(enrichedSale);
 
         // 6. Audit Log
@@ -691,12 +786,19 @@ export class SaleRepository implements ISaleRepository {
    * 1. Restores product inventory for all sold items
    * 2. Reverses merchant debt and purchase aggregates
    * 3. Marks sale as CANCELLED
-   * 4. Logs audit entry
+   * 4. Appends reversal stock movements to ledger
+   * 5. Logs audit entry
    */
   async cancelSaleAtomic(saleId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<SaleRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.sales, this.database.merchants, this.database.products, this.database.auditLogs],
+      [
+        this.database.sales,
+        this.database.merchants,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         const sale = await this.database.sales.get(saleId);
         if (!sale) {
@@ -706,7 +808,9 @@ export class SaleRepository implements ISaleRepository {
           throw new InvalidStateTransitionError('ဤအရောင်းဘောင်ချာအား ဖျက်သိမ်းပြီးဖြစ်ပါသည်');
         }
 
-        // 1. Restore product inventory
+        const now = new Date().toISOString();
+
+        // 1. Restore product inventory & record ledger reversal
         if (Array.isArray(sale.items)) {
           for (const item of sale.items) {
             if (!item.productId) continue;
@@ -716,7 +820,30 @@ export class SaleRepository implements ISaleRepository {
               const newStock = currentStock + (item.quantity || 0);
               await this.database.products.update(item.productId, {
                 currentStock: newStock,
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
+              });
+
+              await this.database.stockMovements.put({
+                id: generateStableId('mv'),
+                productId: item.productId,
+                productName: product.name,
+                movementType: 'SALE_CANCELLED_REVERSAL',
+                quantity: item.quantity || 0,
+                direction: 'IN',
+                signedQuantity: item.quantity || 0,
+                referenceType: 'SALE',
+                referenceId: sale.id,
+                referenceVoucherNo: sale.voucherNo,
+                counterpartName: sale.merchantName,
+                unitPrice: item.unitPrice,
+                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                transactionDate: now.slice(0, 10),
+                transactionTime: now.slice(11, 16),
+                createdAt: now,
+                reason,
+                status: 'COMPLETED',
+                idempotencyKey: `SALE_REV_${sale.id}_${item.productId}`,
+                schemaVersion: 1,
               });
             }
           }
@@ -733,14 +860,13 @@ export class SaleRepository implements ISaleRepository {
               currentReceivableBalance: newReceivable,
               totalPurchasesValue: Math.max(0, (merchant.totalPurchasesValue || 0) - (sale.grandTotal || 0)),
               totalPaidAmount: Math.max(0, (merchant.totalPaidAmount || 0) - (sale.cashPaidByMerchant || 0)),
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
             };
             await this.database.merchants.put(updatedMerchant);
           }
         }
 
         // 3. Mark sale as CANCELLED
-        const now = new Date().toISOString();
         const cancelledSale: SaleRecord = {
           ...sale,
           status: 'CANCELLED',
@@ -809,7 +935,13 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
   async savePurchaseAtomic(purchase: MerchantPurchaseRecord): Promise<MerchantPurchaseRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.merchantPurchases, this.database.merchants, this.database.auditLogs],
+      [
+        this.database.merchantPurchases,
+        this.database.merchants,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         // Idempotency check
         if (purchase.id) {
@@ -843,6 +975,44 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           revision: (purchase.revision || 0) + 1,
         };
 
+        // Update product inventory and record stock movements for purchase items
+        if (Array.isArray(purchase.items) && purchase.items.length > 0) {
+          for (const item of purchase.items) {
+            if (!item.productId) continue;
+            const product = await this.database.products.get(item.productId);
+            if (product) {
+              const currentStock = product.currentStock ?? product.openingStock ?? 0;
+              const newStock = currentStock + (item.quantity || 0);
+              await this.database.products.update(item.productId, {
+                currentStock: newStock,
+                updatedAt: now,
+              });
+
+              await this.database.stockMovements.put({
+                id: generateStableId('mv'),
+                productId: item.productId,
+                productName: product.name,
+                movementType: 'MERCHANT_PURCHASE_INBOUND',
+                quantity: item.quantity || 0,
+                direction: 'IN',
+                signedQuantity: item.quantity || 0,
+                referenceType: 'PURCHASE',
+                referenceId: enrichedPurchase.id,
+                referenceVoucherNo: enrichedPurchase.purchaseNo,
+                counterpartName: purchase.merchantName || merchant.name,
+                unitPrice: item.unitPrice,
+                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                transactionDate: purchase.date || now.slice(0, 10),
+                transactionTime: purchase.time,
+                createdAt: now,
+                status: 'COMPLETED',
+                idempotencyKey: `PUR_${enrichedPurchase.id}_${item.productId}`,
+                schemaVersion: 1,
+              });
+            }
+          }
+        }
+
         await this.database.merchantPurchases.put(enrichedPurchase);
 
         const auditEntry: AuditLogEntry = {
@@ -866,7 +1036,13 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
   async cancelPurchaseAtomic(purchaseId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<MerchantPurchaseRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.merchantPurchases, this.database.merchants, this.database.auditLogs],
+      [
+        this.database.merchantPurchases,
+        this.database.merchants,
+        this.database.products,
+        this.database.auditLogs,
+        this.database.stockMovements,
+      ],
       async () => {
         const purchase = await this.database.merchantPurchases.get(purchaseId);
         if (!purchase) {
@@ -876,6 +1052,8 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           throw new InvalidStateTransitionError('ဤကုန်ကြမ်းဝယ်ယူမှုစာရင်းအား ဖျက်သိမ်းပြီးဖြစ်ပါသည်');
         }
 
+        const now = new Date().toISOString();
+
         const merchant = await this.database.merchants.get(purchase.merchantId);
         if (merchant) {
           const newPayable = Math.max(0, (merchant.payableBalance || 0) - (purchase.remainingPayableBalance || 0));
@@ -883,11 +1061,49 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           await this.database.merchants.update(purchase.merchantId, {
             payableBalance: newPayable,
             totalPurchasedFromMerchant: newTotalPurchased,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
           });
         }
 
-        const now = new Date().toISOString();
+        // Revert product stock and record ledger reversal
+        if (Array.isArray(purchase.items) && purchase.items.length > 0) {
+          for (const item of purchase.items) {
+            if (!item.productId) continue;
+            const product = await this.database.products.get(item.productId);
+            if (product) {
+              const currentStock = product.currentStock ?? product.openingStock ?? 0;
+              const newStock = Math.max(0, currentStock - (item.quantity || 0));
+              await this.database.products.update(item.productId, {
+                currentStock: newStock,
+                updatedAt: now,
+              });
+
+              await this.database.stockMovements.put({
+                id: generateStableId('mv'),
+                productId: item.productId,
+                productName: product.name,
+                movementType: 'PURCHASE_CANCELLED_REVERSAL',
+                quantity: item.quantity || 0,
+                direction: 'OUT',
+                signedQuantity: -(item.quantity || 0),
+                referenceType: 'PURCHASE',
+                referenceId: purchase.id,
+                referenceVoucherNo: purchase.purchaseNo,
+                counterpartName: purchase.merchantName,
+                unitPrice: item.unitPrice,
+                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                transactionDate: now.slice(0, 10),
+                transactionTime: now.slice(11, 16),
+                createdAt: now,
+                reason,
+                status: 'COMPLETED',
+                idempotencyKey: `PUR_REV_${purchase.id}_${item.productId}`,
+                schemaVersion: 1,
+              });
+            }
+          }
+        }
+
         const cancelledPurchase: MerchantPurchaseRecord = {
           ...purchase,
           status: 'CANCELLED',
@@ -1077,11 +1293,12 @@ export class PeerTradeRepository implements IPeerTradeRepository {
   async saveTradeAtomic(trade: PeerTradeRecord): Promise<PeerTradeRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.peerTrades, this.database.products, this.database.auditLogs],
+      [this.database.peerTrades, this.database.products, this.database.auditLogs, this.database.stockMovements],
       async () => {
+        let product: Product | undefined;
         // Adjust product stock accordingly
         if (trade.productId && trade.quantity) {
-          const product = await this.database.products.get(trade.productId);
+          product = await this.database.products.get(trade.productId);
           if (product) {
             const currentStock = product.currentStock ?? product.openingStock ?? 0;
             // BORROW_IN increases stock, LEND_OUT decreases stock
@@ -1099,6 +1316,31 @@ export class PeerTradeRepository implements IPeerTradeRepository {
           id: trade.id || generateStableId('peer'),
         };
         await this.database.peerTrades.put(enrichedTrade);
+
+        // Record stock movement in ledger
+        if (trade.productId && trade.quantity) {
+          const isBorrowIn = trade.tradeType === 'BORROW_IN';
+          const qty = Math.abs(trade.quantity);
+          await this.database.stockMovements.put({
+            id: generateStableId('mv'),
+            productId: trade.productId,
+            productName: trade.productName || product?.name || 'Unknown',
+            movementType: isBorrowIn ? 'PEER_BORROW_IN' : 'PEER_LEND_OUT',
+            quantity: qty,
+            direction: isBorrowIn ? 'IN' : 'OUT',
+            signedQuantity: isBorrowIn ? qty : -qty,
+            referenceType: 'PEER_TRADE',
+            referenceId: enrichedTrade.id,
+            referenceVoucherNo: trade.voucherNo || `PEER-${enrichedTrade.id.slice(0, 6)}`,
+            counterpartName: trade.peerShopName || 'မိတ်ဖက်ဆိုင်',
+            transactionDate: trade.date || now.slice(0, 10),
+            transactionTime: trade.time,
+            createdAt: now,
+            status: 'COMPLETED',
+            idempotencyKey: `PEER_${enrichedTrade.id}`,
+            schemaVersion: 1,
+          });
+        }
 
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
@@ -1158,7 +1400,7 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
   async saveAdjustmentAtomic(adj: StockAdjustmentRecord): Promise<StockAdjustmentRecord> {
     return this.database.transaction(
       'rw',
-      [this.database.stockAdjustments, this.database.products, this.database.auditLogs],
+      [this.database.stockAdjustments, this.database.products, this.database.auditLogs, this.database.stockMovements],
       async () => {
         const product = await this.database.products.get(adj.productId);
         if (!product) {
@@ -1181,6 +1423,32 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
         };
 
         await this.database.stockAdjustments.put(enrichedAdj);
+
+        // Record stock movement in ledger
+        const isDamage = adj.type === 'DAMAGE';
+        const isIn = adj.type === 'IN_ADJUSTMENT' || (adj.quantity > 0 && !isDamage);
+        const absQty = Math.abs(Number(adj.quantity) || 0);
+
+        await this.database.stockMovements.put({
+          id: generateStableId('mv'),
+          productId: adj.productId,
+          productName: adj.productName || product.name,
+          movementType: isDamage ? 'DAMAGE_LOSS' : isIn ? 'STOCK_ADJUSTMENT_IN' : 'STOCK_ADJUSTMENT_OUT',
+          quantity: absQty,
+          direction: isDamage || !isIn ? 'OUT' : 'IN',
+          signedQuantity: isDamage || !isIn ? -absQty : absQty,
+          referenceType: 'STOCK_ADJUSTMENT',
+          referenceId: enrichedAdj.id,
+          referenceVoucherNo: `ADJ-${enrichedAdj.id.slice(0, 6)}`,
+          counterpartName: 'စာရင်းညှိနှိုင်းမှု (Adjustment)',
+          transactionDate: adj.date || now.slice(0, 10),
+          transactionTime: adj.time,
+          createdAt: now,
+          reason: adj.reason,
+          status: 'COMPLETED',
+          idempotencyKey: `ADJ_${enrichedAdj.id}`,
+          schemaVersion: 1,
+        });
 
         const auditEntry: AuditLogEntry = {
           id: generateStableId('audit'),
@@ -1530,6 +1798,69 @@ export class AttachmentRepository implements IAttachmentRepository {
   }
 }
 
+export class StockMovementRepository implements IStockMovementRepository {
+  constructor(private database: ShweLetYarDatabase = db) {}
+
+  async getAll(): Promise<StockMovementRecord[]> {
+    return this.database.stockMovements.reverse().sortBy('transactionDate');
+  }
+
+  async getById(id: string): Promise<StockMovementRecord | undefined> {
+    return this.database.stockMovements.get(id);
+  }
+
+  async getByProductId(productId: string): Promise<StockMovementRecord[]> {
+    return this.database.stockMovements.where('productId').equals(productId).reverse().sortBy('transactionDate');
+  }
+
+  async getByReference(referenceType: string, referenceId: string): Promise<StockMovementRecord[]> {
+    return this.database.stockMovements
+      .where('referenceType')
+      .equals(referenceType)
+      .filter((m) => m.referenceId === referenceId)
+      .toArray();
+  }
+
+  async getByDateRange(startDate: string, endDate: string): Promise<StockMovementRecord[]> {
+    return this.database.stockMovements
+      .where('transactionDate')
+      .between(startDate, endDate, true, true)
+      .reverse()
+      .sortBy('transactionDate');
+  }
+
+  async recordMovement(movement: StockMovementRecord): Promise<string> {
+    if (movement.idempotencyKey) {
+      const existing = await this.database.stockMovements.where('idempotencyKey').equals(movement.idempotencyKey).first();
+      if (existing) {
+        return existing.id;
+      }
+    }
+    await this.database.stockMovements.put(movement);
+    return movement.id;
+  }
+
+  async recordMovementsAtomic(movements: StockMovementRecord[]): Promise<void> {
+    return this.database.transaction('rw', [this.database.stockMovements], async () => {
+      for (const m of movements) {
+        if (m.idempotencyKey) {
+          const existing = await this.database.stockMovements.where('idempotencyKey').equals(m.idempotencyKey).first();
+          if (existing) continue;
+        }
+        await this.database.stockMovements.put(m);
+      }
+    });
+  }
+
+  async count(): Promise<number> {
+    return this.database.stockMovements.count();
+  }
+
+  async clear(): Promise<void> {
+    await this.database.stockMovements.clear();
+  }
+}
+
 // Singleton instances for presentation / application consumption
 export const productRepo = new ProductRepository();
 export const supplierRepo = new SupplierRepository();
@@ -1540,6 +1871,7 @@ export const purchaseRepo = new MerchantPurchaseRepository();
 export const orderRepo = new OrderRepository();
 export const peerTradeRepo = new PeerTradeRepository();
 export const stockAdjustmentRepo = new StockAdjustmentRepository();
+export const stockMovementRepo = new StockMovementRepository();
 export const softDeleteRepo = new SoftDeleteRepository();
 export const auditRepo = new AuditRepository();
 export const rawMaterialPresetRepo = new RawMaterialPresetRepository();

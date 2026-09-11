@@ -96,12 +96,6 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<Product | null>(null);
 
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
-  const [newProdName, setNewProdName] = useState<string>('');
-  const [newBuyPrice, setNewBuyPrice] = useState<number>(0);
-  const [newSellPrice, setNewSellPrice] = useState<number>(0);
-  const [newUnit, setNewUnit] = useState<string>('ထည်');
-  const [newCategory, setNewCategory] = useState<string>('ယွန်းထည်');
-  const [newOpeningStock, setNewOpeningStock] = useState<number>(0);
 
   const allStockStats: ProductStockStats[] = useMemo(() => {
     return computeAllProductsStock(products || [], transactions || [], sales || [], stockAdjustments || [], [], [], peerTrades || []);
@@ -264,33 +258,6 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     setSelectedProductForAdjust(null);
     setAdjustQty(0);
     setAdjustReason('');
-  };
-
-  const handleCreateProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProdName.trim()) return;
-
-    const createdProd: Product = {
-      id: generateStableId('p'),
-      name: newProdName.trim(),
-      defaultPrice: newBuyPrice || 0,
-      defaultWholesalePrice: newSellPrice || Math.round((newBuyPrice || 0) * 1.25),
-      unit: newUnit.trim() || 'ထည်',
-      category: newCategory.trim() || 'ယွန်းထည်',
-      openingStock: newOpeningStock || 0,
-      currentStock: newOpeningStock || 0,
-      minStockAlert: 15,
-      active: true,
-    };
-
-    if (onAddProduct) {
-      onAddProduct(createdProd);
-    }
-    setIsAddProductModalOpen(false);
-    setNewProdName('');
-    setNewBuyPrice(0);
-    setNewSellPrice(0);
-    setNewOpeningStock(0);
   };
 
   const productMovementHistory = useMemo(() => {

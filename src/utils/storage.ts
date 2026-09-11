@@ -33,6 +33,7 @@ import { db } from '../db/database';
 import { generateSecureRecoveryKey } from '../services/cryptoSecurity';
 import { generateStableId } from './idGenerator';
 import { createCompleteBackup, downloadBackupFile } from '../services/backupService';
+import { calculateAllProductsStockLedgerSummaries } from '../services/stockLedgerService';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'ledger_products_v2',
@@ -831,144 +832,27 @@ export function computeAllProductsStock(
   peerTransactions: PeerTransaction[] = [],
   peerTrades: PeerTradeRecord[] = []
 ): ProductStockStats[] {
-  const safeProducts = Array.isArray(products) ? products : [];
-  const safeTransactions = Array.isArray(transactions) ? transactions : [];
-  const safeSales = Array.isArray(sales) ? sales : [];
-  const safeAdjustments = Array.isArray(adjustments) ? adjustments : [];
-  const safePurchases = Array.isArray(merchantPurchases) ? merchantPurchases : [];
-  const safePeers = Array.isArray(peerTransactions) ? peerTransactions : [];
-  // Use passed peerTrades if given, otherwise fall back to stored trades
-  const safeTrades: PeerTradeRecord[] = Array.isArray(peerTrades) && peerTrades.length > 0
-    ? peerTrades
-    : (safePeers.length === 0 ? loadPeerTrades() : (peerTrades || []));
+  const summaries = calculateAllProductsStockLedgerSummaries(
+    products,
+    transactions,
+    sales,
+    adjustments,
+    merchantPurchases,
+    peerTrades,
+    peerTransactions
+  );
 
-  const inflowMap: { [productId: string]: number } = {};
-  const outflowMap: { [productId: string]: number } = {};
-
-  safeTransactions.forEach((tx) => {
-    if (!tx) return;
-    if (tx.type === 'RAW_MATERIAL_CREDIT') {
-      const rawItems = (tx.materialItems && tx.materialItems.length > 0) ? tx.materialItems : (tx.items || []);
-      rawItems.forEach((item) => {
-        if (item) {
-          if (item.productId) outflowMap[item.productId] = (outflowMap[item.productId] || 0) + (item.quantity || 0);
-          if (item.productName) outflowMap[item.productName] = (outflowMap[item.productName] || 0) + (item.quantity || 0);
-        }
-      });
-    } else {
-      // Inbound collection of finished goods from suppliers/villages:
-      // Accepts COLLECTION_AND_SETTLEMENT, undefined type, or any inbound collection
-      (tx.items || []).forEach((item) => {
-        if (item) {
-          if (item.productId) inflowMap[item.productId] = (inflowMap[item.productId] || 0) + (item.quantity || 0);
-          if (item.productName) inflowMap[item.productName] = (inflowMap[item.productName] || 0) + (item.quantity || 0);
-        }
-      });
-      if (tx.materialItems && Array.isArray(tx.materialItems)) {
-        tx.materialItems.forEach((mItem) => {
-          if (mItem) {
-            if (mItem.productId) outflowMap[mItem.productId] = (outflowMap[mItem.productId] || 0) + (mItem.quantity || 0);
-            if (mItem.productName) outflowMap[mItem.productName] = (outflowMap[mItem.productName] || 0) + (mItem.quantity || 0);
-          }
-        });
-      }
-    }
-  });
-
-  safeSales.forEach((sale) => {
-    if (!sale) return;
-    (sale.items || []).forEach((item) => {
-      if (item && item.productId) {
-        outflowMap[item.productId] = (outflowMap[item.productId] || 0) + (item.quantity || 0);
-      }
-    });
-  });
-
-  safePurchases.forEach((pur) => {
-    if (!pur || !pur.items) return;
-    pur.items.forEach((item) => {
-      if (item && item.productId) {
-        inflowMap[item.productId] = (inflowMap[item.productId] || 0) + (item.quantity || 0);
-      }
-    });
-  });
-
-  safePeers.forEach((ptx) => {
-    if (!ptx || !ptx.items) return;
-    ptx.items.forEach((item) => {
-      if (!item || !item.productId) return;
-      const qty = item.quantity || 0;
-      if (ptx.type === 'BORROW_FROM_PEER' || ptx.type === 'RECEIVE_RETURN_FROM_PEER' || ptx.type === 'BUY_FROM_PEER') {
-        inflowMap[item.productId] = (inflowMap[item.productId] || 0) + qty;
-      } else if (ptx.type === 'LEND_TO_PEER' || ptx.type === 'RETURN_TO_PEER' || ptx.type === 'SELL_TO_PEER') {
-        outflowMap[item.productId] = (outflowMap[item.productId] || 0) + qty;
-      }
-    });
-  });
-
-  // Calculate Peer Trades (မိတ်ဖက်/ကုန်သည် ကုန်ဖလှယ်/ချေးငှားမှု)
-  safeTrades.forEach((trade) => {
-    if (!trade || !trade.productId) return;
-    const qty = trade.quantity || 0;
-    const status = (trade.status || 'OPEN').toUpperCase();
-
-    if (trade.tradeType === 'BORROW_IN') {
-      // မိတ်ဖက်ထံမှ ချေးယူခြင်း:
-      // OPEN / PENDING (or CASH_SETTLED where we kept the item): ပစ္စည်းဆိုင်ထဲရောက်ရှိနေသည် (+Inflow)
-      // REPAID / RETURNED ("ပြန်ဆပ်ပြီး"): ပစ္စည်းကို မိတ်ဖက်ထံ ပြန်လည်ပေးဆပ်ပြီးဖြစ်သဖြင့် ဆိုင်ထဲတွင်မရှိတော့ပါ (Net change = 0)
-      if (status === 'REPAID' || status === 'RETURNED') {
-        // Returned back to peer
-      } else {
-        inflowMap[trade.productId] = (inflowMap[trade.productId] || 0) + qty;
-      }
-    } else if (trade.tradeType === 'LEND_OUT') {
-      // မိတ်ဖက်သို့ ထုတ်ငှားခြင်း:
-      // OPEN / PENDING (or CASH_SETTLED where goods were permanently sold/kept): ပစ္စည်းဆိုင်မှ ထွက်ခွာသွားသည် (+Outflow)
-      // RETRIEVED / RETURNED ("ပြန်လည်ရယူပြီး"): ထုတ်ငှားထားသောပစ္စည်းကို ဆိုင်ထဲသို့ ပြန်လည်ရယူသိမ်းဆည်းပြီးဖြစ်သည် (Net change = 0)
-      if (status === 'RETRIEVED' || status === 'RETURNED') {
-        // Returned back to warehouse
-      } else {
-        outflowMap[trade.productId] = (outflowMap[trade.productId] || 0) + qty;
-      }
-    }
-  });
-
-  const adjustMap: { [productId: string]: number } = {};
-  safeAdjustments.forEach((adj) => {
-    if (adj && adj.productId) {
-      adjustMap[adj.productId] = (adjustMap[adj.productId] || 0) + (adj.quantity || 0);
-    }
-  });
-
-  return safeProducts.map((p) => {
-    const opening = p.openingStock ?? 0;
-    const inflow = (inflowMap[p.id] || 0) + (inflowMap[p.name] && !inflowMap[p.id] ? inflowMap[p.name] : 0);
-    const outflow = (outflowMap[p.id] || 0) + (outflowMap[p.name] && !outflowMap[p.id] ? outflowMap[p.name] : 0);
-    const adj = adjustMap[p.id] || 0;
-    const finalStock = opening + inflow - outflow + adj;
-    const minAlert = p.minStockAlert ?? 15;
-    let status: 'OUT_OF_STOCK' | 'LOW_STOCK' | 'IN_STOCK' = 'IN_STOCK';
-    if (finalStock <= 0) {
-      status = 'OUT_OF_STOCK';
-    } else if (finalStock <= minAlert) {
-      status = 'LOW_STOCK';
-    }
-    const wholesalePrice = p.defaultWholesalePrice || Math.round(p.defaultPrice * 1.25);
-    return {
-      product: {
-        ...p,
-        currentStock: finalStock,
-      },
-      openingStock: opening,
-      totalInflow: inflow,
-      totalOutflow: outflow,
-      adjustments: adj,
-      currentStock: finalStock,
-      procurementValue: finalStock > 0 ? finalStock * p.defaultPrice : 0,
-      potentialSalesValue: finalStock > 0 ? finalStock * wholesalePrice : 0,
-      status,
-    };
-  });
+  return summaries.map((s) => ({
+    product: s.product,
+    openingStock: s.openingStock,
+    totalInflow: s.totalInflow,
+    totalOutflow: s.totalOutflow,
+    adjustments: s.adjustments,
+    currentStock: s.currentStock,
+    procurementValue: s.procurementValue,
+    potentialSalesValue: s.potentialSalesValue,
+    status: s.status,
+  }));
 }
 
 export async function saveFileWithLocationPrompt(

@@ -25,6 +25,7 @@ import {
   Check,
   UserPlus,
 } from 'lucide-react';
+import { MerchantMasterModal } from './master/MerchantMasterModal';
 
 interface NewSaleModalProps {
   isOpen: boolean;
@@ -52,9 +53,6 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [merchantId, setMerchantId] = useState<string>(initialMerchantId || (merchants[0]?.id || ''));
   const [merchantSearch, setMerchantSearch] = useState<string>('');
   const [isQuickAddMerchantOpen, setIsQuickAddMerchantOpen] = useState<boolean>(false);
-  const [newMerchantName, setNewMerchantName] = useState<string>('');
-  const [newMerchantTown, setNewMerchantTown] = useState<string>('');
-  const [newMerchantPhone, setNewMerchantPhone] = useState<string>('');
 
   const [saleDate, setSaleDate] = useState<string>(selectedDate || getTodayDateString());
   const [saleTime, setSaleTime] = useState<string>(getCurrentTimeString());
@@ -118,36 +116,6 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         (m.phone || '').includes(q)
     );
   }, [merchants, merchantSearch]);
-
-  const handleQuickAddMerchantSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMerchantName.trim()) {
-      alert('ကုန်သည်အမည် ရိုက်ထည့်ပေးပါ');
-      return;
-    }
-
-    const newM: Merchant = {
-      id: generateStableId('merch'),
-      code: `M-${(merchants.length + 1).toString().padStart(3, '0')}`,
-      name: newMerchantName.trim(),
-      town: newMerchantTown.trim() || 'မန္တလေး',
-      phone: newMerchantPhone.trim() || '-',
-      currentReceivableBalance: 0,
-      totalPurchasesValue: 0,
-      totalPaidAmount: 0,
-      createdAt: getTodayDateString(),
-      updatedAt: getTodayDateString(),
-    };
-
-    if (onAddNewMerchant) {
-      onAddNewMerchant(newM);
-    }
-    setMerchantId(newM.id);
-    setNewMerchantName('');
-    setNewMerchantTown('');
-    setNewMerchantPhone('');
-    setIsQuickAddMerchantOpen(false);
-  };
 
   const previousReceivableBalance = currentMerchant?.currentReceivableBalance || 0;
 
@@ -628,80 +596,22 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           </div>
         </form>
 
-        {/* Quick Add Merchant Modal Overlay */}
-        {isQuickAddMerchantOpen && (
-          <div className="fixed inset-0 z-60 bg-slate-950/70 flex items-center justify-center p-3 animate-in fade-in duration-150">
-            <div className="bg-white rounded-2xl p-4 max-w-sm w-full shadow-2xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-blue-600" />
-                  <h4 className="font-bold text-sm text-slate-900">ကုန်သည်အသစ် အမြန်ထည့်သွင်းမည်</h4>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsQuickAddMerchantOpen(false)}
-                  className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleQuickAddMerchantSubmit} className="space-y-2.5 text-xs">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ကုန်သည် / ဆိုင်အမည် *</label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    placeholder="ဥပမာ - ရွှေမန္တလေး ယွန်းဆိုင်"
-                    value={newMerchantName}
-                    onChange={(e) => setNewMerchantName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-bold text-slate-900"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-700 font-semibold mb-1">မြို့နယ် *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="မန္တလေး"
-                      value={newMerchantTown}
-                      onChange={(e) => setNewMerchantTown(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-700 font-semibold mb-1">ဖုန်းနံပါတ်</label>
-                    <input
-                      type="text"
-                      placeholder="09-..."
-                      value={newMerchantPhone}
-                      onChange={(e) => setNewMerchantPhone(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickAddMerchantOpen(false)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg cursor-pointer"
-                  >
-                    ပယ်ဖျက်
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg cursor-pointer"
-                  >
-                    ထည့်သွင်းပြီး ရွေးချယ်မည်
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Canonical Quick Add Merchant Modal */}
+        <MerchantMasterModal
+          isOpen={isQuickAddMerchantOpen}
+          onClose={() => setIsQuickAddMerchantOpen(false)}
+          onSave={(newM) => {
+            if (onAddNewMerchant) onAddNewMerchant(newM);
+            setMerchantId(newM.id);
+            setIsQuickAddMerchantOpen(false);
+          }}
+          onSaveAndSelect={(newM) => {
+            if (onAddNewMerchant) onAddNewMerchant(newM);
+            setMerchantId(newM.id);
+            setIsQuickAddMerchantOpen(false);
+          }}
+          existingTowns={Array.from(new Set(merchants.map((m) => m.town).filter(Boolean)))}
+        />
       </div>
     </div>
   );

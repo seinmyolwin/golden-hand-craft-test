@@ -9,6 +9,7 @@ export interface Product {
   currentStock?: number; // Real-time available stock
   minStockAlert?: number; // Low stock alert threshold
   active: boolean;
+  notes?: string;
   createdAt?: string;
   updatedAt?: string;
   revision?: number;
@@ -16,13 +17,15 @@ export interface Product {
 
 export interface Supplier {
   id: string;
-  code: string; // S-001, S-002 etc.
+  code?: string; // S-001, S-002 etc.
   name: string;
   phone: string;
   village: string; // ကျေးရွာ
   notes?: string;
   initialAdvance?: number; // Initial opening advance balance
-  currentAdvanceBalance: number; // Current remaining advance/debt owed by supplier
+  currentAdvanceBalance?: number; // Current remaining advance/debt owed by supplier
+  advanceBalance?: number;
+  active?: boolean;
   totalGoodsValueDelivered?: number; // Cumulative goods delivered
   totalGoodsDeliveredValue?: number;
   totalAdvanceGiven?: number; // Cumulative total advance received by supplier
@@ -37,19 +40,22 @@ export type MerchantRole = 'BUYER' | 'SUPPLIER' | 'BOTH';
 
 export interface Merchant {
   id: string;
-  code: string; // M-001, M-002 etc.
+  code?: string; // M-001, M-002 etc.
   name: string; // e.g. ရွှေမန္တလေး ယွန်းဆိုင်
   town: string; // e.g. မန္တလေး, ရန်ကုန်, ပုဂံ
   phone: string;
   address?: string;
   ownerOrContact?: string; // ပိုင်ရှင် သို့မဟုတ် ဆက်သွယ်ရမည့်သူ
+  contactPerson?: string;
   notes?: string;
   role?: MerchantRole; // 'BUYER' (ဝယ်ယူသူ), 'SUPPLIER' (ကုန်ကြမ်းရောင်းသူ), 'BOTH' (နှစ်မျိုးလုံး)
-  currentReceivableBalance: number; // Remaining debt/receivable owed by merchant to business
+  currentReceivableBalance?: number; // Remaining debt/receivable owed by merchant to business
+  receivableBalance?: number;
   payableBalance?: number; // လုပ်ငန်းမှ ကုန်သည်သို့ ပေးရန်ကျန်
-  totalPurchasesValue: number; // Cumulative goods sold to merchant
-  totalPaidAmount: number; // Cumulative total payment made by merchant
+  totalPurchasesValue?: number; // Cumulative goods sold to merchant
+  totalPaidAmount?: number; // Cumulative total payment made by merchant
   totalPurchasedFromMerchant?: number; // ကုန်သည်ထံမှ ဝယ်ယူခဲ့သော ကုန်ကြမ်းတန်ဖိုး
+  active?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,20 +117,25 @@ export interface TransactionRecord {
   type?: 'COLLECTION_AND_SETTLEMENT' | 'ADVANCE_ONLY' | 'CASH_PAYMENT_ONLY' | 'RAW_MATERIAL_CREDIT' | 'SUPPLIER_REPAYMENT' | string;
   items: CollectionItem[]; // Finished goods collected OR raw material items sold
   // Financial calculation breakdown
-  totalGoodsValue: number; // ပေးသွင်းကုန်ပစ္စည်းတန်ဖိုး
-  previousAdvanceBalance: number; // ယခင်အကြိုငွေကျန်
-  advanceDeducted: number; // အကြိုငွေမှ နုတ်ယူငွေ
+  totalGoodsValue?: number; // ပေးသွင်းကုန်ပစ္စည်းတန်ဖိုး
+  totalAmount?: number;
+  previousAdvanceBalance?: number; // ယခင်အကြိုငွေကျန်
+  advanceDeducted?: number; // အကြိုငွေမှ နုတ်ယူငွေ
   cashPaidToSupplier?: number; // အပိုပေးငွေ
   netCashPaidToSupplier?: number;
-  newAdvanceTaken: number; // အကြိုငွေအသစ် ထုတ်ယူငွေ
+  newAdvanceTaken?: number; // အကြိုငွေအသစ် ထုတ်ယူငွေ
   newAdvanceReason?: string; // အကြိုငွေယူရသည့် အကြောင်းပြချက်
   // Raw material credits & repayments
   materialItems?: CollectionItem[]; // ကုန်ကြမ်းပစ္စည်းများ
   rawMaterialItems?: RawMaterialItem[];
+  rawMaterialDeductions?: any[];
+  rawMaterialDeductionTotal?: number;
   materialTotalValue?: number; // ကုန်ကြမ်းတန်ဖိုး
   cashRepaymentReceived?: number; // ကုန်ပစ္စည်းပေးသွင်းသူမှ လာရောက်ဆပ်ငွေ
+  paidAmount?: number;
+  netPayable?: number;
   paymentMethod?: PaymentMethod | string;
-  remainingAdvanceBalance: number; // လက်ကျန် အကြိုငွေစာရင်း
+  remainingAdvanceBalance?: number; // လက်ကျန် အကြိုငွေစာရင်း
   attachmentPhotos?: string[]; // ဓာတ်ပုံ သို့မဟုတ် ပြေစာ/လက်မှတ် ပုံများ
   notes?: string;
   status?: 'COMPLETED' | 'CANCELLED' | string;
@@ -146,15 +157,18 @@ export interface SaleRecord {
   time: string; // HH:mm
   items: SaleItem[];
   // Financial breakdown
-  totalItemsCount: number;
+  totalItemsCount?: number;
   totalGoodsValue?: number; // ကုန်ပစ္စည်းတန်ဖိုးစုစုပေါင်း
+  totalAmount?: number;
   deliveryFee?: number; // သယ်ယူပို့ဆောင်ခ/ဂိတ်ပို့ခ
   discount?: number; // လျှော့စျေး
-  grandTotal: number; // ကျသင့်ငွေစုစုပေါင်း
+  grandTotal?: number; // ကျသင့်ငွေစုစုပေါင်း
   previousReceivableBalance?: number; // ယခင်ရရန်ကျန်ငွေ
-  cashPaidByMerchant: number; // ကုန်သည်ပေးငွေ
+  cashPaidByMerchant?: number; // ကုန်သည်ပေးငွေ
+  paidAmount?: number;
   paymentMethod?: PaymentMethod | string;
-  remainingReceivableBalance: number; // ကုန်သည်ထံမှ ရရန်ကျန်ငွေ
+  remainingReceivableBalance?: number; // ကုန်သည်ထံမှ ရရန်ကျန်ငွေ
+  remainingReceivable?: number;
   // Transport & Delivery details
   deliveryVehicle?: string; // တင်ပေးလိုက်သည့်ကား / ယာဉ်အမှတ် / ဂိတ်
   driverOrContact?: string; // ယာဉ်မောင်း / ဆက်သွယ်ရမည့်သူ
@@ -168,6 +182,47 @@ export interface SaleRecord {
   createdAt?: string;
   updatedAt?: string;
   revision?: number;
+}
+
+export type StockMovementType =
+  | 'OPENING_BALANCE'
+  | 'SUPPLIER_INBOUND'
+  | 'MERCHANT_OUTBOUND'
+  | 'MERCHANT_PURCHASE_INBOUND'
+  | 'PEER_BORROW_IN'
+  | 'PEER_LEND_OUT'
+  | 'PEER_RETURN_IN'
+  | 'PEER_RETURN_OUT'
+  | 'STOCK_ADJUSTMENT_IN'
+  | 'STOCK_ADJUSTMENT_OUT'
+  | 'DAMAGE_LOSS'
+  | 'TRANSACTION_CANCELLED_REVERSAL'
+  | 'SALE_CANCELLED_REVERSAL'
+  | 'PURCHASE_CANCELLED_REVERSAL';
+
+export interface StockMovementRecord {
+  id: string;
+  productId: string;
+  productName: string;
+  movementType: StockMovementType;
+  quantity: number; // Positive magnitude
+  direction: 'IN' | 'OUT' | 'ADJUST' | 'INITIAL';
+  signedQuantity: number; // positive for in, negative for out
+  referenceType: 'OPENING' | 'TRANSACTION' | 'SALE' | 'PURCHASE' | 'PEER_TRADE' | 'STOCK_ADJUSTMENT' | 'MANUAL';
+  referenceId: string;
+  referenceVoucherNo?: string;
+  counterpartName?: string;
+  unitPrice?: number;
+  totalValue?: number;
+  transactionDate: string; // YYYY-MM-DD
+  transactionTime?: string; // HH:mm
+  createdAt: string; // ISO string
+  reason?: string;
+  notes?: string;
+  reversalOf?: string; // ID of original stock movement if this is a reversal
+  status: 'COMPLETED' | 'CANCELLED' | 'REVERSED';
+  idempotencyKey: string;
+  schemaVersion: number;
 }
 
 export interface StockAdjustmentRecord {
@@ -377,6 +432,7 @@ export interface AutoRecoverySnapshot {
     stockAdjustments: number;
     orders?: number;
     peerTransactions?: number;
+    stockMovements?: number;
   };
   data: {
     products: Product[];
@@ -390,6 +446,7 @@ export interface AutoRecoverySnapshot {
     peerTraders?: PeerTrader[];
     peerTransactions?: PeerTransaction[];
     shopSettings: ShopSettings;
+    stockMovements?: StockMovementRecord[];
   };
 }
 
@@ -464,25 +521,29 @@ export type PeerTradeStatus = 'OPEN' | 'PENDING' | 'REPAID' | 'RETRIEVED' | 'SET
 
 export interface PeerTradeRecord {
   id: string;
+  voucherNo?: string;
   tradeType: 'BORROW_IN' | 'LEND_OUT';
   date: string;
   time: string;
   peerShopName: string;
-  peerLocation: string;
+  peerTraderName?: string;
+  peerLocation?: string;
   merchantId?: string;
   merchantName?: string;
   productId: string;
   productName: string;
   quantity: number;
   unit: string;
-  agreedUnitPrice: number;
-  totalTradeValue: number;
+  agreedUnitPrice?: number;
+  totalTradeValue?: number;
   status: PeerTradeStatus;
   notes?: string;
   settledDate?: string;
   settledTime?: string;
   settledType?: 'REPAID' | 'RETRIEVED' | 'CASH_SETTLED' | string;
   settledNotes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SettingRecord {
@@ -525,6 +586,7 @@ export interface BackupMetadata {
     auditLogs: number;
     rawMaterialPresets: number;
     attachments?: number;
+    stockMovements?: number;
   };
   dateRange?: {
     earliest: string;
@@ -546,6 +608,7 @@ export interface BackupDataPayload {
   softDeletedItems: SoftDeletedItem[];
   auditLogs: AuditLogEntry[];
   rawMaterialPresets: RawMaterialPreset[];
+  stockMovements?: StockMovementRecord[];
   shopSettings: ShopSettings;
   appLockSettings?: AppLockSettings;
   backupReminderSettings?: BackupReminderSettings;

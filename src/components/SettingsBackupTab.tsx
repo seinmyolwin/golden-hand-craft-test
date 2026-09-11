@@ -58,6 +58,7 @@ import {
 import { BackupImportPreviewModal } from './BackupImportPreviewModal';
 import { AutoRecoverySnapshotsModal } from './AutoRecoverySnapshotsModal';
 import { DatabaseHealthModal } from './DatabaseHealthModal';
+import { ProductMasterModal } from './master/ProductMasterModal';
 import { Logo } from './Logo';
 import {
   Activity,
@@ -451,6 +452,16 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const inventoryStock = computeAllProductsStock(products || [], transactions || [], sales || [], stockAdjustments || []);
+
+  const inventoryStockMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of inventoryStock) {
+      if (item.product?.id) {
+        map.set(item.product.id, item.currentStock);
+      }
+    }
+    return map;
+  }, [inventoryStock]);
 
   const filteredProductsForSetting = useMemo(() => {
     return (products || []).filter((p) => {
@@ -911,7 +922,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </div>
             ) : (
               filteredProductsForSetting.map((prod) => {
-                const stock = inventoryStock[prod.id]?.currentStock ?? prod.currentStock ?? 0;
+                const stock = inventoryStockMap.get(prod.id) ?? prod.currentStock ?? 0;
                 return (
                   <div
                     key={prod.id}
@@ -2347,144 +2358,25 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
       )}
 
-      {/* ================= MODAL: ADD / EDIT PRODUCT ================= */}
-      {isProductModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center">
-                  <Package className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-sm">
-                  {editingProduct ? 'ကုန်ပစ္စည်း အချက်အလက် ပြင်ဆင်ခြင်း' : 'ကုန်ပစ္စည်း အသစ်ထည့်သွင်းခြင်း'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsProductModalOpen(false);
-                  setEditingProduct(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveProductFromSettings} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-700 font-bold mb-1">ကုန်ပစ္စည်း အမည် *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="ဥပမာ - ၈ လက်မ ယွန်းအုပ်ခွက်"
-                    value={prodName}
-                    onChange={(e) => setProdName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">အမျိုးအစား *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="ဥပမာ - ယွန်းထည် / ပန်းပု"
-                    value={prodCategory}
-                    onChange={(e) => setProdCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ရေတွက်ပုံ ယူနစ် *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="ထည် / ခု / စုံ / လုံး"
-                    value={prodUnit}
-                    onChange={(e) => setProdUnit(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    ဝယ်စျေး / ကုန်ကျစရိတ် (ကျပ်)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodBuyPrice}
-                    onChange={(e) => setProdBuyPrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    လက်ကား ရောင်းစျေး (ကျပ်)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodWholesalePrice}
-                    onChange={(e) => setProdWholesalePrice(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-mono font-bold text-purple-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    အဖွင့်လက်ကျန် (Opening Stock)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodOpeningStock}
-                    onChange={(e) => setProdOpeningStock(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">
-                    အနိမ့်ဆုံး သတိပေးလက်ကျန်
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodMinStock}
-                    onChange={(e) => setProdMinStock(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProductModalOpen(false);
-                    setEditingProduct(null);
-                  }}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl cursor-pointer"
-                >
-                  မလုပ်တော့ပါ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl cursor-pointer shadow-xs"
-                >
-                  {editingProduct ? 'ပြင်ဆင်မှု သိမ်းဆည်းမည်' : 'ကုန်ပစ္စည်း စာရင်းသွင်းမည်'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ================= CANONICAL MODAL: ADD / EDIT PRODUCT ================= */}
+      <ProductMasterModal
+        isOpen={isProductModalOpen}
+        onClose={() => {
+          setIsProductModalOpen(false);
+          setEditingProduct(null);
+        }}
+        productToEdit={editingProduct}
+        onSave={(savedProd) => {
+          if (editingProduct && onUpdateProduct) {
+            onUpdateProduct(savedProd);
+          } else if (onAddProduct) {
+            onAddProduct(savedProd);
+          }
+          setIsProductModalOpen(false);
+          setEditingProduct(null);
+        }}
+        availableCategories={Array.from(new Set(['ယွန်းထည်', 'ပန်းပု', 'သစ်သား', 'ကြေးထည်', 'အခြား', ...products.map((p) => p.category).filter(Boolean)]))}
+      />
 
       {/* ================= MODAL: ADD RAW MATERIAL PRESET ================= */}
       {isAddPresetOpen && (
