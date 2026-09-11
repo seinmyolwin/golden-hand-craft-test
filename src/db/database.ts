@@ -64,8 +64,8 @@ export class ShweLetYarDatabase extends Dexie {
   dailyClosings!: EntityTable<DailyClosingRecord, 'id'>;
   returnsAndRefunds!: EntityTable<ReturnRecord, 'id'>;
 
-  constructor() {
-    super('ShweLetYarProductionDB');
+  constructor(databaseName: string = 'ShweLetYarProductionDB') {
+    super(databaseName);
 
     // Version 1: Initial schema
     this.version(1).stores({
@@ -227,6 +227,15 @@ export class ShweLetYarDatabase extends Dexie {
       cashMovements: 'id, type, referenceType, referenceId, idempotencyKey, transactionDate, [transactionDate+type], status, createdAt',
       dailyClosings: 'id, closingDate, status, closedAt, createdAt',
       returnsAndRefunds: 'id, returnNo, type, referenceType, referenceId, merchantId, supplierId, date, status, idempotencyKey, createdAt',
+    }).upgrade(async (tx) => {
+      await tx.table('auditLogs').toCollection().modify((log: any) => {
+        if (!log.actionType) {
+          log.actionType = log.entityType || 'SYSTEM';
+        }
+        if (!log.createdAt) {
+          log.createdAt = log.timestamp || new Date().toISOString();
+        }
+      });
     });
   }
 }

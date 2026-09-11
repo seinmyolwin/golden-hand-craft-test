@@ -104,7 +104,7 @@ import { recordAuditEvent, getAuditTrail } from './services/auditTrailService';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { db } from './db/database';
-import { runOfflineStorageMigration } from './db/migration';
+import { runOfflineStorageMigration, validateProducts, validateSuppliers, validateMerchants } from './db/migration';
 import { migrateLegacyAppLockSettings } from './services/cryptoSecurity';
 import {
   productRepo,
@@ -1373,10 +1373,14 @@ export default function App() {
   }, []);
 
   const handleImportProducts = useCallback(async (newProducts: Product[]) => {
+    const validated = validateProducts(newProducts);
+    if (validated.length === 0) return;
+
+    let finalProducts: Product[] = [];
     setProducts((prev) => {
       const existingMap = new Map(prev.map((p) => [p.name.trim().toLowerCase(), p]));
       const updated = [...prev];
-      newProducts.forEach((np) => {
+      validated.forEach((np) => {
         const key = np.name.trim().toLowerCase();
         if (existingMap.has(key)) {
           const idx = updated.findIndex((p) => p.name.trim().toLowerCase() === key);
@@ -1387,25 +1391,32 @@ export default function App() {
           updated.push(np);
         }
       });
+      finalProducts = updated;
       return updated;
     });
+
     try {
+      // Persist all imported products to repository
+      await Promise.all(validated.map((p) => productRepo.save(p)));
       const entry = await recordAuditEvent({
         action: 'Excel Bulk Import',
-        details: `ကုန်ပစ္စည်း ${newProducts.length} မျိုး သွင်းယူခြင်း`,
+        details: `ကုန်ပစ္စည်း ${validated.length} မျိုး သွင်းယူခြင်း`,
         entityType: 'PRODUCTS',
       });
       setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
     } catch (err) {
-      console.error('Audit log error:', err);
+      console.error('Audit log or product save error:', err);
     }
   }, []);
 
   const handleImportSuppliers = useCallback(async (newSuppliers: Supplier[]) => {
+    const validated = validateSuppliers(newSuppliers);
+    if (validated.length === 0) return;
+
     setSuppliers((prev) => {
       const existingMap = new Map(prev.map((s) => [s.name.trim().toLowerCase(), s]));
       const updated = [...prev];
-      newSuppliers.forEach((ns) => {
+      validated.forEach((ns) => {
         const key = ns.name.trim().toLowerCase();
         if (existingMap.has(key)) {
           const idx = updated.findIndex((s) => s.name.trim().toLowerCase() === key);
@@ -1418,23 +1429,29 @@ export default function App() {
       });
       return updated;
     });
+
     try {
+      // Persist all imported suppliers to repository
+      await Promise.all(validated.map((s) => supplierRepo.save(s)));
       const entry = await recordAuditEvent({
         action: 'Excel Bulk Import',
-        details: `ကုန်ပစ္စည်းပေးသွင်းသူ ${newSuppliers.length} ဦး သွင်းယူခြင်း`,
+        details: `ကုန်ပစ္စည်းပေးသွင်းသူ ${validated.length} ဦး သွင်းယူခြင်း`,
         entityType: 'SUPPLIER',
       });
       setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
     } catch (err) {
-      console.error('Audit log error:', err);
+      console.error('Audit log or supplier save error:', err);
     }
   }, []);
 
   const handleImportMerchants = useCallback(async (newMerchants: Merchant[]) => {
+    const validated = validateMerchants(newMerchants);
+    if (validated.length === 0) return;
+
     setMerchants((prev) => {
       const existingMap = new Map(prev.map((m) => [m.name.trim().toLowerCase(), m]));
       const updated = [...prev];
-      newMerchants.forEach((nm) => {
+      validated.forEach((nm) => {
         const key = nm.name.trim().toLowerCase();
         if (existingMap.has(key)) {
           const idx = updated.findIndex((m) => m.name.trim().toLowerCase() === key);
@@ -1447,15 +1464,18 @@ export default function App() {
       });
       return updated;
     });
+
     try {
+      // Persist all imported merchants to repository
+      await Promise.all(validated.map((m) => merchantRepo.save(m)));
       const entry = await recordAuditEvent({
         action: 'Excel Bulk Import',
-        details: `ကုန်သည် ${newMerchants.length} ဦး သွင်းယူခြင်း`,
+        details: `ကုန်သည် ${validated.length} ဦး သွင်းယူခြင်း`,
         entityType: 'MERCHANT',
       });
       setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
     } catch (err) {
-      console.error('Audit log error:', err);
+      console.error('Audit log or merchant save error:', err);
     }
   }, []);
 

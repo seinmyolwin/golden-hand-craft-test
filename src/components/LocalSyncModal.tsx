@@ -18,6 +18,22 @@ import {
   Radio,
 } from 'lucide-react';
 import { exportAllDataJSON } from '../utils/storage';
+import { safeJsonParse } from '../utils/security';
+
+function isValidSyncPayload(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+  if (data.formatVersion || data.version || data.data) return true;
+  if (
+    Array.isArray(data.products) ||
+    Array.isArray(data.suppliers) ||
+    Array.isArray(data.merchants) ||
+    Array.isArray(data.transactions) ||
+    Array.isArray(data.sales)
+  ) {
+    return true;
+  }
+  return false;
+}
 
 interface LocalSyncModalProps {
   isOpen: boolean;
@@ -172,18 +188,20 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
             inversionAttempts: 'dontInvert',
           });
 
-          if (code && code.data) {
+          if (code && code.data && typeof code.data === 'string' && code.data.length < 500000) {
             try {
-              const parsed = JSON.parse(code.data);
-              stopCamera();
-              onImportData(parsed);
-              setSuccessMsg('QR Code ဖြင့် စာရင်းများ အောင်မြင်စွာ ကူးယူပြီးပါပြီ!');
-              setTimeout(() => {
-                onClose();
-              }, 1500);
-              return;
+              const parsed = safeJsonParse(code.data);
+              if (isValidSyncPayload(parsed)) {
+                stopCamera();
+                onImportData(parsed);
+                setSuccessMsg('QR Code ဖြင့် စာရင်းများ အောင်မြင်စွာ ကူးယူပြီးပါပြီ!');
+                setTimeout(() => {
+                  onClose();
+                }, 1500);
+                return;
+              }
             } catch {
-              // Not JSON QR, keep scanning
+              // Not JSON QR or invalid structure, keep scanning
             }
           }
         }
@@ -203,7 +221,16 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
 
   const handleImport = () => {
     try {
-      const parsed = JSON.parse(syncCode.trim());
+      const trimmed = syncCode.trim();
+      if (!trimmed || trimmed.length > 500000) {
+        alert('ထည့်သွင်းထားသော စာရင်းကုဒ် ပမာဏ အလွန်များပြားနေပါသည်');
+        return;
+      }
+      const parsed = safeJsonParse(trimmed);
+      if (!isValidSyncPayload(parsed)) {
+        alert('ထည့်သွင်းထားသော စာရင်းကုဒ် ပုံစံမမှန်ကန်ပါ (Missing Sync Structure)');
+        return;
+      }
       onImportData(parsed);
       setSuccessMsg('အချက်အလက်များ အောင်မြင်စွာ ချိတ်ဆက်ကူးယူပြီးပါပြီ');
       setTimeout(() => {

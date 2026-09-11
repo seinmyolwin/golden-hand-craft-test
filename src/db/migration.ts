@@ -1,5 +1,6 @@
 import { db } from './database';
 import { generateStableId } from '../utils/idGenerator';
+import { safeJsonParse } from '../utils/security';
 import {
   DEFAULT_PRODUCTS,
   INITIAL_SUPPLIERS,
@@ -76,12 +77,18 @@ export interface MigrationResult {
 }
 
 function safeParseLocalStorage<T>(keys: string[], fallback: T): T {
-  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+  const storage = typeof window !== 'undefined' && window.localStorage
+    ? window.localStorage
+    : typeof localStorage !== 'undefined'
+    ? localStorage
+    : null;
+
+  if (!storage) return fallback;
   for (const key of keys) {
     try {
-      const item = localStorage.getItem(key);
+      const item = storage.getItem(key);
       if (item) {
-        const parsed = JSON.parse(item);
+        const parsed = safeJsonParse(item);
         if (parsed !== undefined && parsed !== null) {
           if (Array.isArray(fallback) && !Array.isArray(parsed)) continue;
           return parsed as T;
@@ -189,8 +196,14 @@ export function validateMerchants(items: any[]): Merchant[] {
  */
 export async function runOfflineStorageMigration(): Promise<MigrationResult> {
   try {
-    const existingFlag = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem(MIGRATION_FLAG_KEY) : null;
-    const isInitialized = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('shwe_let_yar_db_initialized_v1') : null;
+    const storage = typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage
+      : typeof localStorage !== 'undefined'
+      ? localStorage
+      : null;
+
+    const existingFlag = storage ? storage.getItem(MIGRATION_FLAG_KEY) : null;
+    const isInitialized = storage ? storage.getItem('shwe_let_yar_db_initialized_v1') : null;
 
     if (existingFlag === 'COMPLETED' || isInitialized) {
       return {
@@ -432,10 +445,10 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     }
 
     // 5. Mark migration as COMPLETED
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem(MIGRATION_FLAG_KEY, 'COMPLETED');
-      localStorage.setItem('shwe_let_yar_db_initialized_v1', new Date().toISOString());
-      localStorage.setItem('shwe_let_yar_migration_time', new Date().toISOString());
+    if (storage) {
+      storage.setItem(MIGRATION_FLAG_KEY, 'COMPLETED');
+      storage.setItem('shwe_let_yar_db_initialized_v1', new Date().toISOString());
+      storage.setItem('shwe_let_yar_migration_time', new Date().toISOString());
     }
 
     return {

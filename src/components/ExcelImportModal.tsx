@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { generateStableId } from '../utils/idGenerator';
 import { Product, Supplier, Merchant } from '../types';
+import { sanitizeExcelSheetRow, isSafePropertyKey } from '../utils/security';
+import { validateProducts, validateSuppliers, validateMerchants } from '../db/migration';
 
 export type ExcelImportTarget = 'PRODUCTS' | 'SUPPLIERS' | 'MERCHANTS';
 
@@ -110,9 +112,11 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
   // Helper to find column value by loose key names
   const findValue = (row: any, ...keys: string[]): any => {
+    if (!row || typeof row !== 'object') return undefined;
     for (const key of keys) {
       const lowerKey = key.toLowerCase();
       for (const rowKey of Object.keys(row)) {
+        if (!isSafePropertyKey(rowKey)) continue;
         if (rowKey.toLowerCase().includes(lowerKey)) {
           return row[rowKey];
         }
@@ -138,7 +142,12 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         const wb = XLSX.read(bstr, { type: 'array' });
         const firstSheetName = wb.SheetNames[0];
         const ws = wb.Sheets[firstSheetName];
-        const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const rawJsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        // Sanitize every row against prototype pollution & dangerous characters
+        const jsonData = Array.isArray(rawJsonData)
+          ? rawJsonData.map((r) => sanitizeExcelSheetRow(r))
+          : [];
 
         if (!jsonData || jsonData.length === 0) {
           setErrorMsg('ဖိုင်ထဲတွင် အချက်အလက်များ မတွေ့ရှိပါ');
@@ -293,8 +302,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         minStockAlert: row.minStockAlert,
         active: true,
       }));
-      onImportProducts(formatted);
-      setSuccessMsg(`ကုန်ပစ္စည်း ${formatted.length} မျိုး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
+      const validated = validateProducts(formatted);
+      onImportProducts(validated);
+      setSuccessMsg(`ကုန်ပစ္စည်း ${validated.length} မျိုး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
     } else if (activeTarget === 'SUPPLIERS' && onImportSuppliers) {
       const today = new Date().toISOString().slice(0, 10);
       const formatted: Supplier[] = parsedRows.map((row) => ({
@@ -311,8 +321,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         createdAt: today,
         updatedAt: today,
       }));
-      onImportSuppliers(formatted);
-      setSuccessMsg(`ကုန်ပစ္စည်းပေးသွင်းသူ ${formatted.length} ဦး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
+      const validated = validateSuppliers(formatted);
+      onImportSuppliers(validated);
+      setSuccessMsg(`ကုန်ပစ္စည်းပေးသွင်းသူ ${validated.length} ဦး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
     } else if (activeTarget === 'MERCHANTS' && onImportMerchants) {
       const today = new Date().toISOString().slice(0, 10);
       const formatted: Merchant[] = parsedRows.map((row) => ({
@@ -330,8 +341,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         createdAt: today,
         updatedAt: today,
       }));
-      onImportMerchants(formatted);
-      setSuccessMsg(`ကုန်သည် ${formatted.length} ဦး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
+      const validated = validateMerchants(formatted);
+      onImportMerchants(validated);
+      setSuccessMsg(`ကုန်သည် ${validated.length} ဦး အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
     }
 
     setTimeout(() => {

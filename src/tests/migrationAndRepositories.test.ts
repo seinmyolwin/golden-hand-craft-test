@@ -1,6 +1,30 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
-import { ShweLetYarDatabase } from '../db/database';
+
+// Polyfill localStorage for Node test runner environment
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = String(value);
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+  };
+})();
+
+if (typeof globalThis.localStorage === 'undefined') {
+  (globalThis as any).localStorage = localStorageMock;
+}
+
+import Dexie from 'dexie';
+import { ShweLetYarDatabase, db } from '../db/database';
+import { runOfflineStorageMigration, MIGRATION_FLAG_KEY } from '../db/migration';
 import {
   ProductRepository,
   SupplierRepository,
@@ -610,5 +634,145 @@ describe('Database Integrity & Atomic Business Operations', () => {
     const lastAudit = auditLogs.find((a) => a.entityType === 'STOCK_ADJUSTMENT');
     expect(lastAudit).toBeDefined();
     expect(lastAudit?.details).toContain('20 -> 17');
+  });
+});
+
+describe('Dexie Schema V1 -> V8 Upgrades & Evolution', () => {
+  it('seamlessly upgrades from Version 1 schema to Version 8 without losing records', async () => {
+    const testDbName = `UpgradeEvolutionTest_${Date.now()}`;
+
+    // Step 1: Open with Version 1 schema only
+    const v1Db = new Dexie(testDbName);
+    v1Db.version(1).stores({
+      products: 'id, name, category, active',
+      suppliers: 'id, code, name, phone, village, updatedAt',
+      merchants: 'id, code, name, town, phone, updatedAt',
+      transactions: 'id, voucherNo, supplierId, date, time, createdAt',
+      sales: 'id, voucherNo, merchantId, date, time, createdAt',
+      merchantPurchases: 'id, purchaseNo, merchantId, date, time, createdAt',
+      orders: 'id, orderNo, merchantId, status, deliveryTargetDate, date',
+      stockAdjustments: 'id, productId, date, type, createdAt',
+      peerTrades: 'id, tradeType, status, productId, date',
+      softDeletedItems: 'id, originalId, type, deletedAt',
+      auditLogs: 'id, action, timestamp, entityType',
+      settings: 'key, updatedAt',
+      recoverySnapshots: 'id, timestamp, date',
+      attachments: 'id, voucherId, createdAt',
+    });
+    await v1Db.open();
+
+    // Insert legacy v1 records
+    await v1Db.table('products').add({
+      id: 'legacy-p1',
+      name: 'ရွှေယွန်း ဆွမ်းအုပ်',
+      category: 'ယွန်းထည်',
+      active: true,
+    });
+    await v1Db.table('suppliers').add({
+      id: 'legacy-s1',
+      code: 'S-001',
+      name: 'ကိုအောင်ကျော်',
+      phone: '0912345678',
+      village: 'ကျောက်ကာ',
+      updatedAt: '2026-01-01',
+    });
+    await v1Db.table('auditLogs').add({
+      id: 'legacy-log1',
+      action: 'Initial Setup',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      entityType: 'SYSTEM',
+    });
+
+    await v1Db.close();
+
+    // Step 2: Open the same database using ShweLetYarDatabase (contains versions 1 through 8)
+    const upgradedDb = new ShweLetYarDatabase(testDbName);
+    await upgradedDb.open();
+
+    expect(upgradedDb.verno).toBe(8);
+
+    // Verify legacy records persist intact
+    const legacyProd = await upgradedDb.products.get('legacy-p1');
+    expect(legacyProd).toBeDefined();
+    expect(legacyProd?.name).toBe('ရွှေယွန်း ဆွမ်းအုပ်');
+
+    const legacySup = await upgradedDb.suppliers.get('legacy-s1');
+    expect(legacySup).toBeDefined();
+    expect(legacySup?.name).toBe('ကိုအောင်ကျော်');
+
+    // Verify audit log received upgraded fields via v8 upgrade hook
+    const legacyLog = await upgradedDb.auditLogs.get('legacy-log1');
+    expect(legacyLog).toBeDefined();
+    expect(legacyLog?.actionType).toBe('SYSTEM');
+    expect(legacyLog?.createdAt).toBe('2026-01-01T00:00:00.000Z');
+
+    // Verify newly added Version 8 tables are ready and queryable
+    const returnsCount = await upgradedDb.returnsAndRefunds.count();
+    expect(returnsCount).toBe(0);
+    const stockMovementsCount = await upgradedDb.stockMovements.count();
+    expect(stockMovementsCount).toBe(0);
+
+    await upgradedDb.close();
+    await Dexie.delete(testDbName);
+  });
+});
+
+describe('Offline Storage Migration Stress & Edge Cases', () => {
+  beforeEach(async () => {
+    localStorage.clear();
+    await db.products.clear();
+    await db.suppliers.clear();
+    await db.merchants.clear();
+    await db.transactions.clear();
+    await db.sales.clear();
+    await db.auditLogs.clear();
+  });
+
+  it('is strictly idempotent: running twice yields identical state and returns alreadyMigrated: true', async () => {
+    const products = [
+      { id: 'p-mig-1', name: 'ယွန်း သေတ္တာ', defaultPrice: 12000, currentStock: 10 },
+      { id: 'p-mig-2', name: 'ယွန်း ပန်းကန်', defaultPrice: 8000, currentStock: 25 },
+    ];
+    localStorage.setItem('ledger_products_v2', JSON.stringify(products));
+
+    // Run 1: initial migration
+    const res1 = await runOfflineStorageMigration();
+    expect(res1.success).toBe(true);
+    expect(res1.alreadyMigrated).toBe(false);
+    expect(res1.migratedCounts.products).toBe(2);
+    expect(await db.products.count()).toBe(2);
+
+    // Run 2: second run must not duplicate or re-write
+    const res2 = await runOfflineStorageMigration();
+    expect(res2.success).toBe(true);
+    expect(res2.alreadyMigrated).toBe(true);
+    expect(await db.products.count()).toBe(2);
+  });
+
+  it('prioritizes v2 localStorage keys over v1 legacy keys', async () => {
+    const v2Products = [{ id: 'p-v2', name: 'V2 ခေတ်မီပစ္စည်း', defaultPrice: 20000 }];
+    const v1Products = [{ id: 'p-v1', name: 'V1 ရှေးဟောင်းပစ္စည်း', defaultPrice: 10000 }];
+
+    localStorage.setItem('ledger_products_v2', JSON.stringify(v2Products));
+    localStorage.setItem('ledger_products_v1', JSON.stringify(v1Products));
+
+    const res = await runOfflineStorageMigration();
+    expect(res.success).toBe(true);
+    const stored = await db.products.toArray();
+    expect(stored.length).toBe(1);
+    expect(stored[0].name).toBe('V2 ခေတ်မီပစ္စည်း');
+  });
+
+  it('handles corrupted JSON, missing keys, empty arrays, and non-array values safely without crashing', async () => {
+    localStorage.setItem('ledger_products_v2', 'CORRUPT_JSON_DATA{{{{');
+    localStorage.setItem('ledger_suppliers_v2', '{"invalid": "not-an-array"}');
+    localStorage.setItem('ledger_merchants_v2', '[]');
+    // ledger_transactions_v2 is missing
+
+    const res = await runOfflineStorageMigration();
+    expect(res.success).toBe(true); // Gracefully completes with safe fallbacks
+    expect(res.migratedCounts.products).toBe(0);
+    expect(res.migratedCounts.suppliers).toBe(0);
+    expect(res.migratedCounts.merchants).toBe(0);
   });
 });

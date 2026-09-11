@@ -47,6 +47,7 @@ import {
   DEFAULT_SHOP_SETTINGS,
 } from '../utils/storage';
 import { generateStableId } from '../utils/idGenerator';
+import { safeJsonParse, deepSanitizeUntrustedObject } from '../utils/security';
 
 export const CURRENT_BACKUP_FORMAT_VERSION = '3.0';
 export const CURRENT_APP_VERSION = '2.5.0';
@@ -466,7 +467,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
   let parsedObj: any;
   if (typeof rawJsonStringOrObject === 'string') {
     try {
-      parsedObj = JSON.parse(rawJsonStringOrObject);
+      parsedObj = safeJsonParse(rawJsonStringOrObject);
     } catch (e: any) {
       return {
         isValid: false,
@@ -505,7 +506,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
       };
     }
   } else {
-    parsedObj = rawJsonStringOrObject;
+    parsedObj = deepSanitizeUntrustedObject(rawJsonStringOrObject);
   }
 
   if (!parsedObj || typeof parsedObj !== 'object') {
