@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Sparkles, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
+import { CURRENT_APP_VERSION } from '../constants/version';
 
 interface UpdateNotificationModalProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ export const UpdateNotificationModal: React.FC<UpdateNotificationModalProps> = (
   isOpen,
   onClose,
   onUpdate,
-  newVersion = 'v2.5.0',
+  newVersion = `v${CURRENT_APP_VERSION}`,
   isChecking = false,
 }) => {
   if (!isOpen) return null;

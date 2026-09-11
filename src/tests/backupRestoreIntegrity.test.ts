@@ -804,4 +804,161 @@ describe('Backup and Restore Reliability Audit', () => {
     expect(corruptReport.checksumValid).toBe(false);
     expect(corruptReport.errors.some((e) => e.code === 'MISSING_ENTITY_ID')).toBe(true);
   });
+
+  // Test Case 15: Full Returns & Refunds Backup and Restore Round-trip (OVERWRITE & SMART_MERGE)
+  it('15. Preserves returnsAndRefunds records completely across backup export, validation, and safe restore', async () => {
+    // 1. Seed product, sale, and return record
+    const prodId = generateStableId('prod');
+    const saleId = generateStableId('sal');
+    const returnId = generateStableId('ret');
+
+    await db.products.put({
+      id: prodId,
+      name: 'ယွန်းထည် ပန်းကန်',
+      category: 'အလှဆင်',
+      unit: 'ချပ်',
+      defaultPrice: 25000,
+      currentStock: 20,
+      active: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    await db.sales.put({
+      id: saleId,
+      voucherNo: 'SAL-2026-001',
+      merchantId: 'merch-test-1',
+      merchantName: 'ကိုစိုးမိုး',
+      merchantTown: 'မန္တလေး',
+      date: '2026-09-11',
+      time: '10:00',
+      items: [{ productId: prodId, productName: 'ယွန်းထည် ပန်းကန်', unit: 'ချပ်', quantity: 5, unitPrice: 25000, subtotal: 125000 }],
+      totalAmount: 125000,
+      paidAmount: 125000,
+      remainingReceivableBalance: 0,
+      createdAt: new Date().toISOString(),
+    });
+
+    const sampleReturn: ReturnRecord = {
+      id: returnId,
+      returnNo: 'RET-2026-001',
+      type: 'SALES_RETURN',
+      referenceType: 'SALE',
+      referenceId: saleId,
+      referenceVoucherNo: 'SAL-2026-001',
+      merchantId: 'merch-test-1',
+      merchantName: 'ကိုစိုးမိုး',
+      date: '2026-09-11',
+      time: '14:30',
+      items: [{ productId: prodId, productName: 'ယွန်းထည် ပန်းကန်', unit: 'ချပ်', quantity: 2, unitPrice: 25000, totalAmount: 50000 }],
+      totalReturnAmount: 50000,
+      cashRefundAmount: 50000,
+      creditAdjustmentAmount: 0,
+      status: 'COMPLETED',
+      idempotencyKey: 'idemp-ret-001',
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (db.returnsAndRefunds) {
+      await db.returnsAndRefunds.put(sampleReturn);
+    }
+
+    // 2. Export complete backup
+    const backup = await createCompleteBackup();
+    expect(backup.data.returnsAndRefunds).toBeDefined();
+    expect(backup.data.returnsAndRefunds?.length).toBe(1);
+    expect(backup.data.returnsAndRefunds?.[0].id).toBe(returnId);
+    expect(backup.metadata.counts.returnsAndRefunds).toBe(1);
+
+    // 3. Validate backup file
+    const report = await validateBackupFile(backup);
+    expect(report.isValid).toBe(true);
+    expect(report.counts.returnsAndRefunds).toBe(1);
+    expect(report.normalizedData?.returnsAndRefunds?.length).toBe(1);
+
+    // 4. Clear database to simulate clean restore target
+    if (db.returnsAndRefunds) {
+      await db.returnsAndRefunds.clear();
+      expect(await db.returnsAndRefunds.count()).toBe(0);
+    }
+
+    // 5. Execute Safe Restore (OVERWRITE)
+    const restoreResult = await executeSafeRestore(report, 'OVERWRITE');
+    expect(restoreResult.success).toBe(true);
+    expect(restoreResult.stats?.returnsRestored).toBe(1);
+
+    if (db.returnsAndRefunds) {
+      const restoredReturns = await db.returnsAndRefunds.toArray();
+      expect(restoredReturns.length).toBe(1);
+      expect(restoredReturns[0].id).toBe(returnId);
+      expect(restoredReturns[0].returnNo).toBe('RET-2026-001');
+      expect(restoredReturns[0].totalReturnAmount).toBe(50000);
+    }
+
+    // 6. Test SMART_MERGE restore
+    const returnId2 = generateStableId('ret');
+    const mergeBackup = {
+      ...backup,
+      data: {
+        ...backup.data,
+        returnsAndRefunds: [
+          ...backup.data.returnsAndRefunds!,
+          {
+            ...sampleReturn,
+            id: returnId2,
+            returnNo: 'RET-2026-002',
+            idempotencyKey: 'idemp-ret-002',
+          },
+        ],
+      },
+    };
+
+    const mergeReport = await validateBackupFile(mergeBackup);
+    expect(mergeReport.isValid).toBe(true);
+    const mergeResult = await executeSafeRestore(mergeReport, 'SMART_MERGE');
+    expect(mergeResult.success).toBe(true);
+
+    if (db.returnsAndRefunds) {
+      const mergedReturns = await db.returnsAndRefunds.toArray();
+      expect(mergedReturns.length).toBe(2);
+      expect(mergedReturns.some((r) => r.id === returnId2)).toBe(true);
+    }
+  });
+
+  // Test Case 16: Validation Flags Duplicate Return IDs and Orphan References
+  it('16. Accurately reports duplicate Return IDs and orphan reference warnings during validation', async () => {
+    const duplicateReturnBackup = {
+      formatVersion: '3.0',
+      data: {
+        products: [],
+        suppliers: [],
+        merchants: [],
+        transactions: [],
+        sales: [],
+        returnsAndRefunds: [
+          {
+            id: 'ret-dup-1',
+            returnNo: 'RET-001',
+            referenceType: 'SALE',
+            referenceId: 'missing-sale-999',
+            items: [{ productId: 'missing-prod-999', quantity: 0 }],
+          },
+          {
+            id: 'ret-dup-1', // duplicate ID
+            returnNo: 'RET-002',
+            referenceType: 'SALE',
+            referenceId: 'missing-sale-999',
+            items: [{ productId: 'missing-prod-999', quantity: -1 }],
+          },
+        ],
+      },
+    };
+
+    const report = await validateBackupFile(duplicateReturnBackup);
+    expect(report.warnings.some((w) => w.code === 'DUPLICATE_RETURNSANDREFUNDS_IDS')).toBe(true);
+    expect(report.warnings.some((w) => w.code === 'ORPHAN_RETURN_REFERENCE')).toBe(true);
+    expect(report.warnings.some((w) => w.code === 'MISSING_PRODUCT_REFERENCE')).toBe(true);
+    expect(report.warnings.some((w) => w.code === 'INVALID_RETURN_QUANTITY')).toBe(true);
+  });
 });

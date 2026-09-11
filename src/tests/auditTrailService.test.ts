@@ -233,5 +233,61 @@ describe('Phase 17 - Canonical Audit Trail & Traceability Engine', () => {
     expect(foundFirst).toBe(true);
     expect(found250).toBe(true);
   });
+
+  it('strictly enforces append-only add() semantics and rejects targets without add support', async () => {
+    // 1. Target with no add method throws error
+    const invalidTarget = {
+      get: async () => null,
+      put: async () => {}, // put only, no add!
+    };
+
+    await expect(
+      recordAuditEvent({ action: 'Invalid Target Action' }, invalidTarget as any)
+    ).rejects.toThrow('Audit trail persistence error: Target does not support append-only add()');
+
+    // 2. Target with add method succeeds
+    let addCalled = false;
+    let putCalled = false;
+    const mockTarget = {
+      get: async () => null,
+      add: async (item: any) => {
+        addCalled = true;
+        return item.id;
+      },
+      put: async () => {
+        putCalled = true;
+      },
+    };
+
+    await recordAuditEvent({ action: 'Valid Mock Action' }, mockTarget as any);
+    expect(addCalled).toBe(true);
+    expect(putCalled).toBe(false);
+  });
+
+  it('safely handles audit ID collisions by generating a unique salted ID on retry', async () => {
+    // Insert an initial audit log
+    const initial = await recordAuditEvent({
+      id: 'collision-test-id-123',
+      action: 'Initial Event',
+      referenceId: 'ref-1',
+    });
+    expect(initial.id).toBe('collision-test-id-123');
+
+    // Attempt to insert another event with identical ID
+    const collisionEvent = await recordAuditEvent({
+      id: 'collision-test-id-123',
+      action: 'Second Event with Same Requested ID',
+      referenceId: 'ref-2',
+    });
+
+    // ID should have been salted/regenerated to avoid collision
+    expect(collisionEvent.id).not.toBe('collision-test-id-123');
+    expect(collisionEvent.id.startsWith('audit_')).toBe(true);
+
+    // Both events should exist in the database
+    const all = await db.auditLogs.toArray();
+    expect(all.some((a) => a.id === 'collision-test-id-123')).toBe(true);
+    expect(all.some((a) => a.id === collisionEvent.id)).toBe(true);
+  });
 });
 

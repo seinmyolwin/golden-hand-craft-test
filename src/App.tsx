@@ -56,6 +56,7 @@ import {
   getCurrentTimeString,
 } from './utils/storage';
 import { generateStableId, generateVoucherNo } from './utils/idGenerator';
+import { CURRENT_APP_VERSION } from './constants/version';
 
 // UI Components
 import { Header } from './components/Header';
@@ -483,7 +484,7 @@ export default function App() {
     } finally {
       setIsCheckingUpdate(false);
       if (!found) {
-        alert('လက်ရှိ ဗားရှင်း v2.5.0 သည် နောက်ဆုံးထွက် ဗားရှင်းဖြစ်ပါသည်။ အသစ်ထွက်ပေါ်လာပါက အလိုအလျောက် သတိပေးမည်ဖြစ်ပါသည်။');
+        alert(`လက်ရှိ ဗားရှင်း v${CURRENT_APP_VERSION} သည် နောက်ဆုံးထွက် ဗားရှင်းဖြစ်ပါသည်။ အသစ်ထွက်ပေါ်လာပါက အလိုအလျောက် သတိပေးမည်ဖြစ်ပါသည်။`);
       }
     }
   }, []);
@@ -2115,7 +2116,7 @@ export default function App() {
           isOpen={isUpdateModalOpen}
           onClose={() => setIsUpdateModalOpen(false)}
           onUpdate={handleApplyUpdate}
-          newVersion="v2.5.0"
+          newVersion={`v${CURRENT_APP_VERSION}`}
           isChecking={isCheckingUpdate}
         />
 

@@ -32,6 +32,7 @@ import {
   DEFAULT_RAW_MATERIAL_PRESETS,
   loadShopSettings,
 } from '../utils/storage';
+import { CURRENT_APP_VERSION } from '../constants/version';
 import { generateStableId } from '../utils/idGenerator';
 import {
   derivePinCredentials,
@@ -1374,7 +1375,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   အက်ပ် ဗားရှင်းနှင့် အဆင့်မြှင့်တင်မှု စစ်ဆေးခြင်း (App Version & Updates)
                 </h3>
                 <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  v2.5.0 (Latest)
+                  v{CURRENT_APP_VERSION} (Latest)
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">

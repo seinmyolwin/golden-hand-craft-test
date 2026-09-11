@@ -29,6 +29,7 @@ import { Logo } from './Logo';
 import { getTodayDateString } from '../utils/storage';
 import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineIndicator } from './OfflineIndicator';
+import { CURRENT_APP_VERSION } from '../constants/version';
 
 interface HeaderProps {
   selectedDate: string;
@@ -221,7 +222,7 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Sparkles className={`w-3 h-3 ${hasPendingUpdate ? 'text-amber-950 fill-amber-950' : 'text-amber-300'}`} />
                 <span className="whitespace-nowrap">
-                  {hasPendingUpdate ? 'Update ရပါပြီ' : 'v2.5.0'}
+                  {hasPendingUpdate ? 'Update ရပါပြီ' : `v${CURRENT_APP_VERSION}`}
                 </span>
               </button>
             )}

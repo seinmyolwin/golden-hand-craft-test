@@ -929,6 +929,7 @@ export interface BackupValidationReport {
     transactions: EntityComparisonCount;
     sales: EntityComparisonCount;
     orders: EntityComparisonCount;
+    returnsAndRefunds?: EntityComparisonCount;
   };
   normalizedData?: BackupDataPayload;
 }

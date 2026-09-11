@@ -48,10 +48,23 @@ import {
 } from '../utils/storage';
 import { generateStableId } from '../utils/idGenerator';
 import { safeJsonParse, deepSanitizeUntrustedObject } from '../utils/security';
+import {
+  APP_VERSION,
+  CURRENT_APP_VERSION,
+  BACKUP_FORMAT_VERSION,
+  CURRENT_BACKUP_FORMAT_VERSION,
+  DATABASE_SCHEMA_VERSION,
+  CURRENT_DATABASE_SCHEMA_VERSION,
+} from '../constants/version';
 
-export const CURRENT_BACKUP_FORMAT_VERSION = '3.0';
-export const CURRENT_APP_VERSION = '2.5.0';
-export const CURRENT_DATABASE_SCHEMA_VERSION = 3;
+export {
+  APP_VERSION,
+  CURRENT_APP_VERSION,
+  BACKUP_FORMAT_VERSION,
+  CURRENT_BACKUP_FORMAT_VERSION,
+  DATABASE_SCHEMA_VERSION,
+  CURRENT_DATABASE_SCHEMA_VERSION,
+};
 
 /**
  * Computes a deterministic SHA-256 hash or fallback checksum of a string
@@ -350,6 +363,7 @@ export function normalizeRawBackup(raw: any): {
   const stockMovements: StockMovementRecord[] = Array.isArray(rawData.stockMovements) ? rawData.stockMovements : [];
   const cashMovements: CashMovementRecord[] = Array.isArray(rawData.cashMovements) ? rawData.cashMovements : [];
   const dailyClosings: DailyClosingRecord[] = Array.isArray(rawData.dailyClosings) ? rawData.dailyClosings : [];
+  const returnsAndRefunds: ReturnRecord[] = Array.isArray(rawData.returnsAndRefunds) ? rawData.returnsAndRefunds : [];
 
   const shopSettings: ShopSettings = {
     ...DEFAULT_SHOP_SETTINGS,
@@ -377,7 +391,8 @@ export function normalizeRawBackup(raw: any): {
     attachments.length +
     stockMovements.length +
     cashMovements.length +
-    dailyClosings.length;
+    dailyClosings.length +
+    returnsAndRefunds.length;
 
   const counts = {
     products: products.length,
@@ -396,6 +411,7 @@ export function normalizeRawBackup(raw: any): {
     stockMovements: stockMovements.length,
     cashMovements: cashMovements.length,
     dailyClosings: dailyClosings.length,
+    returnsAndRefunds: returnsAndRefunds.length,
   };
 
   const allDates: string[] = [];
@@ -405,6 +421,7 @@ export function normalizeRawBackup(raw: any): {
   orders.forEach((o) => (o.date || o.orderDate) && allDates.push(o.date || o.orderDate || ''));
   cashMovements.forEach((c) => c.transactionDate && allDates.push(c.transactionDate));
   dailyClosings.forEach((d) => d.closingDate && allDates.push(d.closingDate));
+  returnsAndRefunds.forEach((r) => r.date && allDates.push(r.date));
   const validDates = allDates.filter(Boolean).sort();
   const dateRange = validDates.length > 0
     ? { earliest: validDates[0], latest: validDates[validDates.length - 1] }
@@ -452,6 +469,7 @@ export function normalizeRawBackup(raw: any): {
     stockMovements,
     cashMovements,
     dailyClosings,
+    returnsAndRefunds,
   };
 
   return { normalized, metadata, formatVersion, checksum };
@@ -502,6 +520,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
           auditLogs: 0,
           rawMaterialPresets: 0,
           attachments: 0,
+          returnsAndRefunds: 0,
         },
       };
     }
@@ -543,6 +562,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
         auditLogs: 0,
         rawMaterialPresets: 0,
         attachments: 0,
+        returnsAndRefunds: 0,
       },
     };
   }
@@ -591,6 +611,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
         auditLogs: 0,
         rawMaterialPresets: 0,
         attachments: 0,
+        returnsAndRefunds: 0,
       },
     };
   }
@@ -988,6 +1009,51 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
   checkDuplicateEntityIds(normalized.peerTrades, 'peerTrades', 'အချင်းချင်းကုန်သွယ်မှု');
   checkDuplicateEntityIds(normalized.attachments, 'attachments', 'ဓါတ်ပုံမှတ်တမ်း');
   checkDuplicateEntityIds(normalized.auditLogs, 'auditLogs', 'စာရင်းစစ်မှတ်တမ်း');
+  checkDuplicateEntityIds(normalized.returnsAndRefunds || [], 'returnsAndRefunds', 'ကုန်ပစ္စည်းပြန်အပ်/အမ်းငွေ');
+
+  (normalized.returnsAndRefunds || []).forEach((ret, idx) => {
+    if (!ret.id || typeof ret.id !== 'string') {
+      errors.push({
+        field: `returnsAndRefunds[${idx}].id`,
+        message: `ကုန်ပစ္စည်းပြန်အပ်/အမ်းငွေ မှတ်တမ်း (${idx + 1}) တွင် ID မပါရှိပါ`,
+        code: 'MISSING_RETURN_ID',
+        severity: 'ERROR',
+      });
+    }
+    if (!ret.referenceId && !ret.referenceVoucherNo) {
+      warnings.push({
+        field: `returnsAndRefunds[${idx}].referenceId`,
+        message: `ပြန်အပ်/အမ်းငွေ (${ret.returnNo || ret.id}) တွင် မူလဘောင်ချာ အညွှန်းမပါရှိပါ`,
+        code: 'MISSING_RETURN_REFERENCE',
+      });
+    }
+    if (ret.referenceType === 'SALE' && ret.referenceId && !saleIdSet.has(ret.referenceId)) {
+      warnings.push({
+        field: `returnsAndRefunds[${idx}].referenceId`,
+        message: `ပြန်အပ်မှတ်တမ်း (${ret.returnNo || ret.id}) ၏ မူလအရောင်းဘောင်ချာ ID ${ret.referenceId} သည် အရောင်းစာရင်းတွင် မရှိပါ`,
+        code: 'ORPHAN_RETURN_REFERENCE',
+      });
+    }
+    if (ret.items && Array.isArray(ret.items)) {
+      ret.items.forEach((item, itemIdx) => {
+        if (item.productId && !productIdSet.has(item.productId)) {
+          warnings.push({
+            field: `returnsAndRefunds[${idx}].items[${itemIdx}].productId`,
+            message: `ပြန်အပ်မှတ်တမ်း (${ret.returnNo || ret.id}) ရှိ Product ID ${item.productId} သည် ပစ္စည်းစာရင်းတွင် မရှိပါ`,
+            code: 'MISSING_PRODUCT_REFERENCE',
+          });
+        }
+        if (typeof item.quantity === 'number' && item.quantity <= 0) {
+          warnings.push({
+            field: `returnsAndRefunds[${idx}].items[${itemIdx}].quantity`,
+            message: `ပြန်အပ်မှတ်တမ်း (${ret.returnNo || ret.id}) ၏ ပြန်အပ်အရေအတွက် (${item.quantity}) သည် သုည သို့မဟုတ် အနှုတ်ဖြစ်နေပါသည်`,
+            code: 'INVALID_RETURN_QUANTITY',
+          });
+        }
+      });
+    }
+  });
+
   normalized.auditLogs.forEach((log, idx) => {
     if (!log.id) {
       warnings.push({
@@ -1017,6 +1083,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
       currentTxs,
       currentSales,
       currentOrders,
+      currentReturns,
     ] = await Promise.all([
       db.products.toArray(),
       db.suppliers.toArray(),
@@ -1024,6 +1091,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
       db.transactions.toArray(),
       db.sales.toArray(),
       db.orders.toArray(),
+      db.returnsAndRefunds ? db.returnsAndRefunds.toArray() : Promise.resolve([]),
     ]);
 
     const compareCounts = <T extends { id: string }>(incoming: T[], current: T[]): EntityComparisonCount => {
@@ -1053,6 +1121,7 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
       transactions: compareCounts(normalized.transactions, currentTxs),
       sales: compareCounts(normalized.sales, currentSales),
       orders: compareCounts(normalized.orders, currentOrders),
+      returnsAndRefunds: compareCounts(normalized.returnsAndRefunds || [], currentReturns),
     };
   } catch (e) {
     console.warn('Could not compare with live database', e);
@@ -1298,6 +1367,7 @@ export async function executeSafeRestore(
     stockMovementsRestored: data.stockMovements?.length || 0,
     cashMovementsRestored: data.cashMovements?.length || 0,
     dailyClosingsRestored: data.dailyClosings?.length || 0,
+    returnsRestored: data.returnsAndRefunds?.length || 0,
   };
 
   // Step 2: Atomic Dexie Transaction
@@ -1468,9 +1538,9 @@ export async function executeSafeRestore(
           }
         }
 
-        // Log audit entry for recovery history
+        // Log audit entry for recovery history (strictly append-only)
         const nowIso = new Date().toISOString();
-        await db.auditLogs.put({
+        await db.auditLogs.add({
           id: generateStableId('aud'),
           action: mode === 'OVERWRITE' ? 'RESTORE_OVERWRITE' : 'RESTORE_SMART_MERGE',
           actionType: 'BACKUP_RESTORE',
@@ -1505,6 +1575,7 @@ export async function executeSafeRestore(
             cntTrades,
             cntSoft,
             cntAtts,
+            cntReturns,
           ] = await Promise.all([
             db.products.count(),
             db.suppliers.count(),
@@ -1517,6 +1588,7 @@ export async function executeSafeRestore(
             db.peerTrades.count(),
             db.softDeletedItems.count(),
             db.attachments.count(),
+            db.returnsAndRefunds ? db.returnsAndRefunds.count() : Promise.resolve(0),
           ]);
 
           if (data.products.length !== cntProds) {
@@ -1552,6 +1624,12 @@ export async function executeSafeRestore(
           if (restoredAttachments.length !== cntAtts) {
             throw new Error(`Post-restore count mismatch on attachments (expected ${restoredAttachments.length}, found ${cntAtts})`);
           }
+          if (data.returnsAndRefunds && db.returnsAndRefunds) {
+            const expectedReturns = data.returnsAndRefunds.length;
+            if (expectedReturns !== cntReturns) {
+              throw new Error(`Post-restore count mismatch on returnsAndRefunds (expected ${expectedReturns}, found ${cntReturns})`);
+            }
+          }
 
           // 2. Exact primary key matching verification
           if (data.products.length > 0) {
@@ -1578,6 +1656,14 @@ export async function executeSafeRestore(
               }
             }
           }
+          if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && db.returnsAndRefunds) {
+            const restoredReturnIds = new Set((await db.returnsAndRefunds.toArray()).map((r) => r.id));
+            for (const r of data.returnsAndRefunds) {
+              if (!restoredReturnIds.has(r.id)) {
+                throw new Error(`Post-restore integrity check failed: Return ID ${r.id} missing in database`);
+              }
+            }
+          }
         } else {
           // SMART_MERGE post-restore integrity check:
           // 1. Verify all incoming IDs are present in DB
@@ -1586,6 +1672,14 @@ export async function executeSafeRestore(
             for (const p of data.products) {
               if (!restoredProdIds.has(p.id)) {
                 throw new Error(`Post-restore smart-merge check failed: Product ID ${p.id} missing in database`);
+              }
+            }
+          }
+          if (data.returnsAndRefunds && data.returnsAndRefunds.length > 0 && db.returnsAndRefunds) {
+            const restoredReturnIds = new Set((await db.returnsAndRefunds.toArray()).map((r) => r.id));
+            for (const r of data.returnsAndRefunds) {
+              if (!restoredReturnIds.has(r.id)) {
+                throw new Error(`Post-restore smart-merge check failed: Return ID ${r.id} missing in database`);
               }
             }
           }

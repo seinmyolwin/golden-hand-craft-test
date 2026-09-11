@@ -101,8 +101,9 @@ export function buildAuditLogEntry(input: CreateAuditInput): AuditLogEntry {
 /**
  * Records an immutable audit event to Dexie IndexedDB.
  * Supports passing a custom Dexie database instance or an active transaction target object.
- * Uses add(entry) to enforce append-only immutability. If an ID collision occurs,
- * it safely catches the error and retries with a salted unique ID.
+ * Strictly uses add(entry) to enforce append-only immutability.
+ * If the target table/transaction cannot support append-only add(), fails loudly.
+ * If an ID collision occurs, safely retries with a salted unique ID.
  */
 export async function recordAuditEvent(
   input: CreateAuditInput,
@@ -111,8 +112,9 @@ export async function recordAuditEvent(
   let entry = buildAuditLogEntry(input);
 
   const getTable = () => {
-    if (txOrDb && txOrDb.auditLogs) return txOrDb.auditLogs;
-    if (txOrDb && typeof txOrDb.table === 'function') {
+    if (!txOrDb) return db.auditLogs;
+    if (txOrDb.auditLogs) return txOrDb.auditLogs;
+    if (typeof txOrDb.table === 'function') {
       try {
         const t = txOrDb.table('auditLogs');
         if (t) return t;
@@ -120,12 +122,16 @@ export async function recordAuditEvent(
         // continue to fallback
       }
     }
-    if (txOrDb && typeof txOrDb.add === 'function') return txOrDb;
-    return db.auditLogs;
+    if (typeof txOrDb.add === 'function') return txOrDb;
+    return null;
   };
 
   const table = getTable();
-  const maxRetries = 3;
+  if (!table || typeof table.add !== 'function') {
+    throw new Error('Audit trail persistence error: Target does not support append-only add()');
+  }
+
+  const maxRetries = 5;
   let attempt = 0;
 
   while (attempt < maxRetries) {
@@ -142,11 +148,7 @@ export async function recordAuditEvent(
         }
       }
 
-      if (typeof table.add === 'function') {
-        await table.add(entry);
-      } else if (typeof table.put === 'function') {
-        await table.put(entry);
-      }
+      await table.add(entry);
       return entry;
     } catch (err: any) {
       attempt++;
@@ -162,6 +164,48 @@ export async function recordAuditEvent(
   }
 
   return entry;
+}
+
+/**
+ * Bulk records multiple immutable audit events using append-only bulkAdd() semantics.
+ */
+export async function recordAuditEventsBulk(
+  inputs: CreateAuditInput[],
+  txOrDb?: ShweLetYarDatabase | any
+): Promise<AuditLogEntry[]> {
+  if (!inputs || inputs.length === 0) return [];
+
+  const getTable = () => {
+    if (!txOrDb) return db.auditLogs;
+    if (txOrDb.auditLogs) return txOrDb.auditLogs;
+    if (typeof txOrDb.table === 'function') {
+      try {
+        const t = txOrDb.table('auditLogs');
+        if (t) return t;
+      } catch {
+        // continue to fallback
+      }
+    }
+    if (typeof txOrDb.bulkAdd === 'function' || typeof txOrDb.add === 'function') return txOrDb;
+    return null;
+  };
+
+  const table = getTable();
+  if (!table || (typeof table.bulkAdd !== 'function' && typeof table.add !== 'function')) {
+    throw new Error('Audit trail persistence error: Target does not support append-only bulkAdd()');
+  }
+
+  const entries = inputs.map((input) => buildAuditLogEntry(input));
+
+  if (typeof table.bulkAdd === 'function') {
+    await table.bulkAdd(entries);
+  } else {
+    for (const entry of entries) {
+      await table.add(entry);
+    }
+  }
+
+  return entries;
 }
 
 /**
