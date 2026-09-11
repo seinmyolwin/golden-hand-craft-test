@@ -1034,13 +1034,12 @@ export default function App() {
       totalPurchasedFromMerchant: 0,
     }));
 
-    // Reset all transactional activity
+    // Reset all transactional activity (Audit trail is immutable and preserved)
     setTransactions([]);
     setSales([]);
     setOrders([]);
     setPeerTrades([]);
     setStockAdjustments([]);
-    setAuditLogs([]);
     setDeletedItems([]);
     setMerchantPurchases([]);
     setProducts(zeroedProducts);
@@ -1054,7 +1053,6 @@ export default function App() {
     savePeerTrades([]);
     saveStoredStockAdjustments([]);
     saveStoredMerchantPurchases([]);
-    saveAuditLogs([]);
     saveDeletedItems([]);
     saveProducts(zeroedProducts);
     saveSuppliers(zeroedSuppliers);
@@ -1062,8 +1060,8 @@ export default function App() {
     // Explicitly preserve and re-save user shop settings (Shop Name, Owner Name, Phone, Address)
     saveShopSettings(shopSettings);
 
-    logAction('အချက်အလက်အားလုံး ရှင်းလင်းခြင်း', 'All numbers reset to zero while preserving shop profile', 'SYSTEM');
-    alert('စာရင်းများနှင့် ကိန်းဂဏန်းများအားလုံးကို ၀ (သုည) အဖြစ် အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ။ ဆိုင်ရှင်အမည်၊ ဆိုင်အမည် နှင့် ဆိုင်အချက်အလက်များကို ဆက်လက်ထိန်းသိမ်းထားပါသည်။');
+    logAction('အချက်အလက်အားလုံး ရှင်းလင်းခြင်း', 'All transactional numbers reset to zero while preserving shop profile and immutable audit trail', 'SYSTEM');
+    alert('စာရင်းများနှင့် ကိန်းဂဏန်းများအားလုံးကို ၀ (သုည) အဖြစ် အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ။ စာရင်းစစ်မှတ်တမ်း (Audit Trail) နှင့် ဆိုင်အချက်အလက်များကို ဆက်လက်ထိန်းသိမ်းထားပါသည်။');
   }, [products, suppliers, merchants, shopSettings, logAction]);
 
   // Zero Settings (Real Shop Launch)
@@ -1676,6 +1674,7 @@ export default function App() {
               onOpenBackupSaveModal={() => setIsBackupModalOpen(true)}
               onOpenDeletedHistory={() => setIsDeletedHistoryModalOpen(true)}
               onOpenClearDataModal={() => setIsClearDataModalOpen(true)}
+              onOpenAuditHistory={() => setIsAuditHistoryModalOpen(true)}
               appLockSettings={appLockSettings}
               onUpdateAppLockSettings={handleUpdateAppLock}
               snapshots={snapshots}

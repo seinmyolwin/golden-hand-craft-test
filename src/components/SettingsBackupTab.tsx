@@ -127,6 +127,7 @@ interface SettingsBackupTabProps {
   onOpenBackupSaveModal?: () => void;
   onOpenDeletedHistory?: () => void;
   onOpenClearDataModal?: () => void;
+  onOpenAuditHistory?: () => void;
   appLockSettings?: AppLockSettings;
   onUpdateAppLockSettings?: (settings: AppLockSettings) => void;
   snapshots?: AutoRecoverySnapshot[];
@@ -172,6 +173,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   onOpenBackupSaveModal,
   onOpenDeletedHistory,
   onOpenClearDataModal,
+  onOpenAuditHistory,
   appLockSettings,
   onUpdateAppLockSettings,
   snapshots = [],
@@ -1448,7 +1450,18 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {onOpenAuditHistory && (
+              <button
+                id="settings-audit-trail-btn"
+                type="button"
+                onClick={onOpenAuditHistory}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>စာရင်းစစ်မှတ်တမ်း (Audit Trail)</span>
+              </button>
+            )}
             <button
               id="settings-db-health-btn"
               type="button"

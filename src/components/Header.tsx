@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   TrendingUp,
   QrCode,
+  Shield,
 } from 'lucide-react';
 import { ShopSettings } from '../types';
 import { Logo } from './Logo';

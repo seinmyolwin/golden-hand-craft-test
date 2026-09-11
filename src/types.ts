@@ -924,7 +924,8 @@ export type HealthCheckCategory =
   | 'FINANCIAL'
   | 'STOCK'
   | 'ATTACHMENTS'
-  | 'BACKUP';
+  | 'BACKUP'
+  | 'AUDIT_TRAIL';
 
 export type HealthOverallStatus = 'HEALTHY' | 'ATTENTION' | 'DEGRADED' | 'CRITICAL';
 

@@ -1612,7 +1612,7 @@ export async function runDatabaseDiagnostics(
         if (refType === 'SALE') exists = saleIdSet.has(refId);
         else if (refType === 'PURCHASE') exists = purchaseIdSet.has(refId);
         else if (refType === 'TRANSACTION') exists = transactionIdSet.has(refId);
-        else if (refType === 'PRODUCT') exists = productIdSet.has(refId);
+        else if (refType === 'PRODUCT') exists = prodIdSet.has(refId);
         else if (refType === 'SUPPLIER') exists = supIdSet.has(refId);
         else if (refType === 'MERCHANT') exists = merchIdSet.has(refId);
         else if (refType === 'RETURN') exists = returnIdSet.has(refId);
@@ -1774,6 +1774,7 @@ export async function runDatabaseDiagnostics(
     STOCK: { total: 0, pass: 0, info: 0, warn: 0, error: 0, critical: 0 },
     ATTACHMENTS: { total: 0, pass: 0, info: 0, warn: 0, error: 0, critical: 0 },
     BACKUP: { total: 0, pass: 0, info: 0, warn: 0, error: 0, critical: 0 },
+    AUDIT_TRAIL: { total: 0, pass: 0, info: 0, warn: 0, error: 0, critical: 0 },
   };
 
   let passedChecks = 0;

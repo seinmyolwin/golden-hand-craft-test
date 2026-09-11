@@ -907,6 +907,16 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
 
   checkDuplicateEntityIds(normalized.peerTrades, 'peerTrades', 'အချင်းချင်းကုန်သွယ်မှု');
   checkDuplicateEntityIds(normalized.attachments, 'attachments', 'ဓါတ်ပုံမှတ်တမ်း');
+  checkDuplicateEntityIds(normalized.auditLogs, 'auditLogs', 'စာရင်းစစ်မှတ်တမ်း');
+  normalized.auditLogs.forEach((log, idx) => {
+    if (!log.id) {
+      warnings.push({
+        field: `auditLogs[${idx}].id`,
+        message: `စာရင်းစစ်မှတ်တမ်း (${idx + 1}) တွင် ID မပါရှိပါ`,
+        code: 'MISSING_AUDIT_ID',
+      });
+    }
+  });
   normalized.attachments.forEach((att, idx) => {
     if (att.voucherId && !txIdSet.has(att.voucherId) && !saleIdSet.has(att.voucherId) && !purchaseIdSet.has(att.voucherId)) {
       warnings.push({
@@ -1274,13 +1284,25 @@ export async function executeSafeRestore(
         }
 
         // Log audit entry for recovery history
+        const nowIso = new Date().toISOString();
         await db.auditLogs.put({
           id: generateStableId('aud'),
           action: mode === 'OVERWRITE' ? 'RESTORE_OVERWRITE' : 'RESTORE_SMART_MERGE',
+          actionType: 'BACKUP_RESTORE',
+          referenceType: 'BACKUP',
+          referenceId: snapshotId,
           details: `ဒေတာဘေ့စ်အား Backup မှ အောင်မြင်စွာ ပြန်လည်သွင်းယူခဲ့သည် (Pre-restore snapshot ID: ${snapshotId}, စုစုပေါင်းမှတ်တမ်း: ${report.totalRecords})`,
-          timestamp: new Date().toISOString(),
+          timestamp: nowIso,
+          createdAt: nowIso,
           entityType: 'BACKUP_RECOVERY',
           entityId: snapshotId,
+          schemaVersion: 1,
+          metadata: {
+            mode,
+            snapshotId,
+            totalRecords: report.totalRecords,
+            formatVersion: report.formatVersion,
+          },
         });
 
         // Verification: Ensure database is healthy and records exist

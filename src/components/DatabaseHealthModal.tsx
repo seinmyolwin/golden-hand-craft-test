@@ -558,6 +558,7 @@ export const DatabaseHealthModal: React.FC<DatabaseHealthModalProps> = ({
                   { id: 'STOCK', label: 'Stock' },
                   { id: 'ATTACHMENTS', label: 'Attachments' },
                   { id: 'BACKUP', label: 'Backup' },
+                  { id: 'AUDIT_TRAIL', label: 'Audit Trail' },
                 ] as const
               ).map((cat) => (
                 <button

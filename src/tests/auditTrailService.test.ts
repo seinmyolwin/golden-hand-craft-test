@@ -85,12 +85,13 @@ describe('Phase 17 - Canonical Audit Trail & Traceability Engine', () => {
         voucherNo: 'SAL-TX-01',
         merchantId: 'merch-1',
         merchantName: 'Trader Aung',
+        merchantTown: 'Mandalay',
         date: '2026-09-10',
         time: '10:00',
         items: [],
         totalAmount: 50000,
         paidAmount: 50000,
-        remainingBalance: 0,
+        remainingReceivableBalance: 0,
         createdAt: new Date().toISOString(),
       });
 
@@ -193,6 +194,8 @@ describe('Phase 17 - Canonical Audit Trail & Traceability Engine', () => {
 
     const restored = await db.auditLogs.toArray();
     expect(restored.length).toBeGreaterThan(0);
-    expect(restored[0].amount).toBe(12345);
+    const restoredEvent = restored.find((l) => l.action === 'Backup Test Event');
+    expect(restoredEvent).toBeDefined();
+    expect(restoredEvent?.amount).toBe(12345);
   });
 });

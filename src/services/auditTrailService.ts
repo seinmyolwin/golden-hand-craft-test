@@ -55,11 +55,23 @@ export function mapActionToActionType(action: string, refType?: string): AuditAc
   return 'SYSTEM_ACTION';
 }
 
+let lastAuditTimestamp = 0;
+
+function getMonotonicTimestamp(): string {
+  const now = Date.now();
+  if (now <= lastAuditTimestamp) {
+    lastAuditTimestamp += 1;
+  } else {
+    lastAuditTimestamp = now;
+  }
+  return new Date(lastAuditTimestamp).toISOString();
+}
+
 /**
  * Builds a validated, immutable AuditLogEntry record
  */
 export function buildAuditLogEntry(input: CreateAuditInput): AuditLogEntry {
-  const now = new Date().toISOString();
+  const now = getMonotonicTimestamp();
   const refType = input.referenceType || input.entityType || 'SYSTEM';
   const refId = input.referenceId || input.entityId || 'system';
   const actType = input.actionType || mapActionToActionType(input.action, refType);
