@@ -243,7 +243,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 
   // Product Form State
   const [prodName, setProdName] = useState<string>('');
-  const [prodCategory, setProdCategory] = useState<string>('ယွန်းထည်');
+  const [prodCategory, setProdCategory] = useState<string>('ကုန်ချော');
   const [prodBuyPrice, setProdBuyPrice] = useState<number>(3000);
   const [prodWholesalePrice, setProdWholesalePrice] = useState<number>(4000);
   const [prodUnit, setProdUnit] = useState<string>('ထည်');
@@ -542,7 +542,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const handleOpenEditProduct = (prod: Product) => {
     setEditingProduct(prod);
     setProdName(prod.name);
-    setProdCategory(prod.category || 'ယွန်းထည်');
+    setProdCategory(prod.category || 'ကုန်ချော');
     setProdBuyPrice(prod.defaultPrice || 0);
     setProdWholesalePrice(prod.defaultWholesalePrice || prod.defaultPrice || 0);
     setProdUnit(prod.unit || 'ထည်');
@@ -554,7 +554,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const handleOpenAddProduct = () => {
     setEditingProduct(null);
     setProdName('');
-    setProdCategory('ယွန်းထည်');
+    setProdCategory('ကုန်ချော');
     setProdBuyPrice(3000);
     setProdWholesalePrice(4000);
     setProdUnit('ထည်');
@@ -712,7 +712,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 {shopSettings?.shopName || 'ရွှေလက်ရာ'}
               </h3>
               <p className="text-xs text-slate-500">
-                {shopSettings?.tagline || 'မြန်မာ့လက်မှု ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်း'}
+                {shopSettings?.tagline || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း'}
               </p>
             </div>
           </div>
@@ -782,7 +782,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-600">
-              ယွန်းထည်/လက်မှု ပေးသွင်းသူအသစ်များ၏ အမည်၊ ရွာ၊ ဖုန်းနံပါတ် သတ်မှတ်ချက်များ
+              ကုန်ချော/လက်မှု ပေးသွင်းသူအသစ်များ၏ အမည်၊ ရွာ၊ ဖုန်းနံပါတ် သတ်မှတ်ချက်များ
             </p>
             <button
               type="button"
@@ -2246,7 +2246,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <label className="block text-slate-700 font-bold mb-1">မှတ်ချက်</label>
                 <input
                   type="text"
-                  placeholder="ဥပမာ - ယွန်းထည် အချောရက်"
+                  placeholder="ဥပမာ - ကုန်ချော အချောရက်"
                   value={supNotes}
                   onChange={(e) => setSupNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
@@ -2388,7 +2388,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           setIsProductModalOpen(false);
           setEditingProduct(null);
         }}
-        availableCategories={Array.from(new Set(['ယွန်းထည်', 'ပန်းပု', 'သစ်သား', 'ကြေးထည်', 'အခြား', ...products.map((p) => p.category).filter(Boolean)]))}
+        availableCategories={Array.from(new Set(['ကုန်ချော', 'ပန်းပု', 'သစ်သား', 'ကြေးထည်', 'အခြား', ...products.map((p) => p.category).filter(Boolean)]))}
       />
 
       {/* ================= MODAL: ADD RAW MATERIAL PRESET ================= */}

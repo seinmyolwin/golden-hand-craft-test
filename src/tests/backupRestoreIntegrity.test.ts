@@ -138,8 +138,8 @@ describe('Backup and Restore Reliability Audit', () => {
   it('3. Flags checksum mismatch when backup data payload is tampered with', async () => {
     const p1: Product = {
       id: generateStableId('prod'),
-      name: 'ယွန်းထည် ပန်းကန်',
-      category: 'ယွန်းထည်',
+      name: 'ကုန်ချော ပန်းကန်',
+      category: 'ကုန်ချော',
       unit: 'ခု',
       defaultPrice: 25000,
       currentStock: 10,

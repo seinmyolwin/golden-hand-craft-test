@@ -113,7 +113,7 @@ describe('Database Integrity & Atomic Business Operations', () => {
       defaultPrice: 5000,
       defaultWholesalePrice: 6000,
       unit: 'လုံး',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       openingStock: 25,
       currentStock: 25,
       minStockAlert: 5,
@@ -275,7 +275,7 @@ describe('Database Integrity & Atomic Business Operations', () => {
       name: 'ယွန်းသေတ္တာ',
       defaultPrice: 10000,
       unit: 'လုံး',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       openingStock: 10,
       currentStock: 10,
       active: true,
@@ -601,7 +601,7 @@ describe('Database Integrity & Atomic Business Operations', () => {
       name: 'ယွန်း လက်ဖက်အုပ်',
       defaultPrice: 8000,
       unit: 'အုပ်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       openingStock: 20,
       currentStock: 20,
       active: true,
@@ -665,7 +665,7 @@ describe('Dexie Schema V1 -> V8 Upgrades & Evolution', () => {
     await v1Db.table('products').add({
       id: 'legacy-p1',
       name: 'ရွှေယွန်း ဆွမ်းအုပ်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       active: true,
     });
     await v1Db.table('suppliers').add({

@@ -184,7 +184,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_prev',
       name: 'ယွန်းပန်းကန်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 10000,
       currentStock: 5,
       minStockAlert: 2,
@@ -268,7 +268,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_safe_ok',
       name: 'ယွန်းလက်ဖက်အုပ်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 25000,
       currentStock: 3,
       minStockAlert: 1,
@@ -370,7 +370,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_rollback_test',
       name: 'ယွန်းဗန်း',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 12000,
       currentStock: 3,
       minStockAlert: 1,
@@ -412,7 +412,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_diag_post',
       name: 'ယွန်းခွက်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 9000,
       currentStock: 5,
       minStockAlert: 1,
@@ -660,7 +660,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_audit_rec',
       name: 'ယွန်းကြာခွက်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 18000,
       currentStock: 2,
       minStockAlert: 1,
@@ -763,7 +763,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_rerun',
       name: 'ယွန်းသေတ္တာ',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 35000,
       currentStock: 2,
       minStockAlert: 1,
@@ -810,7 +810,7 @@ describe('Phase 13: Safe Database Repair & Recovery Test Suite', () => {
     const prod: Product = {
       id: 'prod_phase12_chk',
       name: 'ယွန်းဖလား',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 15000,
       currentStock: 4,
       minStockAlert: 1,

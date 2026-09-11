@@ -75,7 +75,7 @@ describe('Phase 19 - Dependency & Input Security Audit', () => {
     it('validateProducts rejects corrupted rows and safely handles sanitized Excel outputs', () => {
       const maliciousItems = [
         { name: '', defaultPrice: 'invalid' }, // empty name must be skipped
-        { name: '  ယွန်းထည် ပန်းကန်  ', defaultPrice: '15000', openingStock: '20' },
+        { name: '  ကုန်ချော ပန်းကန်  ', defaultPrice: '15000', openingStock: '20' },
         null,
         undefined,
         { id: 'custom-p1', name: 'သောက်ရေခွက်', defaultPrice: 8500 },
@@ -83,7 +83,7 @@ describe('Phase 19 - Dependency & Input Security Audit', () => {
 
       const valid = validateProducts(maliciousItems);
       expect(valid.length).toBe(2);
-      expect(valid[0].name).toBe('ယွန်းထည် ပန်းကန်');
+      expect(valid[0].name).toBe('ကုန်ချော ပန်းကန်');
       expect(valid[0].defaultPrice).toBe(15000);
       expect(valid[0].openingStock).toBe(20);
       expect(valid[1].name).toBe('သောက်ရေခွက်');

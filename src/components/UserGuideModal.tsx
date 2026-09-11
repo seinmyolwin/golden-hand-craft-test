@@ -304,7 +304,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <Logo size="lg" alt="ရွှေလက်ရာ" className="w-16 h-16" />
                   </div>
                   <h1 className="text-2xl font-black text-slate-900">
-                    ရွှေလက်ရာ - မြန်မာ့ရိုးရာ ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်း
+                    ရွှေလက်ရာ - မြန်မာ့ရိုးရာ ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း
                   </h1>
                   <p className="text-sm font-bold text-emerald-800">
                     လုပ်ငန်းခွင်သုံး စာရင်းကိုင်စနစ် အသုံးပြုသူလက်စွဲလမ်းညွှန် (Complete Operations Manual)
@@ -351,7 +351,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide">
-                      မြန်မာ့ရိုးရာ ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်းသုံး လယ်ဂျာ
+                      မြန်မာ့ရိုးရာ ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်းသုံး လယ်ဂျာ
                     </span>
                     <h3 className="text-base sm:text-lg font-black text-emerald-950">
                       ရွှေလက်ရာ အက်ပ်ဖြင့် လုပ်ငန်းစာရင်းများကို စနစ်တကျ ထိန်းသိမ်းပါ
@@ -806,7 +806,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   {/* Mockup Voucher Document */}
                   <div className="bg-white text-slate-900 rounded-xl p-4 border border-slate-300 space-y-2.5 text-xs shadow-md">
                     <div className="text-center border-b border-dashed border-slate-300 pb-2">
-                      <div className="font-extrabold text-sm text-slate-900">ရွှေလက်ရာ ယွန်းထည်တိုက်</div>
+                      <div className="font-extrabold text-sm text-slate-900">ရွှေလက်ရာ ကုန်ချောတိုက်</div>
                       <div className="text-[10px] text-slate-500">ကုန်သည်အရောင်းပြေစာ (SALES INVOICE)</div>
                     </div>
 
@@ -991,7 +991,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div className="p-4 bg-cyan-50 border border-cyan-200 rounded-xl space-y-2">
                   <div className="font-bold text-cyan-950 text-sm">ဆိုင်ချင်း ကုန်ဖလှယ်မှု အကျဉ်း:</div>
                   <p>
-                    ပုဂံ၊ မန္တလေးရှိ ရိုးရာယွန်းထည်ဆိုင်များသည် အော်ဒါလောသည့်အခါ မိတ်ဆွေဆိုင်များထံမှ ပစ္စည်းခေတ္တငှားယူထုတ်ပေးရလေ့ရှိပါသည်။
+                    ပုဂံ၊ မန္တလေးရှိ ရိုးရာကုန်ချောဆိုင်များသည် အော်ဒါလောသည့်အခါ မိတ်ဆွေဆိုင်များထံမှ ပစ္စည်းခေတ္တငှားယူထုတ်ပေးရလေ့ရှိပါသည်။
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">

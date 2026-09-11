@@ -17,7 +17,7 @@ export const EditShopProfileModal: React.FC<EditShopProfileModalProps> = ({
 }) => {
   const [shopName, setShopName] = useState(shopSettings.shopName || 'ရွှေလက်ရာ');
   const [ownerName, setOwnerName] = useState(shopSettings.ownerName || '');
-  const [tagline, setTagline] = useState(shopSettings.tagline || 'မြန်မာ့လက်မှု ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်း');
+  const [tagline, setTagline] = useState(shopSettings.tagline || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း');
   const [phone, setPhone] = useState(shopSettings.phone || '09-123456789');
   const [address, setAddress] = useState(shopSettings.address || 'ပုဂံမြို့ဟောင်း၊ မန္တလေးတိုင်း');
 

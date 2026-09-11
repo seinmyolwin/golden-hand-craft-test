@@ -34,7 +34,7 @@ describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
       const validProduct: Partial<Product> = {
         id: 'p-test-1',
         name: 'ယွန်း ကွမ်းအစ် (ကြီး)',
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         unit: 'ထည်',
         defaultPrice: 25000,
         defaultWholesalePrice: 32000,
@@ -74,7 +74,7 @@ describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
       const prod: Partial<Product> = {
         id: 'p-with-tx',
         name: 'ယွန်းခွက်',
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         unit: 'လုံး',
         defaultPrice: 5000,
         openingStock: 10,
@@ -201,7 +201,7 @@ describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
       const prod: Product = {
         id: 'prod-recon-1',
         name: 'ကွမ်းအစ်အထူး',
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         unit: 'ထည်',
         defaultPrice: 10000,
         openingStock: 10,
@@ -243,7 +243,7 @@ describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
       const prod: Product = {
         id: 'legacy-p1',
         name: 'ရှေးရိုးယွန်းအိုး',
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         unit: 'လုံး',
         defaultPrice: 20000,
         openingStock: 5,

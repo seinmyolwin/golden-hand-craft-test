@@ -126,7 +126,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-300">
-                ယွန်းထည်၊ ဝါးထည်၊ ကြိမ်ထည်ပစ္စည်းများ ဝယ်စျေးနှင့် ရောင်းစျေး စီမံခြင်း
+                ကုန်ချော၊ ဝါးထည်၊ ကြိမ်ထည်ပစ္စည်းများ ဝယ်စျေးနှင့် ရောင်းစျေး စီမံခြင်း
               </p>
             </div>
           </div>

@@ -30,7 +30,7 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
   const isEditing = Boolean(productToEdit);
 
   const [name, setName] = useState<string>('');
-  const [category, setCategory] = useState<string>(DEFAULT_PRODUCT_CATEGORIES[0] || 'ယွန်းထည်');
+  const [category, setCategory] = useState<string>(DEFAULT_PRODUCT_CATEGORIES[0] || 'ကုန်ချော');
   const [unit, setUnit] = useState<string>('ထည်');
   const [buyPrice, setBuyPrice] = useState<number>(0);
   const [sellPrice, setSellPrice] = useState<number>(0);
@@ -43,7 +43,7 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
   useEffect(() => {
     if (productToEdit) {
       setName(productToEdit.name || '');
-      setCategory(productToEdit.category || DEFAULT_PRODUCT_CATEGORIES[0] || 'ယွန်းထည်');
+      setCategory(productToEdit.category || DEFAULT_PRODUCT_CATEGORIES[0] || 'ကုန်ချော');
       setUnit(productToEdit.unit || 'ထည်');
       setBuyPrice(productToEdit.defaultPrice || 0);
       setSellPrice(productToEdit.defaultWholesalePrice || Math.round((productToEdit.defaultPrice || 0) * 1.25));
@@ -53,7 +53,7 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
       setNotes(productToEdit.notes || '');
     } else {
       setName('');
-      setCategory(availableCategories[0] || 'ယွန်းထည်');
+      setCategory(availableCategories[0] || 'ကုန်ချော');
       setUnit('ထည်');
       setBuyPrice(0);
       setSellPrice(0);
@@ -85,7 +85,7 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
     }
 
     const cleanUnit = unit.trim() || 'ထည်';
-    const cleanCat = category.trim() || 'ယွန်းထည်';
+    const cleanCat = category.trim() || 'ကုန်ချော';
 
     const finalProduct: Product = {
       id: productToEdit ? productToEdit.id : generateStableId('p'),

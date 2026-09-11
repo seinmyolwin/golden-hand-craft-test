@@ -142,7 +142,7 @@ describe('Production Offline PWA Audit & Offline Capability Test Suite', () => {
       const productId = await db.products.add({
         id: 'prod-offline-1',
         name: 'အော့ဖ်လိုင်း ယွန်းပန်းကန်',
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         defaultPrice: 15000,
         openingStock: 50,
         currentStock: 50,

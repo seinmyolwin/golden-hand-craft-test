@@ -173,7 +173,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     return {
       finished: {
         type: 'FINISHED' as const,
-        label: 'ယွန်းထည်ပစ္စည်းများ',
+        label: 'ကုန်ချောပစ္စည်းများ',
         subLabel: 'ကွမ်းအစ်၊ ဆွမ်းအုပ်၊ ပန်းကန် စသည်',
         itemsCount: finishedItems.length,
         units: finishedUnits,
@@ -374,7 +374,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                       : 'bg-amber-50 text-amber-800 border border-amber-200'
                   }`}
                 >
-                  {matType === 'FINISHED' ? 'ယွန်းထည်' : matType === 'BAMBOO' ? 'ဝါး' : 'ကြိမ်'}
+                  {matType === 'FINISHED' ? 'ကုန်ချော' : matType === 'BAMBOO' ? 'ဝါး' : 'ကြိမ်'}
                 </span>
               </div>
             </div>
@@ -720,7 +720,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            ယွန်းထည် ({groupCalculations.finished.itemsCount})
+            ကုန်ချော ({groupCalculations.finished.itemsCount})
           </button>
           <button
             type="button"

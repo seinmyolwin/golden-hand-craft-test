@@ -419,7 +419,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
             {formatMMK(kpis.totalGoodsProcured)}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            ယွန်းထည်ပစ္စည်း ရရှိမှုတန်ဖိုး
+            ကုန်ချောပစ္စည်း ရရှိမှုတန်ဖိုး
           </p>
         </div>
 

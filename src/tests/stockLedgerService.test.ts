@@ -18,7 +18,7 @@ describe('Stock Ledger Service - Phase 14', () => {
   const dummyProduct: Product = {
     id: 'prod-001',
     name: 'ယွန်း ကွမ်းအစ် (အလတ်)',
-    category: 'ယွန်းထည်',
+    category: 'ကုန်ချော',
     unit: 'ထည်',
     defaultPrice: 15000,
     defaultWholesalePrice: 20000,

@@ -26,11 +26,11 @@ export default defineConfig(({ command }) => {
           id: '/',
           name: 'ရွှေလက်ရာ - မြန်မာ့လက်မှု စာရင်းကိုင်စနစ်',
           short_name: 'ရွှေလက်ရာ',
-          description: 'မြန်မာ့လက်မှု ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်းများအတွက် အော့ဖ်လိုင်း စာရင်းကိုင်စနစ်',
+          description: 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်းများအတွက် အော့ဖ်လိုင်း စာရင်းကိုင်စနစ်',
           theme_color: '#065f46',
           background_color: '#065f46',
           display: 'standalone',
-          orientation: 'portrait',
+          orientation: 'any',
           start_url: '/',
           scope: '/',
           icons: [

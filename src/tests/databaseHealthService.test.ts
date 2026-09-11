@@ -56,7 +56,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     const prod: Product = {
       id: 'prod_1',
       name: 'ရွှေလက်ရာ ယွန်းပန်းကန်',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 15000,
       defaultWholesalePrice: 18000,
       unit: 'ချပ်',
@@ -142,7 +142,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     const prod1: Product = {
       id: 'prod_dup',
       name: 'Product 1',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 5000,
       unit: 'ခု',
       active: true,
@@ -172,7 +172,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     const invalidProd: any = {
       id: 'prod_no_name',
       name: '', // Empty required name!
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 5000,
       unit: 'ခု',
       active: true,
@@ -239,7 +239,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     const prodWithNegativePrice: Product = {
       id: 'prod_neg_price',
       name: 'Negative Price Goods',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: -5000, // Prohibited negative price!
       unit: 'ခု',
       active: true,
@@ -260,7 +260,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     await testDb.products.add({
       id: 'p_valid',
       name: 'Bowl',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 1000,
       unit: 'ခု',
       active: true,
@@ -459,7 +459,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
     await testDb.products.add({
       id: 'p_immutable',
       name: 'Lacquer Box',
-      category: 'ယွန်းထည်',
+      category: 'ကုန်ချော',
       defaultPrice: 20000,
       unit: 'လုံး',
       active: true,
@@ -537,7 +537,7 @@ describe('Phase 12: Professional Database Health & Diagnostics Service', () => {
       products.push({
         id: `p_bulk_${i}`,
         name: `Product ${i}`,
-        category: 'ယွန်းထည်',
+        category: 'ကုန်ချော',
         defaultPrice: 1000 + i,
         unit: 'ထည်',
         active: true,

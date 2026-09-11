@@ -59,7 +59,7 @@ const STORAGE_KEYS = {
 };
 
 export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
-  'ယွန်းထည်',
+  'ကုန်ချော',
   'ဝါးထည်',
   'ကြိမ်ထည်',
   'ပန်းပု',
@@ -188,7 +188,7 @@ export const DEFAULT_BACKUP_REMINDER: BackupReminderSettings = {
 
 export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
   shopName: 'ရွှေလက်ရာ',
-  tagline: 'မြန်မာ့လက်မှု ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်း',
+  tagline: 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း',
   ownerName: 'ဦးစိန်မျိုးလွင်',
   phone: '09-123456789',
   address: 'ပုဂံမြို့ဟောင်း၊ မန္တလေးတိုင်း',

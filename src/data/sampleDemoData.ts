@@ -247,7 +247,7 @@ export function getSampleDemoTransactions(): TransactionRecord[] {
       netCashPaidToSupplier: 48600,
       newAdvanceTaken: 10000,
       remainingAdvanceBalance: 55000,
-      notes: 'ယွန်းထည် အချောလှ၊ အသစ် ၁၀ ထည် ထပ်မံရက်လုပ်ရန် အပ်နှံထား',
+      notes: 'ကုန်ချော အချောလှ၊ အသစ် ၁၀ ထည် ထပ်မံရက်လုပ်ရန် အပ်နှံထား',
       createdAt: today,
     },
     {

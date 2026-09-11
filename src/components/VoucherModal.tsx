@@ -28,7 +28,7 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
   if (!isOpen || !transaction) return null;
 
   const shopName = shopSettings?.shopName || 'ရွှေလက်ရာ';
-  const tagline = shopSettings?.tagline || 'မြန်မာ့လက်မှု ယွန်းထည်နှင့် ဝါးနှီးလုပ်ငန်း';
+  const tagline = shopSettings?.tagline || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း';
   const phone = shopSettings?.phone || '09-123456789';
   const address = shopSettings?.address || 'ပုဂံမြို့ဟောင်း၊ မန္တလေးတိုင်း';
 

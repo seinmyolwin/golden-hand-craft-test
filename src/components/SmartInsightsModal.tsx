@@ -201,7 +201,7 @@ export const SmartInsightsModal: React.FC<SmartInsightsModalProps> = ({
           <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 space-y-2 text-xs">
             <div className="flex items-center gap-1.5 font-bold text-amber-950">
               <Calendar className="w-4 h-4 text-amber-700" />
-              <span>မြန်မာ့ရိုးရာ ယွန်းထည်/ဝါးနှီး ရာသီအလိုက် အရောင်းဆိုင်ရာ သတိပြုဖွယ်ရာများ:</span>
+              <span>မြန်မာ့ရိုးရာ ကုန်ချော/ဝါးနှီး ရာသီအလိုက် အရောင်းဆိုင်ရာ သတိပြုဖွယ်ရာများ:</span>
             </div>
             <ul className="list-disc list-inside text-slate-700 space-y-1 leading-relaxed">
               <li>

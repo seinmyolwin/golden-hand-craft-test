@@ -1,11 +1,11 @@
 import { Product, Supplier, TransactionRecord, Merchant, SaleRecord, StockAdjustmentRecord, MerchantOrder, PeerTrader } from '../types';
 
 export const DEFAULT_PRODUCTS: Product[] = [
-  { id: 'p-1', name: 'ယွန်း ကွမ်းအစ် (အကြီး)', defaultPrice: 4500, defaultWholesalePrice: 5300, unit: 'ထည်', category: 'ယွန်းထည်', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
-  { id: 'p-2', name: 'ယွန်း ကွမ်းအစ် (အသေး)', defaultPrice: 2800, defaultWholesalePrice: 3400, unit: 'ထည်', category: 'ယွန်းထည်', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
-  { id: 'p-3', name: 'ယွန်း ဆွမ်းအုပ် (အလတ်)', defaultPrice: 3500, defaultWholesalePrice: 4300, unit: 'ထည်', category: 'ယွန်းထည်', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
-  { id: 'p-4', name: 'ယွန်း လက်ဖက်အုပ် (ရိုးရာ)', defaultPrice: 5000, defaultWholesalePrice: 6000, unit: 'ထည်', category: 'ယွန်းထည်', openingStock: 0, currentStock: 0, minStockAlert: 10, active: true },
-  { id: 'p-5', name: 'ယွန်း ပန်းကန်ပြား', defaultPrice: 3200, defaultWholesalePrice: 3900, unit: 'ချပ်', category: 'ယွန်းထည်', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
+  { id: 'p-1', name: 'ယွန်း ကွမ်းအစ် (အကြီး)', defaultPrice: 4500, defaultWholesalePrice: 5300, unit: 'ထည်', category: 'ကုန်ချော', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
+  { id: 'p-2', name: 'ယွန်း ကွမ်းအစ် (အသေး)', defaultPrice: 2800, defaultWholesalePrice: 3400, unit: 'ထည်', category: 'ကုန်ချော', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
+  { id: 'p-3', name: 'ယွန်း ဆွမ်းအုပ် (အလတ်)', defaultPrice: 3500, defaultWholesalePrice: 4300, unit: 'ထည်', category: 'ကုန်ချော', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
+  { id: 'p-4', name: 'ယွန်း လက်ဖက်အုပ် (ရိုးရာ)', defaultPrice: 5000, defaultWholesalePrice: 6000, unit: 'ထည်', category: 'ကုန်ချော', openingStock: 0, currentStock: 0, minStockAlert: 10, active: true },
+  { id: 'p-5', name: 'ယွန်း ပန်းကန်ပြား', defaultPrice: 3200, defaultWholesalePrice: 3900, unit: 'ချပ်', category: 'ကုန်ချော', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
   { id: 'p-6', name: 'ဝါးခမောက် (ရိုးရိုး)', defaultPrice: 2200, defaultWholesalePrice: 2800, unit: 'လုံး', category: 'ဝါးထည်', openingStock: 0, currentStock: 0, minStockAlert: 15, active: true },
   { id: 'p-7', name: 'ဝါးဗန်း (အချော)', defaultPrice: 3000, defaultWholesalePrice: 3800, unit: 'ချပ်', category: 'ဝါးထည်', openingStock: 0, currentStock: 0, minStockAlert: 12, active: true },
   { id: 'p-8', name: 'ကြိမ်တောင်း (လက်ကိုင်ပါ)', defaultPrice: 6000, defaultWholesalePrice: 7400, unit: 'လုံး', category: 'ကြိမ်ထည်', openingStock: 0, currentStock: 0, minStockAlert: 10, active: true },

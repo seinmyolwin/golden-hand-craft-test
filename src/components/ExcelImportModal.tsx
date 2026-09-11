@@ -76,8 +76,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         filename = 'Shwe_Let_Yar_Products_Template.xlsx';
         sheetData = [
           ['အမည် (Product Name)', 'အမျိုးအစား (Category)', 'ဝယ်စျေး (Buy Price)', 'ရောင်းစျေး (Sale Price)', 'စတင်လက်ကျန် (Stock)', 'ယူနစ် (Unit)', 'သတိပေးလက်ကျန် (Min Stock)'],
-          ['ယွန်း ကွမ်းအစ် (အကြီး)', 'ယွန်းထည်', 4500, 5800, 50, 'ထည်', 10],
-          ['ယွန်း ဆွမ်းအုပ် (၁၄ လက်မ)', 'ယွန်းထည်', 12000, 15500, 30, 'လုံး', 5],
+          ['ယွန်း ကွမ်းအစ် (အကြီး)', 'ကုန်ချော', 4500, 5800, 50, 'ထည်', 10],
+          ['ယွန်း ဆွမ်းအုပ် (၁၄ လက်မ)', 'ကုန်ချော', 12000, 15500, 30, 'လုံး', 5],
           ['ဝါးခမောက် (ရိုးရိုး)', 'ဝါးထည်', 2500, 3200, 100, 'လုံး', 20],
           ['ကြိမ်ခြင်း (အဝိုင်း)', 'ကြိမ်ထည်', 6000, 7800, 40, 'လုံး', 10],
         ];
@@ -93,7 +93,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         filename = 'Shwe_Let_Yar_Merchants_Template.xlsx';
         sheetData = [
           ['ကုဒ် (Code)', 'အမည် (Merchant Name)', 'ဖုန်းနံပါတ် (Phone)', 'မြို့နယ် (Town)', 'ဆိုင်ခွဲအမည် (Shop Name)', 'စတင်ရရန်ကျန်ငွေ (Initial Receivable)', 'မှတ်ချက် (Notes)'],
-          ['M-101', 'ဒေါ်ခင်အေး', '09-450000111', 'မန္တလေး', 'ရတနာ ယွန်းထည်ဆိုင်', 150000, '၈၄ လမ်း လက်ကား'],
+          ['M-101', 'ဒေါ်ခင်အေး', '09-450000111', 'မန္တလေး', 'ရတနာ ကုန်ချောဆိုင်', 150000, '၈၄ လမ်း လက်ကား'],
           ['M-102', 'ဦးမင်းမင်း', '09-250000222', 'ရန်ကုန်', 'ရွှေမင်းသမီး လက်ဆောင်ပစ္စည်း', 200000, 'ဗိုလ်ချုပ်ဈေး'],
           ['M-103', 'ကိုနိုင်ဦး', '09-790000333', 'နေပြည်တော်', 'အောင်သပြေ ရိုးရာထည်', 0, 'သပြေကုန်းဈေး'],
         ];
@@ -167,7 +167,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
             const name = String(findValue(row, 'အမည်', 'name', 'product', 'item') || '').trim();
             if (!name) return; // skip empty rows
 
-            const category = String(findValue(row, 'အမျိုးအစား', 'category', 'type') || 'ယွန်းထည်').trim();
+            const category = String(findValue(row, 'အမျိုးအစား', 'category', 'type') || 'ကုန်ချော').trim();
             const buyPrice = Number(findValue(row, 'ဝယ်စျေး', 'buy', 'cost', 'purchase') || 0);
             const salePrice = Number(findValue(row, 'ရောင်းစျေး', 'sale', 'wholesale') || Math.round(buyPrice * 1.25));
             const openingStock = Number(findValue(row, 'လက်ကျန်', 'stock', 'opening', 'qty', 'quantity') || 0);
@@ -181,7 +181,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
             mapped.push({
               tempId: `prod-import-${Date.now()}-${idx}`,
               name,
-              category: category || 'ယွန်းထည်',
+              category: category || 'ကုန်ချော',
               defaultPrice: isNaN(buyPrice) ? 0 : buyPrice,
               defaultWholesalePrice: isNaN(salePrice) ? 0 : salePrice,
               openingStock: isNaN(openingStock) ? 0 : openingStock,
