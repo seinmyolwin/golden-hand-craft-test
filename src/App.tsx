@@ -243,6 +243,10 @@ export default function App() {
     };
   }, []);
 
+  // User Session & Role State
+  const [currentSession, setCurrentSession] = useState<UserSession | null>(() => getCurrentSession());
+  const [isUserSwitchModalOpen, setIsUserSwitchModalOpen] = useState<boolean>(false);
+
   // Security Lock State (using sessionStorage to persist session across page refresh)
   const [appLockSettings, setAppLockSettings] = useState<AppLockSettings>(() => loadAppLockSettings());
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
@@ -1736,6 +1740,8 @@ export default function App() {
           onOpenAppLockSettings={() => setIsAppLockSettingsOpen(true)}
           onLockApp={handleLockApp}
           onOpenUserGuide={() => setIsUserGuideOpen(true)}
+          currentSession={currentSession}
+          onOpenUserSwitch={() => setIsUserSwitchModalOpen(true)}
           hasPendingUpdate={hasPendingUpdate}
           onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
         />
@@ -2157,6 +2163,19 @@ export default function App() {
           isOpen={isAuditHistoryModalOpen}
           onClose={() => setIsAuditHistoryModalOpen(false)}
           auditLogs={auditLogs}
+        />
+
+        <UserSwitchModal
+          isOpen={isUserSwitchModalOpen}
+          onClose={() => setIsUserSwitchModalOpen(false)}
+          currentSession={currentSession}
+          appLockSettings={appLockSettings}
+          onSessionChanged={(newSession) => setCurrentSession(newSession)}
+          onLogout={() => {
+            logoutUserSession();
+            setCurrentSession(null);
+            handleLockApp();
+          }}
         />
 
         {showExitToast && (
