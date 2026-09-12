@@ -34,6 +34,7 @@ import {
   getPersistedUsers,
   SESSION_STORAGE_KEY,
   SETTING_ACTIVE_SESSION_KEY,
+  SETTING_USERS_KEY,
 } from '../services/authorizationService';
 import {
   SaleRepository,
@@ -1114,6 +1115,142 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
         createdAt: new Date().toISOString(),
       });
       expect(cshId).toBeDefined();
+    });
+  });
+
+  describe('Phase 18C.2 — Remaining RBAC Acceptance Criteria Verification', () => {
+    it('1. rejects login attempts for deactivated users (isActive: false)', async () => {
+      const users = await getPersistedUsers();
+      const deactivatedStaff: AppUser = {
+        id: 'user_deactivated_test',
+        username: 'deactivated_staff',
+        displayName: 'Deactivated Worker',
+        role: 'USER',
+        isActive: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await savePersistedUsers([...users, deactivatedStaff]);
+
+      await expect(switchUserSession('user_deactivated_test')).rejects.toThrow(AuthorizationError);
+      await expect(switchUserSession('user_deactivated_test')).rejects.toThrow(
+        'သတ်မှတ်ထားသော အကောင့်ကို ရှာမတွေ့ပါ သို့မဟုတ် ပိတ်ထားပါသည်'
+      );
+    });
+
+    it('2. invalidates session immediately on mid-session deactivation during enforcePermission', async () => {
+      const activeSession = await resetSessionForTesting('USER');
+      expect(activeSession.role).toBe('USER');
+
+      const users = await getPersistedUsers();
+      const updatedUsers = users.map((u) =>
+        u.id === DEFAULT_STAFF_USER.id ? { ...u, isActive: false } : u
+      );
+      await db.settings.put({
+        key: SETTING_USERS_KEY,
+        value: updatedUsers,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await expect(enforcePermission('OPERATIONAL_DATA_ENTRY')).rejects.toThrow(AuthorizationError);
+
+      const sessionAfterDeactivation = await getCurrentSession();
+      expect(sessionAfterDeactivation).toBeNull();
+    });
+
+    it('3. prevents privilege bypass via fake referenceId in StockMovementRepository.recordMovement', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        stockMovementRepo.recordMovement({
+          id: generateStableId('mv_bypass'),
+          productId: 'p1',
+          productName: 'P1',
+          movementType: 'MERCHANT_OUTBOUND',
+          quantity: 100,
+          direction: 'OUT',
+          signedQuantity: -100,
+          referenceType: 'SALE',
+          referenceId: 'non_existent_sale_99999',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_bypass_mv_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('4. prevents privilege bypass via fake referenceId in CashMovementRepository.recordMovement', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        cashMovementRepo.recordMovement({
+          id: generateStableId('csh_bypass'),
+          amount: 500000,
+          direction: 'IN',
+          signedAmount: 500000,
+          type: 'SALE_PAYMENT_IN',
+          referenceType: 'SALE',
+          referenceId: 'non_existent_sale_88888',
+          description: 'Forged sale cash in',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_bypass_csh_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('5. rejects Staff execution of direct repository write functions (StockAdjustment, VoidTransaction, Delete)', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        stockAdjRepo.saveAdjustmentAtomic({
+          id: generateStableId('adj'),
+          date: '2026-09-12',
+          time: '12:00',
+          productId: 'p1',
+          productName: 'P1',
+          type: 'IN_ADJUSTMENT',
+          quantity: 5,
+          previousStock: 10,
+          newStock: 15,
+          reason: 'Direct adjustment attempt',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+
+      await expect(txRepo.cancelInboundAtomic('tx_dummy_id', 'Unauth void attempt')).rejects.toThrow(
+        AuthorizationError
+      );
+
+      await expect(saleRepo.delete('sale_dummy_id')).rejects.toThrow(AuthorizationError);
+    });
+
+    it('6. rejects Staff execution of executeSafeRestore and restoreFromSnapshot', async () => {
+      await resetSessionForTesting('USER');
+
+      const dummyReport: any = {
+        isValid: true,
+        normalizedData: {
+          products: [],
+          suppliers: [],
+          merchants: [],
+          transactions: [],
+          sales: [],
+          merchantPurchases: [],
+          orders: [],
+          stockAdjustments: [],
+          peerTrades: [],
+          shopSettings: {},
+        },
+      };
+
+      await expect(executeSafeRestore(dummyReport, 'OVERWRITE')).rejects.toThrow(AuthorizationError);
+
+      await expect(restoreFromSnapshot('snap_test_123')).rejects.toThrow(AuthorizationError);
     });
   });
 });
