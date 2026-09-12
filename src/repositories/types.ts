@@ -67,6 +67,7 @@ export interface ITransactionRepository {
   save(tx: TransactionRecord): Promise<string>;
   saveInboundAtomic(tx: TransactionRecord): Promise<TransactionRecord>;
   cancelInboundAtomic(txId: string, reason?: string): Promise<TransactionRecord>;
+  softDeleteTransactionAtomic(txId: string, reason?: string): Promise<SoftDeletedItem>;
   recordSupplierAdvanceAtomic(
     supplierId: string,
     advanceAmount: number,
@@ -88,6 +89,7 @@ export interface ISaleRepository {
   save(sale: SaleRecord): Promise<string>;
   saveSaleAtomic(sale: SaleRecord): Promise<SaleRecord>;
   cancelSaleAtomic(saleId: string, reason?: string): Promise<SaleRecord>;
+  softDeleteSaleAtomic(saleId: string, reason?: string): Promise<SoftDeletedItem>;
   saveMany(sales: SaleRecord[]): Promise<void>;
   delete(id: string): Promise<void>;
   clear(): Promise<void>;
@@ -152,6 +154,8 @@ export interface ISoftDeleteRepository {
     name?: string,
     reason?: string
   ): Promise<SoftDeletedItem>;
+  softDeleteTransactionAtomic(txId: string, reason?: string): Promise<SoftDeletedItem>;
+  softDeleteSaleAtomic(saleId: string, reason?: string): Promise<SoftDeletedItem>;
   restoreAtomic(softDeleteId: string): Promise<any>;
   saveMany(items: SoftDeletedItem[]): Promise<void>;
   delete(id: string): Promise<void>;

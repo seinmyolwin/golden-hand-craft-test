@@ -437,6 +437,11 @@ export interface ShopSettings {
   ownerName?: string;
   phone?: string;
   address?: string;
+  branchCode?: string;
+  branchName?: string;
+  defaultLandingTab?: string;
+  isLiveConfirmed?: boolean;
+  hideSampleDataButtons?: boolean;
   thermalPrinterWidth?: '58mm' | '80mm';
   receiptFooterNote?: string;
   rawMaterialPresets?: RawMaterialPreset[];
@@ -846,12 +851,24 @@ export type TabType =
   | 'HISTORY'
   | 'REPORTS';
 
+export type SoftDeletedEntityType =
+  | 'PRODUCT'
+  | 'SUPPLIER'
+  | 'MERCHANT'
+  | 'TRANSACTION'
+  | 'SALE'
+  | 'PURCHASE'
+  | 'ORDER'
+  | 'PEER_TRADE'
+  | string;
+
 export interface SoftDeletedItem {
   id: string;
   originalId: string;
   name: string;
-  type: string;
+  type: SoftDeletedEntityType | 'TRANSACTION' | 'SALE' | string;
   deletedAt: string;
+  reason?: string;
   data: any;
   auditEntry?: AuditLogEntry;
 }

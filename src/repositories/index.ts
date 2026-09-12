@@ -721,6 +721,13 @@ export class TransactionRepository implements ITransactionRepository {
   }
 
   /**
+   * Atomic Soft Delete for Inbound Goods Collection / Transaction
+   */
+  async softDeleteTransactionAtomic(txId: string, reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'): Promise<SoftDeletedItem> {
+    return softDeleteTransactionAtomic(txId, reason, this.database);
+  }
+
+  /**
    * Atomic Advance Payment Given to Supplier
    */
   async recordSupplierAdvanceAtomic(
@@ -1192,6 +1199,13 @@ export class SaleRepository implements ISaleRepository {
         return { ...cancelledSale, auditEntry };
       }
     );
+  }
+
+  /**
+   * Atomic Soft Delete for Sale Record
+   */
+  async softDeleteSaleAtomic(saleId: string, reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'): Promise<SoftDeletedItem> {
+    return softDeleteSaleAtomic(saleId, reason, this.database);
   }
 
   async saveMany(sales: SaleRecord[]): Promise<void> {
@@ -1884,6 +1898,215 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
   }
 }
 
+/**
+ * Atomic Soft Delete for Inbound Goods Collection / Transaction
+ * 1. Retrieve the transaction by txId
+ * 2. Reverse inventory stock (subtract collected quantities from products)
+ * 3. Revert supplier metrics (currentAdvanceBalance and totalGoodsValueDelivered)
+ * 4. Create a SoftDeletedItem entry with type 'TRANSACTION', original transaction payload as data, stored in db.softDeletedItems
+ * 5. Remove record from db.transactions
+ * 6. Record audit event
+ */
+export async function softDeleteTransactionAtomic(
+  txId: string,
+  reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်',
+  database: ShweLetYarDatabase = db
+): Promise<SoftDeletedItem> {
+  await enforcePermission('VOID_TRANSACTION', 'ကုန်သိမ်းစာရင်း ဖျက်ပစ်ခြင်း');
+  return database.transaction(
+    'rw',
+    [
+      database.transactions,
+      database.products,
+      database.suppliers,
+      database.softDeletedItems,
+      database.auditLogs,
+    ],
+    async () => {
+      const tx = await database.transactions.get(txId);
+      if (!tx) {
+        throw new EntityNotFoundError('Transaction', txId);
+      }
+
+      const now = new Date().toISOString();
+
+      // 1. Reverse inventory stock (subtract collected quantities from products)
+      if (Array.isArray(tx.items)) {
+        for (const item of tx.items) {
+          if (!item.productId) continue;
+          const product = await database.products.get(item.productId);
+          if (product) {
+            const currentStock = product.currentStock ?? product.openingStock ?? 0;
+            const updatedStock = Math.max(0, currentStock - (item.quantity || 0));
+            await database.products.update(item.productId, {
+              currentStock: updatedStock,
+              updatedAt: now,
+              revision: (product.revision || 0) + 1,
+            });
+          }
+        }
+      }
+
+      // 2. Revert supplier metrics (currentAdvanceBalance and totalGoodsValueDelivered)
+      if (tx.supplierId) {
+        const supplier = await database.suppliers.get(tx.supplierId);
+        if (supplier) {
+          const revertedAdvanceBalance =
+            tx.previousAdvanceBalance !== undefined
+              ? tx.previousAdvanceBalance
+              : Math.max(0, (supplier.currentAdvanceBalance ?? 0) + (tx.advanceDeducted || 0) - (tx.newAdvanceTaken || 0));
+          const currentDelivered = supplier.totalGoodsValueDelivered || (supplier as any).totalGoodsDeliveredValue || 0;
+          const revertedDelivered = Math.max(0, currentDelivered - (tx.totalGoodsValue || 0));
+
+          await database.suppliers.update(tx.supplierId, {
+            currentAdvanceBalance: revertedAdvanceBalance,
+            totalGoodsValueDelivered: revertedDelivered,
+            updatedAt: now,
+          });
+        }
+      }
+
+      // 3. Create SoftDeletedItem entry with type 'TRANSACTION'
+      const softItem: SoftDeletedItem = {
+        id: generateStableId('del'),
+        originalId: tx.id,
+        name: tx.voucherNo || `ဘောင်ချာ ${tx.id}`,
+        type: 'TRANSACTION',
+        deletedAt: now,
+        reason,
+        data: tx,
+      };
+      await database.softDeletedItems.put(softItem);
+
+      // 4. Remove record from transactions table
+      await database.transactions.delete(tx.id);
+
+      // 5. Log audit event
+      const auditEntry = await recordAuditEvent(
+        {
+          action: 'ကုန်သိမ်းစာရင်းအား အမှိုက်ပုံးသို့ ရွှေ့ပြောင်းဖျက်ပစ်ခြင်း (Soft Delete Transaction)',
+          actionType: 'SYSTEM_ACTION',
+          details: `ဘောင်ချာ ${tx.voucherNo || tx.id} (${tx.supplierName || 'ပေးသွင်းသူ'}) အား ဖျက်ပစ်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+          referenceType: 'TRANSACTION',
+          referenceId: tx.id,
+          referenceVoucherNo: tx.voucherNo,
+          amount: tx.totalGoodsValue || 0,
+        },
+        database
+      );
+
+      return { ...softItem, auditEntry };
+    }
+  );
+}
+
+/**
+ * Atomic Soft Delete for Sale Record
+ * 1. Retrieve the sale by saleId
+ * 2. Reverse inventory stock (add back sold quantities to products)
+ * 3. Revert merchant metrics (currentReceivableBalance, totalPurchasesValue, totalPaidAmount)
+ * 4. Create a SoftDeletedItem entry with type 'SALE', original sale payload as data, stored in db.softDeletedItems
+ * 5. Remove record from sales table
+ * 6. Record audit event
+ */
+export async function softDeleteSaleAtomic(
+  saleId: string,
+  reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်',
+  database: ShweLetYarDatabase = db
+): Promise<SoftDeletedItem> {
+  await enforcePermission('VOID_TRANSACTION', 'အရောင်းမှတ်တမ်း ဖျက်ပစ်ခြင်း');
+  return database.transaction(
+    'rw',
+    [
+      database.sales,
+      database.products,
+      database.merchants,
+      database.softDeletedItems,
+      database.auditLogs,
+    ],
+    async () => {
+      const sale = await database.sales.get(saleId);
+      if (!sale) {
+        throw new EntityNotFoundError('Sale', saleId);
+      }
+
+      const now = new Date().toISOString();
+
+      // 1. Reverse inventory stock (add back sold quantities to products)
+      if (Array.isArray(sale.items)) {
+        for (const item of sale.items) {
+          if (!item.productId) continue;
+          const product = await database.products.get(item.productId);
+          if (product) {
+            const currentStock = product.currentStock ?? product.openingStock ?? 0;
+            const updatedStock = currentStock + (item.quantity || 0);
+            await database.products.update(item.productId, {
+              currentStock: updatedStock,
+              updatedAt: now,
+              revision: (product.revision || 0) + 1,
+            });
+          }
+        }
+      }
+
+      // 2. Revert merchant metrics (currentReceivableBalance, totalPurchasesValue, totalPaidAmount)
+      if (sale.merchantId) {
+        const merchant = await database.merchants.get(sale.merchantId);
+        if (merchant) {
+          const grandTotalVal = sale.grandTotal ?? sale.totalAmount ?? 0;
+          const paidVal = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+          let revertedReceivable = merchant.currentReceivableBalance ?? 0;
+          if (sale.previousReceivableBalance !== undefined) {
+            revertedReceivable = sale.previousReceivableBalance;
+          } else {
+            revertedReceivable = Math.max(0, revertedReceivable - (grandTotalVal - paidVal));
+          }
+          const currentPurchases = merchant.totalPurchasesValue || 0;
+          const currentPaid = merchant.totalPaidAmount || 0;
+
+          await database.merchants.update(sale.merchantId, {
+            currentReceivableBalance: revertedReceivable,
+            totalPurchasesValue: Math.max(0, currentPurchases - grandTotalVal),
+            totalPaidAmount: Math.max(0, currentPaid - paidVal),
+            updatedAt: now,
+          });
+        }
+      }
+
+      // 3. Create SoftDeletedItem entry with type 'SALE'
+      const softItem: SoftDeletedItem = {
+        id: generateStableId('del'),
+        originalId: sale.id,
+        name: sale.voucherNo || `အရောင်းဘောင်ချာ ${sale.id}`,
+        type: 'SALE',
+        deletedAt: now,
+        reason,
+        data: sale,
+      };
+      await database.softDeletedItems.put(softItem);
+
+      // 4. Remove record from sales table
+      await database.sales.delete(sale.id);
+
+      // 5. Log audit event
+      const auditEntry = await recordAuditEvent(
+        {
+          action: 'အရောင်းစာရင်းအား အမှိုက်ပုံးသို့ ရွှေ့ပြောင်းဖျက်ပစ်ခြင်း (Soft Delete Sale)',
+          actionType: 'SYSTEM_ACTION',
+          details: `ဘောင်ချာ ${sale.voucherNo || sale.id} (${sale.merchantName || 'ကုန်သည်'}) အား ဖျက်ပစ်ခဲ့သည် | အကြောင်းပြချက်: ${reason}`,
+          referenceType: 'SALE',
+          referenceId: sale.id,
+          referenceVoucherNo: sale.voucherNo,
+          amount: sale.grandTotal ?? sale.totalAmount ?? 0,
+        },
+        database
+      );
+
+      return { ...softItem, auditEntry };
+    }
+  );
+}
+
 export class SoftDeleteRepository implements ISoftDeleteRepository {
   constructor(private database: ShweLetYarDatabase = db) {}
 
@@ -1901,6 +2124,26 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
   }
 
   /**
+   * Atomic Soft Delete for Inbound Goods Collection / Transaction
+   */
+  async softDeleteTransactionAtomic(
+    txId: string,
+    reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'
+  ): Promise<SoftDeletedItem> {
+    return softDeleteTransactionAtomic(txId, reason, this.database);
+  }
+
+  /**
+   * Atomic Soft Delete for Sale Record
+   */
+  async softDeleteSaleAtomic(
+    saleId: string,
+    reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'
+  ): Promise<SoftDeletedItem> {
+    return softDeleteSaleAtomic(saleId, reason, this.database);
+  }
+
+  /**
    * Atomic Soft Delete with Recycle Bin movement
    */
   async softDeleteAtomic(
@@ -1909,6 +2152,13 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
     name?: string,
     reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'
   ): Promise<SoftDeletedItem> {
+    if (entityType.toUpperCase() === 'TRANSACTION') {
+      return this.softDeleteTransactionAtomic(id, reason);
+    }
+    if (entityType.toUpperCase() === 'SALE') {
+      return this.softDeleteSaleAtomic(id, reason);
+    }
+
     await enforcePermission('DELETE_MASTER_DATA', 'မော်ကွန်းထိန်းသိမ်း ဖျက်ပစ်ခြင်း');
     return this.database.transaction(
       'rw',
@@ -1947,20 +2197,6 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
               await this.database.merchants.delete(id);
             }
             break;
-          case 'TRANSACTION':
-            entityData = await this.database.transactions.get(id);
-            if (entityData) {
-              displayName = entityData.voucherNo || displayName;
-              await this.database.transactions.delete(id);
-            }
-            break;
-          case 'SALE':
-            entityData = await this.database.sales.get(id);
-            if (entityData) {
-              displayName = entityData.voucherNo || displayName;
-              await this.database.sales.delete(id);
-            }
-            break;
           default:
             throw new BusinessIntegrityError(`Unsupported entity type: ${entityType}`);
         }
@@ -1976,6 +2212,7 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
           name: displayName,
           type: entityType,
           deletedAt: now,
+          reason,
           data: entityData,
         };
 
@@ -2034,9 +2271,61 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
             break;
           case 'TRANSACTION':
             await this.database.transactions.put(data);
+            if (Array.isArray(data.items)) {
+              for (const it of data.items) {
+                if (!it.productId) continue;
+                const product = await this.database.products.get(it.productId);
+                if (product) {
+                  const currentStock = product.currentStock ?? product.openingStock ?? 0;
+                  await this.database.products.update(it.productId, {
+                    currentStock: currentStock + (it.quantity || 0),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+            if (data.supplierId) {
+              const supplier = await this.database.suppliers.get(data.supplierId);
+              if (supplier) {
+                const curDelivered = supplier.totalGoodsValueDelivered || (supplier as any).totalGoodsDeliveredValue || 0;
+                await this.database.suppliers.update(data.supplierId, {
+                  currentAdvanceBalance: data.remainingAdvanceBalance ?? supplier.currentAdvanceBalance,
+                  totalGoodsValueDelivered: curDelivered + (data.totalGoodsValue || 0),
+                  updatedAt: new Date().toISOString(),
+                });
+              }
+            }
             break;
           case 'SALE':
             await this.database.sales.put(data);
+            if (Array.isArray(data.items)) {
+              for (const it of data.items) {
+                if (!it.productId) continue;
+                const product = await this.database.products.get(it.productId);
+                if (product) {
+                  const currentStock = product.currentStock ?? product.openingStock ?? 0;
+                  await this.database.products.update(it.productId, {
+                    currentStock: Math.max(0, currentStock - (it.quantity || 0)),
+                    updatedAt: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+            if (data.merchantId) {
+              const merchant = await this.database.merchants.get(data.merchantId);
+              if (merchant) {
+                const grandTotal = data.grandTotal ?? data.totalAmount ?? 0;
+                const paid = data.cashPaidByMerchant ?? data.paidAmount ?? 0;
+                await this.database.merchants.update(data.merchantId, {
+                  currentReceivableBalance:
+                    data.remainingReceivableBalance ??
+                    ((merchant.currentReceivableBalance || 0) + grandTotal - paid),
+                  totalPurchasesValue: (merchant.totalPurchasesValue || 0) + grandTotal,
+                  totalPaidAmount: (merchant.totalPaidAmount || 0) + paid,
+                  updatedAt: new Date().toISOString(),
+                });
+              }
+            }
             break;
           default:
             throw new BusinessIntegrityError(`Unsupported entity restore type: ${type}`);

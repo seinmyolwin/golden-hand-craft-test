@@ -1119,17 +1119,18 @@ export default function App() {
     if (!tx) return;
 
     try {
-      const cancelled = await transactionRepo.cancelInboundAtomic(txId, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
-      setTransactions((prev) => prev.map((t) => (t.id === txId ? cancelled : t)));
+      const softItem = await transactionRepo.softDeleteTransactionAtomic(txId, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+      setDeletedItems((prev) => [softItem, ...prev]);
+      setTransactions((prev) => prev.filter((t) => t.id !== txId));
       const refreshedProducts = await productRepo.getAll();
       const refreshedSuppliers = await supplierRepo.getAll();
       if (refreshedProducts.length > 0) setProducts(refreshedProducts);
       if (refreshedSuppliers.length > 0) setSuppliers(refreshedSuppliers);
-      if (cancelled.auditEntry) {
-        setAuditLogs((prev) => [cancelled.auditEntry!, ...prev.slice(0, 199)]);
+      if (softItem.auditEntry) {
+        setAuditLogs((prev) => [softItem.auditEntry!, ...prev.slice(0, 199)]);
       }
     } catch (err: any) {
-      console.error('Failed to cancel transaction atomically:', err);
+      console.error('Failed to soft delete transaction atomically:', err);
       alert(`ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
     }
   }, [transactions]);
@@ -1166,8 +1167,16 @@ export default function App() {
         setProducts((prev) => [restored, ...prev.filter((p) => p.id !== restored.id)]);
       } else if (item.type === 'TRANSACTION') {
         setTransactions((prev) => [restored, ...prev.filter((t) => t.id !== restored.id)]);
+        const refreshedProducts = await productRepo.getAll();
+        const refreshedSuppliers = await supplierRepo.getAll();
+        if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+        if (refreshedSuppliers.length > 0) setSuppliers(refreshedSuppliers);
       } else if (item.type === 'SALE') {
         setSales((prev) => [restored, ...prev.filter((s) => s.id !== restored.id)]);
+        const refreshedProducts = await productRepo.getAll();
+        const refreshedMerchants = await merchantRepo.getAll();
+        if (refreshedProducts.length > 0) setProducts(refreshedProducts);
+        if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
       }
 
       setDeletedItems((prev) => prev.filter((d) => d.id !== item.id));
@@ -2024,6 +2033,7 @@ export default function App() {
               onDeleteProduct={handleDeleteProduct}
               onCheckForUpdates={handleManualCheckUpdate}
               isCheckingUpdates={isCheckingUpdate}
+              onSaveSettings={setShopSettings}
             />
           )}
         </main>

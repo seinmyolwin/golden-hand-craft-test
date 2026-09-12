@@ -33,6 +33,9 @@ import {
   SaleRepository,
   MerchantPurchaseRepository,
   StockAdjustmentRepository,
+  SoftDeleteRepository,
+  softDeleteTransactionAtomic,
+  softDeleteSaleAtomic,
   IdempotencyConflictError,
   EntityNotFoundError,
   InvalidStateTransitionError,
@@ -776,3 +779,203 @@ describe('Offline Storage Migration Stress & Edge Cases', () => {
     expect(res.migratedCounts.merchants).toBe(0);
   });
 });
+
+describe('Atomic Soft Delete for Transactions and Sales', () => {
+  let testDb: ShweLetYarDatabase;
+  let softDeleteRepo: SoftDeleteRepository;
+  let txRepo: TransactionRepository;
+  let saleRepo: SaleRepository;
+
+  beforeEach(async () => {
+    testDb = new ShweLetYarDatabase();
+    await testDb.products.clear();
+    await testDb.suppliers.clear();
+    await testDb.merchants.clear();
+    await testDb.transactions.clear();
+    await testDb.sales.clear();
+    await testDb.softDeletedItems.clear();
+    await testDb.auditLogs.clear();
+
+    softDeleteRepo = new SoftDeleteRepository(testDb);
+    txRepo = new TransactionRepository(testDb);
+    saleRepo = new SaleRepository(testDb);
+  });
+
+  it('softDeleteTransactionAtomic reverses product stock, supplier metrics, moves to softDeletedItems, removes from transactions, and records audit', async () => {
+    // 1. Setup product and supplier
+    await testDb.products.put({
+      id: 'prod-sd-1',
+      name: 'ရွှေဇွန်း',
+      currentStock: 50,
+      openingStock: 50,
+      unit: 'ခု',
+      defaultPrice: 1000,
+      category: 'FINISHED',
+      active: true,
+    });
+
+    await testDb.suppliers.put({
+      id: 'supp-sd-1',
+      name: 'ဦးမြ',
+      phone: '0912345678',
+      village: 'ရွာမ',
+      currentAdvanceBalance: 20000,
+      totalGoodsValueDelivered: 80000,
+      createdAt: '2026-03-30T00:00:00.000Z',
+      updatedAt: '2026-03-30T00:00:00.000Z',
+    });
+
+    // 2. Create inbound transaction (added 20 items, totalGoodsValue 30000, deducted 10000 advance)
+    const tx: TransactionRecord = {
+      id: 'tx-sd-1',
+      voucherNo: 'TX-SD-001',
+      supplierId: 'supp-sd-1',
+      supplierName: 'ဦးမြ',
+      type: 'COLLECTION_AND_SETTLEMENT',
+      date: '2026-03-30',
+      time: '10:00',
+      totalGoodsValue: 30000,
+      advanceDeducted: 10000,
+      previousAdvanceBalance: 30000,
+      remainingAdvanceBalance: 20000,
+      items: [
+        {
+          productId: 'prod-sd-1',
+          productName: 'ရွှေဇွန်း',
+          quantity: 20,
+          unit: 'ခု',
+          unitPrice: 1500,
+          subtotal: 30000,
+        },
+      ],
+      status: 'COMPLETED',
+    };
+    await testDb.transactions.put(tx);
+
+    // Initial stock is 50 + 20 = 70 (after transaction save)
+    await testDb.products.update('prod-sd-1', { currentStock: 70 });
+
+    // 3. Perform softDeleteTransactionAtomic
+    const deletedItem = await softDeleteTransactionAtomic('tx-sd-1', 'အမှားပြင်ဆင်ရန် ဖျက်ခြင်း', testDb);
+
+    // Assert SoftDeletedItem created
+    expect(deletedItem).toBeDefined();
+    expect(deletedItem.type).toBe('TRANSACTION');
+    expect(deletedItem.originalId).toBe('tx-sd-1');
+    expect(deletedItem.data.id).toBe('tx-sd-1');
+    expect(deletedItem.reason).toBe('အမှားပြင်ဆင်ရန် ဖျက်ခြင်း');
+
+    // Assert removed from db.transactions
+    const txInDb = await testDb.transactions.get('tx-sd-1');
+    expect(txInDb).toBeUndefined();
+
+    // Assert stored in db.softDeletedItems
+    const softInDb = await testDb.softDeletedItems.get(deletedItem.id);
+    expect(softInDb).toBeDefined();
+    expect(softInDb?.type).toBe('TRANSACTION');
+
+    // Assert product stock reversed: 70 - 20 = 50
+    const prodAfter = await testDb.products.get('prod-sd-1');
+    expect(prodAfter?.currentStock).toBe(50);
+
+    // Assert supplier metrics reverted: advance balance returned to previous 30000, goods delivered reduced by 30000
+    const suppAfter = await testDb.suppliers.get('supp-sd-1');
+    expect(suppAfter?.currentAdvanceBalance).toBe(30000);
+    expect(suppAfter?.totalGoodsValueDelivered).toBe(50000);
+
+    // Assert audit log created
+    const logs = await testDb.auditLogs.toArray();
+    expect(logs.length).toBeGreaterThan(0);
+    const delLog = logs.find((l) => l.referenceId === 'tx-sd-1' && l.referenceType === 'TRANSACTION');
+    expect(delLog).toBeDefined();
+  });
+
+  it('softDeleteSaleAtomic reverses product stock, merchant metrics, moves to softDeletedItems, removes from sales, and records audit', async () => {
+    // 1. Setup product and merchant
+    await testDb.products.put({
+      id: 'prod-sd-sale',
+      name: 'ကြွေပန်းကန်',
+      currentStock: 30, // Was 45 before selling 15
+      openingStock: 45,
+      unit: 'ချပ်',
+      defaultPrice: 2000,
+      category: 'FINISHED',
+      active: true,
+    });
+
+    await testDb.merchants.put({
+      id: 'merch-sd-1',
+      name: 'ဒေါ်လှ',
+      phone: '0987654321',
+      town: 'မင်းဘူး',
+      currentReceivableBalance: 25000,
+      totalPurchasesValue: 50000,
+      totalPaidAmount: 25000,
+      createdAt: '2026-03-30T00:00:00.000Z',
+      updatedAt: '2026-03-30T00:00:00.000Z',
+    });
+
+    // 2. Create sale record
+    const sale: SaleRecord = {
+      id: 'sale-sd-1',
+      voucherNo: 'SL-SD-001',
+      merchantId: 'merch-sd-1',
+      merchantName: 'ဒေါ်လှ',
+      merchantTown: 'မင်းဘူး',
+      date: '2026-03-30',
+      time: '14:00',
+      totalAmount: 30000,
+      grandTotal: 30000,
+      paidAmount: 10000,
+      cashPaidByMerchant: 10000,
+      previousReceivableBalance: 5000,
+      remainingReceivableBalance: 25000,
+      items: [
+        {
+          productId: 'prod-sd-sale',
+          productName: 'ကြွေပန်းကန်',
+          quantity: 15,
+          unit: 'ချပ်',
+          unitPrice: 2000,
+          subtotal: 30000,
+        },
+      ],
+      status: 'COMPLETED',
+    };
+    await testDb.sales.put(sale);
+
+    // 3. Perform softDeleteSaleAtomic via softDeleteRepo
+    const deletedItem = await softDeleteRepo.softDeleteSaleAtomic('sale-sd-1', 'သုံးစွဲသူမှ ပယ်ဖျက်သည်');
+
+    // Assert SoftDeletedItem created
+    expect(deletedItem).toBeDefined();
+    expect(deletedItem.type).toBe('SALE');
+    expect(deletedItem.originalId).toBe('sale-sd-1');
+    expect(deletedItem.data.id).toBe('sale-sd-1');
+
+    // Assert removed from db.sales
+    const saleInDb = await testDb.sales.get('sale-sd-1');
+    expect(saleInDb).toBeUndefined();
+
+    // Assert stored in db.softDeletedItems
+    const softInDb = await testDb.softDeletedItems.get(deletedItem.id);
+    expect(softInDb).toBeDefined();
+    expect(softInDb?.type).toBe('SALE');
+
+    // Assert product stock restored: 30 + 15 = 45
+    const prodAfter = await testDb.products.get('prod-sd-sale');
+    expect(prodAfter?.currentStock).toBe(45);
+
+    // Assert merchant metrics reverted: receivable restored to 5000, total purchases reduced by 30000, total paid reduced by 10000
+    const merchAfter = await testDb.merchants.get('merch-sd-1');
+    expect(merchAfter?.currentReceivableBalance).toBe(5000);
+    expect(merchAfter?.totalPurchasesValue).toBe(20000);
+    expect(merchAfter?.totalPaidAmount).toBe(15000);
+
+    // Assert audit log created
+    const logs = await testDb.auditLogs.toArray();
+    const delLog = logs.find((l) => l.referenceId === 'sale-sd-1' && l.referenceType === 'SALE');
+    expect(delLog).toBeDefined();
+  });
+});
+
