@@ -23,7 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { ShopSettings } from '../types';
+import { ShopSettings, UserSession } from '../types';
 import { Logo } from './Logo';
 import { getTodayDateString } from '../utils/storage';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -40,6 +40,8 @@ interface HeaderProps {
   todayInboundCount?: number;
   todaySalesCount?: number;
   shopSettings?: ShopSettings;
+  currentSession?: UserSession | null;
+  onOpenUserSwitch?: () => void;
   onOpenEditShopProfile?: () => void;
   onOpenEditProfile?: () => void;
   deletedHistoryCount?: number;
@@ -79,6 +81,8 @@ export const Header: React.FC<HeaderProps> = ({
   todayInboundCount = 0,
   todaySalesCount = 0,
   shopSettings,
+  currentSession,
+  onOpenUserSwitch,
   onOpenEditShopProfile,
   onOpenEditProfile,
   deletedHistoryCount = 0,
@@ -155,12 +159,29 @@ export const Header: React.FC<HeaderProps> = ({
                     <Edit3 className="w-3.5 h-3.5 text-emerald-300 opacity-80 group-hover:opacity-100 shrink-0" />
                   </button>
 
-                  {/* Owner Name Pill */}
-                  {ownerName && (
-                    <span className="hidden min-[400px]:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-emerald-950/80 text-amber-300 border border-amber-400/40 shadow-2xs whitespace-nowrap">
-                      <User className="w-3 h-3 text-amber-300 shrink-0" />
-                      <span className="truncate max-w-[120px] sm:max-w-none">ပိုင်ရှင်: {ownerName}</span>
-                    </span>
+                  {/* Active User / Role Pill & Switch Button */}
+                  {currentSession && (
+                    <button
+                      id="header-user-role-badge-btn"
+                      type="button"
+                      onClick={onOpenUserSwitch}
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border shadow-xs cursor-pointer transition-all hover:scale-105 ${
+                        currentSession.role === 'OWNER'
+                          ? 'bg-amber-950/90 text-amber-300 border-amber-400/50 hover:bg-amber-900/90'
+                          : 'bg-slate-950/90 text-emerald-300 border-emerald-400/50 hover:bg-slate-900'
+                      }`}
+                      title="အသုံးပြုသူ အကောင့်ပြောင်းရန် နှိပ်ပါ"
+                    >
+                      {currentSession.role === 'OWNER' ? (
+                        <Shield className="w-3 h-3 text-amber-300 shrink-0" />
+                      ) : (
+                        <User className="w-3 h-3 text-emerald-300 shrink-0" />
+                      )}
+                      <span className="truncate max-w-[120px] sm:max-w-none">
+                        {currentSession.role === 'OWNER' ? 'ဆိုင်ရှင် (Owner)' : 'ဝန်ထမ်း (Staff)'}
+                      </span>
+                      <span className="text-[9px] opacity-75 underline">ပြောင်းမည်</span>
+                    </button>
                   )}
 
                   {/* Online / Offline Status Badge */}

@@ -76,7 +76,10 @@ import { SettingsBackupTab } from './components/SettingsBackupTab';
 
 // Security & Lock Screen
 import { AppLockScreen } from './components/AppLockScreen';
+import { LoginScreen } from './components/LoginScreen';
+import { UserSwitchModal } from './components/UserSwitchModal';
 import { AppLockSettingsModal } from './components/AppLockSettingsModal';
+import { getCurrentSession, logoutUserSession, UserSession } from './services/authorizationService';
 
 // Modals
 import { NewEntryModal } from './components/NewEntryModal';
