@@ -24,10 +24,9 @@ const localStorageMock = {
   clear: () => memoryStore.clear(),
 };
 
-if (typeof globalThis.localStorage === 'undefined') {
-  (globalThis as any).localStorage = localStorageMock;
-  (globalThis as any).window = globalThis;
-}
+(globalThis as any).localStorage = localStorageMock;
+(globalThis as any).window = globalThis;
+(globalThis as any).window.localStorage = localStorageMock;
 
 describe('Database States and Safe Data Initialization Audit', () => {
   let testDb: ShweLetYarDatabase;

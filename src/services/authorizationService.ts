@@ -97,9 +97,9 @@ const USER_PERMISSIONS: ReadonlySet<PermissionAction> = new Set<PermissionAction
   'OPERATIONAL_DATA_ENTRY',
 ]);
 
-const SESSION_STORAGE_KEY = 'shwe_let_yar_rbac_session';
-const SETTING_USERS_KEY = 'rbac_users';
-const SETTING_ACTIVE_SESSION_KEY = 'rbac_active_session';
+export const SESSION_STORAGE_KEY = 'shwe_let_yar_rbac_session';
+export const SETTING_USERS_KEY = 'rbac_users';
+export const SETTING_ACTIVE_SESSION_KEY = 'rbac_active_session';
 
 // In-memory active session cache
 let memorySession: UserSession | null = null;
@@ -198,8 +198,12 @@ function safeRemoveSessionStorage(key: string): void {
  * Resolves current user session from canonical storage and validates its authenticity.
  * Never blindly trusts caller parameters or client-side role claims in sessionStorage/Dexie.
  * The effective role is ALWAYS derived from the canonical AppUser record in rbac_users.
+ *
+ * CRITICAL SECURITY INVARIANT:
+ * If there is NO valid authenticated local session in memory, sessionStorage, or Dexie,
+ * this function returns `null`. It NEVER silently manufactures an authenticated OWNER session.
  */
-export async function getCurrentSession(): Promise<UserSession> {
+export async function getCurrentSession(): Promise<UserSession | null> {
   const canonicalUsers = await getPersistedUsers();
 
   const validateAndBuildSession = (candidate: Partial<UserSession> | null): UserSession | null => {
@@ -260,44 +264,61 @@ export async function getCurrentSession(): Promise<UserSession> {
     console.warn('Failed to load active session from db.settings:', err);
   }
 
-  // 4. Default fallback: Resolve to first active OWNER or active user from canonical records
-  const defaultUser =
+  // 4. No valid active session exists. Return null without silent auto-authentication.
+  return null;
+}
+
+/**
+ * Clears the current active session from memory, sessionStorage, and Dexie settings.
+ */
+export async function clearCurrentSession(): Promise<void> {
+  memorySession = null;
+  safeRemoveSessionStorage(SESSION_STORAGE_KEY);
+  try {
+    await db.settings.delete(SETTING_ACTIVE_SESSION_KEY);
+  } catch {
+    // Ignore error in restricted/offline environments
+  }
+}
+
+/**
+ * Explicit First-Run / Onboarding Bootstrap Helper:
+ * Establishes the initial Owner session during explicit application startup or onboarding.
+ * Strictly separates account existence bootstrap from active session authentication.
+ */
+export async function bootstrapInitialOwnerSession(): Promise<UserSession> {
+  const canonicalUsers = await getPersistedUsers();
+  const ownerUser =
     canonicalUsers.find((u) => u.role === 'OWNER' && u.isActive !== false) ||
-    canonicalUsers.find((u) => u.isActive !== false) ||
     DEFAULT_OWNER_USER;
 
-  const defaultSession: UserSession = {
-    userId: defaultUser.id,
-    username: defaultUser.username,
-    displayName: defaultUser.displayName,
-    role: defaultUser.role,
+  const initialSession: UserSession = {
+    userId: ownerUser.id,
+    username: ownerUser.username,
+    displayName: ownerUser.displayName,
+    role: ownerUser.role,
     loginTimestamp: new Date().toISOString(),
   };
 
-  memorySession = defaultSession;
-  safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(defaultSession));
-  try {
-    await db.settings.put({
-      key: SETTING_ACTIVE_SESSION_KEY,
-      value: defaultSession,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch {
-    // Ignore db write failure in pure unit-test/offline state
-  }
-
-  return defaultSession;
+  await setCurrentSession(initialSession);
+  return initialSession;
 }
 
 /**
  * Updates the current active session in memory, sessionStorage, and Dexie settings.
  * Validates the session against canonical AppUser records to prevent arbitrary role setting.
  */
-export async function setCurrentSession(session: UserSession): Promise<void> {
+export async function setCurrentSession(session: Partial<UserSession> | null): Promise<UserSession | null> {
+  if (!session || !session.userId) {
+    await clearCurrentSession();
+    return null;
+  }
+
   const canonicalUsers = await getPersistedUsers();
   const canonicalUser = canonicalUsers.find((u) => u.id === session.userId);
 
   if (!canonicalUser || canonicalUser.isActive === false) {
+    await clearCurrentSession();
     throw new AuthorizationError(
       'AUTHENTICATION',
       'UNKNOWN',
@@ -325,20 +346,22 @@ export async function setCurrentSession(session: UserSession): Promise<void> {
   } catch (err) {
     console.warn('Failed to persist session to db.settings:', err);
   }
+
+  return validatedSession;
 }
 
 /**
- * Returns the effective user role ('OWNER' | 'USER') after resolving canonical session.
+ * Returns the effective user role ('OWNER' | 'USER' | 'UNAUTHENTICATED') after resolving canonical session.
  */
-export async function getEffectiveRole(): Promise<UserRole> {
+export async function getEffectiveRole(): Promise<UserRole | 'UNAUTHENTICATED'> {
   const session = await getCurrentSession();
-  return session.role;
+  return session ? session.role : 'UNAUTHENTICATED';
 }
 
 /**
  * Pure check: Does a given role possess a permission?
  */
-export function hasPermission(role: UserRole, action: PermissionAction): boolean {
+export function hasPermission(role: UserRole | string, action: PermissionAction): boolean {
   if (role === 'OWNER') {
     return OWNER_PERMISSIONS.has(action);
   }
@@ -353,6 +376,7 @@ export function hasPermission(role: UserRole, action: PermissionAction): boolean
  */
 export async function checkPermission(action: PermissionAction): Promise<boolean> {
   const session = await getCurrentSession();
+  if (!session) return false;
   return hasPermission(session.role, action);
 }
 
@@ -369,7 +393,7 @@ export async function enforcePermission(
   if (!session || !session.userId) {
     throw new AuthorizationError(
       action,
-      'UNKNOWN',
+      'UNAUTHENTICATED',
       'တရားဝင် session မရှိပါ။ စနစ်သို့ ပြန်လည်ဝင်ရောက်ပေးပါ'
     );
   }
@@ -414,7 +438,7 @@ export async function requireUserOrOwner(actionName?: string): Promise<UserSessi
   if (!session || !session.userId || (session.role !== 'OWNER' && session.role !== 'USER')) {
     throw new AuthorizationError(
       actionName || 'AUTHENTICATION',
-      'NONE',
+      'UNAUTHENTICATED',
       'တရားဝင် session မရှိပါ။ ပြန်လည်ဝင်ရောက်ပေးပါ'
     );
   }
@@ -447,8 +471,9 @@ export async function switchUserSession(
     throw new Error('သတ်မှတ်ထားသော အကောင့်ကို ရှာမတွေ့ပါ သို့မဟုတ် ပိတ်ထားပါသည်');
   }
 
-  // Privilege Escalation Check: If promoting to OWNER from USER
-  if (targetUser.role === 'OWNER' && currentSession.role === 'USER') {
+  // Privilege Escalation Check: If promoting to OWNER from USER or unauthenticated state
+  const isPrivilegeEscalation = targetUser.role === 'OWNER' && (!currentSession || currentSession.role !== 'OWNER');
+  if (isPrivilegeEscalation) {
     let lockSettings: AppLockSettings = getStoredAppLockSettings();
     try {
       const dbLockRecord = await db.settings.get('appLockSettings');
@@ -462,7 +487,7 @@ export async function switchUserSession(
       if (!credentials?.pin) {
         throw new AuthorizationError(
           'ROLE_ESCALATION_REJECTED',
-          currentSession.role,
+          currentSession?.role || 'UNAUTHENTICATED',
           'ဆိုင်ရှင် (Owner) အဖြစ် ပြောင်းလဲရန် ဆိုင်ရှင် PIN ရိုက်ထည့်ပေးရန် လိုအပ်ပါသည်'
         );
       }
@@ -474,9 +499,9 @@ export async function switchUserSession(
             {
               action: 'ဆိုင်ရှင်အဖြစ် ပြောင်းလဲရန် PIN မှားယွင်းမှု (Escalation Denied)',
               actionType: 'SYSTEM_ACTION',
-              details: `ကြိုးပမ်းသူ: ${currentSession.displayName} | မှားယွင်းသော PIN ဖြင့် ကြိုးပမ်းသည်`,
+              details: `ကြိုးပမ်းသူ: ${currentSession?.displayName || 'Unauthenticated'} | မှားယွင်းသော PIN ဖြင့် ကြိုးပမ်းသည်`,
               referenceType: 'SECURITY',
-              referenceId: currentSession.userId,
+              referenceId: currentSession?.userId || 'unauthenticated',
               timestamp: new Date().toISOString(),
             },
             db
@@ -484,7 +509,7 @@ export async function switchUserSession(
         } catch {}
         throw new AuthorizationError(
           'ROLE_ESCALATION_REJECTED',
-          currentSession.role,
+          currentSession?.role || 'UNAUTHENTICATED',
           'ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ ရာထူးတိုးမြှင့်ခွင့် ငြင်းပယ်ပါသည်'
         );
       }
@@ -508,7 +533,7 @@ export async function switchUserSession(
       {
         action: 'အသုံးပြုသူ အကောင့်ပြောင်းလဲခြင်း (Session Switched)',
         actionType: 'SYSTEM_ACTION',
-        details: `ယခင်: ${currentSession.displayName} (${currentSession.role}) -> လက်ရှိ: ${newSession.displayName} (${newSession.role})`,
+        details: `ယခင်: ${currentSession ? `${currentSession.displayName} (${currentSession.role})` : 'Unauthenticated'} -> လက်ရှိ: ${newSession.displayName} (${newSession.role})`,
         referenceType: 'SECURITY',
         referenceId: newSession.userId,
         timestamp: nowIso,

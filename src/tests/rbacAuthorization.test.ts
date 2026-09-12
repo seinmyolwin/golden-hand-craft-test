@@ -16,8 +16,12 @@ import { db } from '../db/database';
 import { AppUser } from '../types';
 import {
   enforcePermission,
+  checkPermission,
   getCurrentSession,
   setCurrentSession,
+  clearCurrentSession,
+  bootstrapInitialOwnerSession,
+  getEffectiveRole,
   switchUserSession,
   loginAsStaff,
   loginAsOwner,
@@ -28,6 +32,8 @@ import {
   DEFAULT_STAFF_USER,
   savePersistedUsers,
   getPersistedUsers,
+  SESSION_STORAGE_KEY,
+  SETTING_ACTIVE_SESSION_KEY,
 } from '../services/authorizationService';
 import {
   SaleRepository,
@@ -92,14 +98,30 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
   });
 
   describe('1. Session Management & Role Hierarchy', () => {
-    it('defaults to OWNER role on a fresh installation', async () => {
-      await db.settings.clear();
-      const session = await resetSessionForTesting('OWNER');
+    it('returns null when no session is active and does NOT silently manufacture an OWNER session', async () => {
+      await clearCurrentSession();
+      const current = await getCurrentSession();
+      expect(current).toBeNull();
+
+      const effectiveRole = await getEffectiveRole();
+      expect(effectiveRole).toBe('UNAUTHENTICATED');
+
+      expect(await checkPermission('ACCESS_SETTINGS')).toBe(false);
+      expect(await checkPermission('OPERATIONAL_DATA_ENTRY')).toBe(false);
+
+      await expect(enforcePermission('OPERATIONAL_DATA_ENTRY')).rejects.toThrow(AuthorizationError);
+      await expect(enforcePermission('ACCESS_SETTINGS')).rejects.toThrow(AuthorizationError);
+    });
+
+    it('establishes OWNER role upon explicit bootstrap or login', async () => {
+      await clearCurrentSession();
+      const session = await bootstrapInitialOwnerSession();
       expect(session.role).toBe('OWNER');
       expect(session.username).toBe(DEFAULT_OWNER_USER.username);
 
       const current = await getCurrentSession();
-      expect(current.role).toBe('OWNER');
+      expect(current).not.toBeNull();
+      expect(current?.role).toBe('OWNER');
     });
 
     it('allows switching to USER (Staff) role', async () => {
@@ -108,13 +130,14 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       expect(staffSession.username).toBe(DEFAULT_STAFF_USER.username);
 
       const current = await getCurrentSession();
-      expect(current.role).toBe('USER');
+      expect(current).not.toBeNull();
+      expect(current?.role).toBe('USER');
     });
 
     it('requires correct PIN when switching back to OWNER role', async () => {
       // Switch to staff first
       await loginAsStaff();
-      expect((await getCurrentSession()).role).toBe('USER');
+      expect((await getCurrentSession())?.role).toBe('USER');
 
       // Set owner PIN in settings
       await db.settings.put({
@@ -129,7 +152,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       // Switch with correct PIN succeeds
       const ownerSession = await loginAsOwner('1234');
       expect(ownerSession.role).toBe('OWNER');
-      expect((await getCurrentSession()).role).toBe('OWNER');
+      expect((await getCurrentSession())?.role).toBe('OWNER');
     });
 
     it('hasPermission correctly mirrors role capabilities', async () => {
@@ -497,7 +520,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       // Simulate a malicious client altering sessionStorage to claim role: 'OWNER'
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(
-          'shwe_let_yar_auth_session',
+          SESSION_STORAGE_KEY,
           JSON.stringify({
             userId: DEFAULT_STAFF_USER.id,
             username: DEFAULT_STAFF_USER.username,
@@ -512,8 +535,9 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       const resolvedSession = await getCurrentSession();
 
       // Effective role MUST be canonical 'USER', not tampered 'OWNER'
-      expect(resolvedSession.role).toBe('USER');
-      expect(resolvedSession.userId).toBe(DEFAULT_STAFF_USER.id);
+      expect(resolvedSession).not.toBeNull();
+      expect(resolvedSession?.role).toBe('USER');
+      expect(resolvedSession?.userId).toBe(DEFAULT_STAFF_USER.id);
 
       // Verify that tampered session CANNOT perform OWNER-only action
       await expect(
@@ -533,10 +557,32 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       ).rejects.toThrow(AuthorizationError);
     });
 
-    it('rejects nonexistent userId in sessionStorage and falls back safely to canonical active user', async () => {
+    it('does not trust spoofed role claims in Dexie active session setting and enforces canonical database role', async () => {
+      await resetSessionForTesting('USER');
+
+      // Maliciously tamper with Dexie active session record
+      await db.settings.put({
+        key: SETTING_ACTIVE_SESSION_KEY,
+        value: {
+          userId: DEFAULT_STAFF_USER.id,
+          username: DEFAULT_STAFF_USER.username,
+          displayName: DEFAULT_STAFF_USER.displayName,
+          role: 'OWNER', // FORGED
+          loginTimestamp: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+      });
+
+      const resolved = await getCurrentSession();
+      expect(resolved).not.toBeNull();
+      expect(resolved?.role).toBe('USER');
+    });
+
+    it('rejects nonexistent userId in sessionStorage and returns null without silent OWNER escalation', async () => {
+      await clearCurrentSession();
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(
-          'shwe_let_yar_auth_session',
+          SESSION_STORAGE_KEY,
           JSON.stringify({
             userId: 'fake_nonexistent_hacker_id',
             username: 'hacker',
@@ -546,8 +592,8 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       }
 
       const session = await getCurrentSession();
-      expect(session.userId).toBe(DEFAULT_OWNER_USER.id);
-      expect(session.role).toBe('OWNER');
+      expect(session).toBeNull();
+      expect(await getEffectiveRole()).toBe('UNAUTHENTICATED');
     });
 
     it('enforces canonical role when setCurrentSession is called with spoofed role', async () => {
@@ -560,7 +606,8 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       });
 
       const current = await getCurrentSession();
-      expect(current.role).toBe('USER');
+      expect(current).not.toBeNull();
+      expect(current?.role).toBe('USER');
     });
 
     it('rejects setCurrentSession for deactivated users', async () => {

@@ -92,6 +92,9 @@ export default defineConfig(({ command }) => {
         },
       },
     },
+    test: {
+      setupFiles: ['./src/tests/setup.ts'],
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,
