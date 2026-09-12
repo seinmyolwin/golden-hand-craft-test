@@ -278,7 +278,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         if (onUpdateAppLockSettings) {
           onUpdateAppLockSettings(unlockedSettings);
         }
-        const session = await switchUserSession('OWNER');
+        const session = await switchUserSession('OWNER', { recoveryKeyVerified: true });
         setTimeout(() => {
           setRecoveryKeyInput('');
           setIsRecoveryModalOpen(false);

@@ -196,78 +196,94 @@ function safeRemoveSessionStorage(key: string): void {
   }
 }
 
+function generateSessionToken(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'st_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
 /**
  * Resolves current user session from canonical storage and validates its authenticity.
  * Never blindly trusts caller parameters or client-side role claims in sessionStorage/Dexie.
  * The effective role is ALWAYS derived from the canonical AppUser record in rbac_users.
  *
  * CRITICAL SECURITY INVARIANT:
- * If there is NO valid authenticated local session in memory, sessionStorage, or Dexie,
- * this function returns `null`. It NEVER silently manufactures an authenticated OWNER session.
+ * If there is NO valid authenticated local session with a matching canonical sessionToken
+ * in memory or db.settings, this function returns `null`. It NEVER silently manufactures an authenticated session.
  */
 export async function getCurrentSession(): Promise<UserSession | null> {
   const canonicalUsers = await getPersistedUsers();
 
-  const validateAndBuildSession = (candidate: Partial<UserSession> | null): UserSession | null => {
-    if (!candidate || !candidate.userId) return null;
-    const canonicalUser = canonicalUsers.find((u) => u.id === candidate.userId);
-    if (!canonicalUser || canonicalUser.isActive === false) return null;
-
-    // Canonical role enforcement: role ALWAYS matches database truth, never client claim
-    return {
-      userId: canonicalUser.id,
-      username: canonicalUser.username,
-      displayName: canonicalUser.displayName,
-      role: canonicalUser.role,
-      loginTimestamp: candidate.loginTimestamp || new Date().toISOString(),
-    };
-  };
-
-  // 1. Check memory session
-  if (memorySession) {
-    const validatedMemory = validateAndBuildSession(memorySession);
-    if (validatedMemory) {
-      memorySession = validatedMemory;
-      return validatedMemory;
-    }
-    memorySession = null;
-  }
-
-  // 2. Check sessionStorage for tab persistence
-  const raw = safeGetSessionStorage(SESSION_STORAGE_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Partial<UserSession>;
-      const validatedSession = validateAndBuildSession(parsed);
-      if (validatedSession) {
-        memorySession = validatedSession;
-        safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
-        return validatedSession;
-      }
-    } catch {
-      // Ignore JSON parse error
-    }
-    safeRemoveSessionStorage(SESSION_STORAGE_KEY);
-  }
-
-  // 3. Check database active session setting
+  // 1. Fetch canonical session stored in db.settings
+  let canonicalDbSession: UserSession | null = null;
   try {
     const sessionRecord = await db.settings.get(SETTING_ACTIVE_SESSION_KEY);
     if (sessionRecord && sessionRecord.value) {
-      const dbCandidate = sessionRecord.value as Partial<UserSession>;
-      const validatedSession = validateAndBuildSession(dbCandidate);
-      if (validatedSession) {
-        memorySession = validatedSession;
-        safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
-        return validatedSession;
-      }
+      canonicalDbSession = sessionRecord.value as UserSession;
     }
   } catch (err) {
     console.warn('Failed to load active session from db.settings:', err);
   }
 
-  // 4. No valid active session exists. Return null without silent auto-authentication.
-  return null;
+  // Canonical session must exist in db.settings or memorySession and have a sessionToken
+  const canonicalSession = canonicalDbSession || memorySession;
+
+  if (!canonicalSession || !canonicalSession.userId || !canonicalSession.sessionToken) {
+    memorySession = null;
+    safeRemoveSessionStorage(SESSION_STORAGE_KEY);
+    return null;
+  }
+
+  const canonicalUser = canonicalUsers.find((u) => u.id === canonicalSession.userId);
+  if (!canonicalUser || canonicalUser.isActive === false) {
+    await clearCurrentSession();
+    return null;
+  }
+
+  // 2. Check sessionStorage for tab persistence and verify sessionToken matches canonical store
+  const raw = safeGetSessionStorage(SESSION_STORAGE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<UserSession>;
+      if (
+        parsed &&
+        parsed.userId === canonicalUser.id &&
+        parsed.sessionToken &&
+        parsed.sessionToken === canonicalSession.sessionToken
+      ) {
+        const validatedSession: UserSession = {
+          userId: canonicalUser.id,
+          username: canonicalUser.username,
+          displayName: canonicalUser.displayName,
+          role: canonicalUser.role,
+          loginTimestamp: parsed.loginTimestamp || canonicalSession.loginTimestamp || new Date().toISOString(),
+          sessionToken: canonicalSession.sessionToken,
+        };
+        memorySession = validatedSession;
+        return validatedSession;
+      }
+    } catch {
+      // JSON parse error
+    }
+    // Token missing, mismatched, or invalid in sessionStorage -> reject & clear
+    safeRemoveSessionStorage(SESSION_STORAGE_KEY);
+    memorySession = null;
+    return null;
+  }
+
+  // 3. If sessionStorage is missing but db.settings has a valid canonical session with token
+  const validatedSession: UserSession = {
+    userId: canonicalUser.id,
+    username: canonicalUser.username,
+    displayName: canonicalUser.displayName,
+    role: canonicalUser.role,
+    loginTimestamp: canonicalSession.loginTimestamp || new Date().toISOString(),
+    sessionToken: canonicalSession.sessionToken,
+  };
+  memorySession = validatedSession;
+  safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
+  return validatedSession;
 }
 
 /**
@@ -300,6 +316,7 @@ export async function bootstrapInitialOwnerSession(): Promise<UserSession> {
     displayName: ownerUser.displayName,
     role: ownerUser.role,
     loginTimestamp: new Date().toISOString(),
+    sessionToken: generateSessionToken(),
   };
 
   await setCurrentSession(initialSession);
@@ -328,6 +345,8 @@ export async function setCurrentSession(session: Partial<UserSession> | null): P
     );
   }
 
+  const token = session.sessionToken || generateSessionToken();
+
   // Enforce canonical role
   const validatedSession: UserSession = {
     userId: canonicalUser.id,
@@ -335,6 +354,7 @@ export async function setCurrentSession(session: Partial<UserSession> | null): P
     displayName: canonicalUser.displayName,
     role: canonicalUser.role,
     loginTimestamp: session.loginTimestamp || new Date().toISOString(),
+    sessionToken: token,
   };
 
   memorySession = validatedSession;
@@ -454,7 +474,7 @@ export async function requireUserOrOwner(actionName?: string): Promise<UserSessi
  */
 export async function switchUserSession(
   targetRoleOrUserId: 'OWNER' | 'USER' | string,
-  credentials?: { pin?: string }
+  credentials?: { pin?: string; recoveryKeyVerified?: boolean }
 ): Promise<UserSession> {
   const currentSession = await getCurrentSession();
   const users = await getPersistedUsers();
@@ -490,7 +510,9 @@ export async function switchUserSession(
 
     const hasPinConfigured = Boolean(lockSettings.pinHash || lockSettings.passcode || lockSettings.pin);
 
-    if (hasPinConfigured) {
+    if (credentials?.recoveryKeyVerified === true) {
+      // Allowed: Recovery Key verification was executed successfully as a strong credential
+    } else if (hasPinConfigured) {
       if (!credentials?.pin) {
         throw new AuthorizationError(
           'ROLE_ESCALATION_REJECTED',
@@ -533,15 +555,17 @@ export async function switchUserSession(
   }
 
   const nowIso = new Date().toISOString();
+  const sessionToken = generateSessionToken();
   const newSession: UserSession = {
     userId: targetUser.id,
     username: targetUser.username,
     displayName: targetUser.displayName,
     role: targetUser.role,
     loginTimestamp: nowIso,
+    sessionToken,
   };
 
-  await setCurrentSession(newSession);
+  const savedSession = await setCurrentSession(newSession);
 
   // Log successful session switch
   try {
@@ -549,16 +573,16 @@ export async function switchUserSession(
       {
         action: 'အသုံးပြုသူ အကောင့်ပြောင်းလဲခြင်း (Session Switched)',
         actionType: 'SYSTEM_ACTION',
-        details: `ယခင်: ${currentSession ? `${currentSession.displayName} (${currentSession.role})` : 'Unauthenticated'} -> လက်ရှိ: ${newSession.displayName} (${newSession.role})`,
+        details: `ယခင်: ${currentSession ? `${currentSession.displayName} (${currentSession.role})` : 'Unauthenticated'} -> လက်ရှိ: ${savedSession.displayName} (${savedSession.role})`,
         referenceType: 'SECURITY',
-        referenceId: newSession.userId,
+        referenceId: savedSession.userId,
         timestamp: nowIso,
       },
       db
     );
   } catch {}
 
-  return newSession;
+  return savedSession;
 }
 
 /**
@@ -600,13 +624,14 @@ export async function resetSessionForTesting(role: UserRole = 'OWNER'): Promise<
     // Ignore db error in unit tests
   }
 
+  const sessionToken = generateSessionToken();
   const session: UserSession = {
     userId: role === 'OWNER' ? DEFAULT_OWNER_USER.id : DEFAULT_STAFF_USER.id,
     username: role === 'OWNER' ? DEFAULT_OWNER_USER.username : DEFAULT_STAFF_USER.username,
     displayName: role === 'OWNER' ? DEFAULT_OWNER_USER.displayName : DEFAULT_STAFF_USER.displayName,
     role,
     loginTimestamp: new Date().toISOString(),
+    sessionToken,
   };
-  await setCurrentSession(session);
-  return session;
+  return await setCurrentSession(session);
 }

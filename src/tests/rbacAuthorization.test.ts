@@ -515,7 +515,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
   describe('6. Session Authenticity, Anti-Tampering & Canonical Role Enforcement', () => {
     it('does not trust spoofed role claims in sessionStorage and enforces canonical database role', async () => {
       // Set user session to USER in db
-      await resetSessionForTesting('USER');
+      const staffSession = await resetSessionForTesting('USER');
 
       // Simulate a malicious client altering sessionStorage to claim role: 'OWNER'
       if (typeof sessionStorage !== 'undefined') {
@@ -527,6 +527,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
             displayName: DEFAULT_STAFF_USER.displayName,
             role: 'OWNER', // TAMPERED ROLE
             loginTimestamp: new Date().toISOString(),
+            sessionToken: staffSession.sessionToken,
           })
         );
       }
@@ -558,7 +559,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
     });
 
     it('does not trust spoofed role claims in Dexie active session setting and enforces canonical database role', async () => {
-      await resetSessionForTesting('USER');
+      const staffSession = await resetSessionForTesting('USER');
 
       // Maliciously tamper with Dexie active session record
       await db.settings.put({
@@ -569,6 +570,7 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
           displayName: DEFAULT_STAFF_USER.displayName,
           role: 'OWNER', // FORGED
           loginTimestamp: new Date().toISOString(),
+          sessionToken: staffSession.sessionToken,
         },
         updatedAt: new Date().toISOString(),
       });

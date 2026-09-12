@@ -244,24 +244,28 @@ export default function App() {
   }, []);
 
   // User Session & Role State
-  const [currentSession, setCurrentSession] = useState<UserSession | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = sessionStorage.getItem('shwe_let_yar_rbac_session');
-        if (raw) return JSON.parse(raw);
-      } catch {}
-    }
-    return null;
-  });
+  const [currentSession, setCurrentSession] = useState<UserSession | null>(null);
+  const [isResolvingSession, setIsResolvingSession] = useState<boolean>(true);
   const [isUserSwitchModalOpen, setIsUserSwitchModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
-    getCurrentSession().then((session) => {
-      if (isMounted && session) {
-        setCurrentSession(session);
-      }
-    });
+    getCurrentSession()
+      .then((session) => {
+        if (isMounted) {
+          setCurrentSession(session);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCurrentSession(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsResolvingSession(false);
+        }
+      });
     return () => {
       isMounted = false;
     };
@@ -1717,6 +1721,16 @@ export default function App() {
         return (activeTab as ActiveTab) || 'daily';
     }
   }, [activeTab]);
+
+  // Session Resolution Loading Gate
+  if (isResolvingSession) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-amber-400 mb-3"></div>
+        <p className="text-sm font-semibold text-slate-300">စနစ်ဖွင့်လှစ်နေပါသည်...</p>
+      </div>
+    );
+  }
 
   // Session & App Lock Screen Guard
   if (!currentSession || (appLockSettings.enabled && !isUnlocked)) {

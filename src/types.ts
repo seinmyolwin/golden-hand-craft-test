@@ -683,6 +683,7 @@ export interface AppLockSettings {
   pinHash?: string;
   recoverySalt?: string;
   recoveryHash?: string;
+  recoveryKeyDisplay?: string;
   isPinInitialized?: boolean;
   // Legacy fields (for migration only, removed once migrated)
   passcode?: string;
@@ -1216,6 +1217,7 @@ export interface UserSession {
   displayName: string;
   role: UserRole;
   loginTimestamp: string;
+  sessionToken?: string;
   token?: string;
 }
 
