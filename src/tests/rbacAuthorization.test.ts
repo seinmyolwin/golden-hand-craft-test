@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { db } from '../db/database';
+import { AppUser } from '../types';
 import {
   enforcePermission,
   getCurrentSession,
@@ -25,6 +26,8 @@ import {
   AuthorizationError,
   DEFAULT_OWNER_USER,
   DEFAULT_STAFF_USER,
+  savePersistedUsers,
+  getPersistedUsers,
 } from '../services/authorizationService';
 import {
   SaleRepository,
@@ -35,6 +38,10 @@ import {
   StockAdjustmentRepository,
   SoftDeleteRepository,
   SettingsRepository,
+  DailyClosingRepository,
+  StockMovementRepository,
+  CashMovementRepository,
+  OrderRepository,
 } from '../repositories';
 import {
   createCompleteBackup,
@@ -46,6 +53,7 @@ import { executeAtomicRepair } from '../services/databaseRepairService';
 import { correctDailyClosingAtomic } from '../services/dailyClosingService';
 import { processSalesReturnAtomic } from '../services/returnsService';
 import { recordDirectCashMovementAtomic } from '../services/cashLedgerService';
+import { reconcileProductStock } from '../services/stockLedgerService';
 import { generateStableId } from '../utils/idGenerator';
 
 describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', () => {
@@ -57,6 +65,10 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
   const stockAdjRepo = new StockAdjustmentRepository(db);
   const softDeleteRepo = new SoftDeleteRepository(db);
   const settingsRepo = new SettingsRepository(db);
+  const dailyClosingRepo = new DailyClosingRepository(db);
+  const stockMovementRepo = new StockMovementRepository(db);
+  const cashMovementRepo = new CashMovementRepository(db);
+  const orderRepo = new OrderRepository(db);
 
   beforeEach(async () => {
     // Reset test database
@@ -474,6 +486,248 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       const snapId = await createAutoRecoverySnapshot('Owner test snapshot');
       expect(snapId).toBeDefined();
       expect(snapId).toMatch(/^rec_/);
+    });
+  });
+
+  describe('6. Session Authenticity, Anti-Tampering & Canonical Role Enforcement', () => {
+    it('does not trust spoofed role claims in sessionStorage and enforces canonical database role', async () => {
+      // Set user session to USER in db
+      await resetSessionForTesting('USER');
+
+      // Simulate a malicious client altering sessionStorage to claim role: 'OWNER'
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(
+          'shwe_let_yar_auth_session',
+          JSON.stringify({
+            userId: DEFAULT_STAFF_USER.id,
+            username: DEFAULT_STAFF_USER.username,
+            displayName: DEFAULT_STAFF_USER.displayName,
+            role: 'OWNER', // TAMPERED ROLE
+            loginTimestamp: new Date().toISOString(),
+          })
+        );
+      }
+
+      // Reset in-memory session to force resolution from storage/db
+      const resolvedSession = await getCurrentSession();
+
+      // Effective role MUST be canonical 'USER', not tampered 'OWNER'
+      expect(resolvedSession.role).toBe('USER');
+      expect(resolvedSession.userId).toBe(DEFAULT_STAFF_USER.id);
+
+      // Verify that tampered session CANNOT perform OWNER-only action
+      await expect(
+        stockAdjRepo.saveAdjustmentAtomic({
+          id: generateStableId('adj'),
+          date: '2026-09-12',
+          time: '12:00',
+          productId: 'p1',
+          productName: 'P1',
+          type: 'IN_ADJUSTMENT',
+          quantity: 5,
+          previousStock: 10,
+          newStock: 15,
+          reason: 'Tampered attempt',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('rejects nonexistent userId in sessionStorage and falls back safely to canonical active user', async () => {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(
+          'shwe_let_yar_auth_session',
+          JSON.stringify({
+            userId: 'fake_nonexistent_hacker_id',
+            username: 'hacker',
+            role: 'OWNER',
+          })
+        );
+      }
+
+      const session = await getCurrentSession();
+      expect(session.userId).toBe(DEFAULT_OWNER_USER.id);
+      expect(session.role).toBe('OWNER');
+    });
+
+    it('enforces canonical role when setCurrentSession is called with spoofed role', async () => {
+      await setCurrentSession({
+        userId: DEFAULT_STAFF_USER.id,
+        username: DEFAULT_STAFF_USER.username,
+        displayName: DEFAULT_STAFF_USER.displayName,
+        role: 'OWNER' as any, // TAMPERED CLAIM
+        loginTimestamp: new Date().toISOString(),
+      });
+
+      const current = await getCurrentSession();
+      expect(current.role).toBe('USER');
+    });
+
+    it('rejects setCurrentSession for deactivated users', async () => {
+      // Create deactivated user as OWNER
+      await resetSessionForTesting('OWNER');
+      const users = await getPersistedUsers();
+      const deactivatedUser: AppUser = {
+        id: 'usr_deactivated_1',
+        username: 'inactive_staff',
+        displayName: 'Inactive Staff',
+        role: 'USER',
+        isActive: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await savePersistedUsers([...users, deactivatedUser]);
+
+      await expect(
+        setCurrentSession({
+          userId: deactivatedUser.id,
+          username: deactivatedUser.username,
+          displayName: deactivatedUser.displayName,
+          role: 'USER',
+          loginTimestamp: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+  });
+
+  describe('7. Last Owner Protection & User Management Authorization', () => {
+    it('prevents removing or deactivating the last active OWNER', async () => {
+      await resetSessionForTesting('OWNER');
+
+      // Attempt to demote all users to USER
+      const allStaffUsers: AppUser[] = [
+        { ...DEFAULT_OWNER_USER, role: 'USER' as const, updatedAt: new Date().toISOString() },
+        DEFAULT_STAFF_USER,
+      ];
+
+      await expect(savePersistedUsers(allStaffUsers)).rejects.toThrow(
+        /အနည်းဆုံး အသုံးပြုနိုင်သော ပိုင်ရှင် \(Active Owner\) အကောင့် တစ်ခု ရှိရပါမည်/
+      );
+
+      // Attempt to deactivate the only OWNER
+      const deactivatedOwnerUsers: AppUser[] = [
+        { ...DEFAULT_OWNER_USER, isActive: false, updatedAt: new Date().toISOString() },
+        DEFAULT_STAFF_USER,
+      ];
+
+      await expect(savePersistedUsers(deactivatedOwnerUsers)).rejects.toThrow(
+        /အနည်းဆုံး အသုံးပြုနိုင်သော ပိုင်ရှင် \(Active Owner\) အကောင့် တစ်ခု ရှိရပါမည်/
+      );
+    });
+
+    it('allows modifying users as long as at least one active OWNER remains', async () => {
+      await resetSessionForTesting('OWNER');
+
+      const secondaryOwner: AppUser = {
+        id: 'usr_owner_2',
+        username: 'second_owner',
+        displayName: 'Second Owner',
+        role: 'OWNER',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await savePersistedUsers([DEFAULT_OWNER_USER, secondaryOwner, DEFAULT_STAFF_USER]);
+
+      // Now deactivating the primary owner succeeds because secondary owner is active
+      const updated: AppUser[] = [
+        { ...DEFAULT_OWNER_USER, isActive: false, updatedAt: new Date().toISOString() },
+        secondaryOwner,
+        DEFAULT_STAFF_USER,
+      ];
+
+      await expect(savePersistedUsers(updated)).resolves.not.toThrow();
+    });
+
+    it('rejects USER role from calling savePersistedUsers', async () => {
+      await resetSessionForTesting('USER');
+      await expect(savePersistedUsers([DEFAULT_OWNER_USER])).rejects.toThrow(AuthorizationError);
+    });
+  });
+
+  describe('8. Comprehensive Repository & Service Direct Bypass Prevention', () => {
+    beforeEach(async () => {
+      await resetSessionForTesting('USER');
+    });
+
+    it('rejects USER from calling DailyClosingRepository write & clear methods', async () => {
+      await expect(
+        dailyClosingRepo.save({
+          id: generateStableId('cls'),
+          closingDate: '2026-09-12',
+          openingCash: 0,
+          totalCashIn: 100000,
+          totalCashOut: 50000,
+          expectedClosingCash: 50000,
+          actualCountedCash: 50000,
+          difference: 0,
+          status: 'CLOSED',
+          closedAt: new Date().toISOString(),
+          notes: 'Test closing',
+          closedBy: 'Staff',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+
+      await expect(dailyClosingRepo.saveMany([])).rejects.toThrow(AuthorizationError);
+      await expect(dailyClosingRepo.clear()).rejects.toThrow(AuthorizationError);
+    });
+
+    it('rejects USER from clearing StockMovement and CashMovement repositories', async () => {
+      await expect(stockMovementRepo.clear()).rejects.toThrow(AuthorizationError);
+      await expect(cashMovementRepo.clear()).rejects.toThrow(AuthorizationError);
+    });
+
+    it('rejects USER from calling stock ledger reconciliation directly', async () => {
+      await expect(reconcileProductStock('prod_1')).rejects.toThrow(AuthorizationError);
+    });
+
+    it('rejects USER from recording MANUAL_CASH_ADJUSTMENT via cashLedgerService', async () => {
+      await expect(
+        recordDirectCashMovementAtomic({
+          type: 'MANUAL_CASH_ADJUSTMENT',
+          direction: 'IN',
+          amount: 50000,
+          description: 'Unauthorized cash adjustment',
+          transactionDate: '2026-09-12',
+          notes: 'Unauthorized cash adjustment',
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('allows USER to record standard OPERATIONAL_DATA_ENTRY in cashLedgerService', async () => {
+      const expenseMovement = await recordDirectCashMovementAtomic({
+        type: 'EXPENSE_PAYOUT',
+        direction: 'OUT',
+        amount: 5000,
+        description: 'Shop tea & coffee expense',
+        transactionDate: '2026-09-12',
+        notes: 'Shop tea & coffee expense',
+      });
+
+      expect(expenseMovement).toBeDefined();
+      expect(expenseMovement.type).toBe('EXPENSE_PAYOUT');
+      expect(expenseMovement.amount).toBe(5000);
+    });
+
+    it('allows USER to save orders and sales within operational bounds', async () => {
+      const ordId = await orderRepo.save({
+        id: generateStableId('ord'),
+        orderNo: 'ORD-20260912-001',
+        merchantId: 'm1',
+        merchantName: 'မင်္ဂလာ ဆိုင်',
+        merchantTown: 'မန္တလေး',
+        date: '2026-09-12',
+        orderDate: '2026-09-12',
+        items: [],
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+      });
+      expect(ordId).toBeDefined();
+
+      const orderList = await orderRepo.getAll();
+      expect(orderList.length).toBeGreaterThan(0);
     });
   });
 });

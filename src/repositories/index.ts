@@ -353,6 +353,7 @@ export class TransactionRepository implements ITransactionRepository {
   }
 
   async save(tx: TransactionRecord): Promise<string> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်သိမ်းစာရင်း သိမ်းဆည်းခြင်း');
     await this.database.transactions.put(tx);
     return tx.id;
   }
@@ -367,6 +368,7 @@ export class TransactionRepository implements ITransactionRepository {
    * 5. Appends audit log
    */
   async saveInboundAtomic(tx: TransactionRecord): Promise<TransactionRecord> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်သိမ်းစာရင်းသွင်းခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -828,6 +830,7 @@ export class TransactionRepository implements ITransactionRepository {
   }
 
   async saveMany(records: TransactionRecord[]): Promise<void> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်သိမ်းစာရင်းများ သိမ်းဆည်းခြင်း');
     await this.database.transactions.bulkPut(records);
   }
 
@@ -866,6 +869,7 @@ export class SaleRepository implements ISaleRepository {
   }
 
   async save(sale: SaleRecord): Promise<string> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အရောင်းမှတ်တမ်း သိမ်းဆည်းခြင်း');
     await this.database.sales.put(sale);
     return sale.id;
   }
@@ -881,6 +885,7 @@ export class SaleRepository implements ISaleRepository {
    * 6. Appends audit log
    */
   async saveSaleAtomic(sale: SaleRecord): Promise<SaleRecord> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -1178,6 +1183,7 @@ export class SaleRepository implements ISaleRepository {
   }
 
   async saveMany(sales: SaleRecord[]): Promise<void> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အရောင်းမှတ်တမ်းများ သိမ်းဆည်းခြင်း');
     await this.database.sales.bulkPut(sales);
   }
 
@@ -1212,6 +1218,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
   }
 
   async save(purchase: MerchantPurchaseRecord): Promise<string> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်ကြမ်းဝယ်ယူမှု သိမ်းဆည်းခြင်း');
     await this.database.merchantPurchases.put(purchase);
     return purchase.id;
   }
@@ -1220,6 +1227,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
    * Atomic Raw Material Purchase from Merchant
    */
   async savePurchaseAtomic(purchase: MerchantPurchaseRecord): Promise<MerchantPurchaseRecord> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -1481,6 +1489,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
   }
 
   async saveMany(purchases: MerchantPurchaseRecord[]): Promise<void> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်ကြမ်းဝယ်ယူမှုများ သိမ်းဆည်းခြင်း');
     await this.database.merchantPurchases.bulkPut(purchases);
   }
 
@@ -1515,6 +1524,7 @@ export class OrderRepository implements IOrderRepository {
   }
 
   async save(order: MerchantOrder): Promise<string> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အော်ဒါမှတ်တမ်း သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const toSave: MerchantOrder = {
       ...order,
@@ -1617,6 +1627,7 @@ export class OrderRepository implements IOrderRepository {
   }
 
   async saveMany(orders: MerchantOrder[]): Promise<void> {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အော်ဒါမှတ်တမ်းများ သိမ်းဆည်းခြင်း');
     await this.database.orders.bulkPut(orders);
   }
 
@@ -2264,6 +2275,7 @@ export class StockMovementRepository implements IStockMovementRepository {
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်ပစ္စည်းလှုပ်ရှားမှု စာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.stockMovements.clear();
   }
 }
@@ -2323,6 +2335,7 @@ export class CashMovementRepository implements ICashMovementRepository {
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ငွေသားလှုပ်ရှားမှု စာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.cashMovements.clear();
   }
 }
@@ -2339,11 +2352,13 @@ export class DailyClosingRepository implements IDailyClosingRepository {
   }
 
   async save(closing: DailyClosingRecord): Promise<string> {
+    await enforcePermission('ACCESS_SETTINGS', 'နေ့ချုပ်စာရင်း သိမ်းဆည်းခြင်း');
     await this.database.dailyClosings.put(closing);
     return closing.id;
   }
 
   async saveMany(closings: DailyClosingRecord[]): Promise<void> {
+    await enforcePermission('ACCESS_SETTINGS', 'နေ့ချုပ်စာရင်းများ သိမ်းဆည်းခြင်း');
     await this.database.dailyClosings.bulkPut(closings);
   }
 
@@ -2352,6 +2367,7 @@ export class DailyClosingRepository implements IDailyClosingRepository {
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'နေ့ချုပ်စာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.dailyClosings.clear();
   }
 }

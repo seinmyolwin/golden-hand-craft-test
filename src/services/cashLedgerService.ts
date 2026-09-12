@@ -310,7 +310,11 @@ export async function recordDirectCashMovementAtomic(
   },
   targetDb: ShweLetYarDatabase = db
 ): Promise<CashMovementRecord> {
-  await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ငွေသားစာရင်း တိုက်ရိုက်မှတ်တမ်းတင်ခြင်း');
+  if (params.type === 'MANUAL_CASH_ADJUSTMENT') {
+    await enforcePermission('CASH_ADJUSTMENT', 'ငွေသားစာရင်း ချိန်ညှိမှု ပြုလုပ်ခြင်း (Manual Cash Adjustment)');
+  } else {
+    await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ငွေသားစာရင်း တိုက်ရိုက်မှတ်တမ်းတင်ခြင်း');
+  }
   if (!params.amount || params.amount <= 0 || isNaN(params.amount)) {
     throw new Error('ငွေပမာဏသည် သုညထက်ကြီးသော ကိန်းဂဏန်း ဖြစ်ရပါမည်');
   }

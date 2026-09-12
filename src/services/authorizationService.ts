@@ -134,9 +134,28 @@ export async function getPersistedUsers(): Promise<AppUser[]> {
 /**
  * Persists an updated list of users to Dexie db.settings table.
  * Requires OWNER authorization.
+ * Enforces Last Owner Protection (must retain at least one active OWNER).
  */
 export async function savePersistedUsers(users: AppUser[]): Promise<void> {
   await enforcePermission('MANAGE_USERS', 'သုံးစွဲသူ အကောင့်များ ပြင်ဆင်သိမ်းဆည်းခြင်း');
+
+  if (!Array.isArray(users) || users.length === 0) {
+    throw new AuthorizationError(
+      'MANAGE_USERS',
+      'OWNER',
+      'သုံးစွဲသူစာရင်း မရှိပါ။ အနည်းဆုံး ဆိုင်ရှင် (Owner) အကောင့် တစ်ခု ရှိရပါမည်။'
+    );
+  }
+
+  const activeOwners = users.filter((u) => u.role === 'OWNER' && u.isActive !== false);
+  if (activeOwners.length < 1) {
+    throw new AuthorizationError(
+      'MANAGE_USERS',
+      'OWNER',
+      'စနစ်တွင် အနည်းဆုံး အသုံးပြုနိုင်သော ပိုင်ရှင် (Active Owner) အကောင့် တစ်ခု ရှိရပါမည်။'
+    );
+  }
+
   await db.settings.put({
     key: SETTING_USERS_KEY,
     value: users,
@@ -165,50 +184,93 @@ function safeSetSessionStorage(key: string, value: string): void {
   }
 }
 
+function safeRemoveSessionStorage(key: string): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage errors in test or restricted environments
+  }
+}
+
 /**
  * Resolves current user session from canonical storage and validates its authenticity.
- * Never blindly trusts caller parameters.
+ * Never blindly trusts caller parameters or client-side role claims in sessionStorage/Dexie.
+ * The effective role is ALWAYS derived from the canonical AppUser record in rbac_users.
  */
 export async function getCurrentSession(): Promise<UserSession> {
+  const canonicalUsers = await getPersistedUsers();
+
+  const validateAndBuildSession = (candidate: Partial<UserSession> | null): UserSession | null => {
+    if (!candidate || !candidate.userId) return null;
+    const canonicalUser = canonicalUsers.find((u) => u.id === candidate.userId);
+    if (!canonicalUser || canonicalUser.isActive === false) return null;
+
+    // Canonical role enforcement: role ALWAYS matches database truth, never client claim
+    return {
+      userId: canonicalUser.id,
+      username: canonicalUser.username,
+      displayName: canonicalUser.displayName,
+      role: canonicalUser.role,
+      loginTimestamp: candidate.loginTimestamp || new Date().toISOString(),
+    };
+  };
+
+  // 1. Check memory session
   if (memorySession) {
-    return memorySession;
+    const validatedMemory = validateAndBuildSession(memorySession);
+    if (validatedMemory) {
+      memorySession = validatedMemory;
+      return validatedMemory;
+    }
+    memorySession = null;
   }
 
-  // Check sessionStorage for fast tab persistence
+  // 2. Check sessionStorage for tab persistence
   const raw = safeGetSessionStorage(SESSION_STORAGE_KEY);
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as UserSession;
-      if (parsed && parsed.userId && (parsed.role === 'OWNER' || parsed.role === 'USER')) {
-        memorySession = parsed;
-        return parsed;
+      const parsed = JSON.parse(raw) as Partial<UserSession>;
+      const validatedSession = validateAndBuildSession(parsed);
+      if (validatedSession) {
+        memorySession = validatedSession;
+        safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
+        return validatedSession;
       }
     } catch {
-      // Ignore parse failure
+      // Ignore JSON parse error
     }
+    safeRemoveSessionStorage(SESSION_STORAGE_KEY);
   }
 
-  // Check database settings
+  // 3. Check database active session setting
   try {
     const sessionRecord = await db.settings.get(SETTING_ACTIVE_SESSION_KEY);
     if (sessionRecord && sessionRecord.value) {
-      const dbSession = sessionRecord.value as UserSession;
-      if (dbSession && dbSession.userId && (dbSession.role === 'OWNER' || dbSession.role === 'USER')) {
-        memorySession = dbSession;
-        safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(dbSession));
-        return dbSession;
+      const dbCandidate = sessionRecord.value as Partial<UserSession>;
+      const validatedSession = validateAndBuildSession(dbCandidate);
+      if (validatedSession) {
+        memorySession = validatedSession;
+        safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
+        return validatedSession;
       }
     }
   } catch (err) {
     console.warn('Failed to load active session from db.settings:', err);
   }
 
-  // Default initial session: OWNER
+  // 4. Default fallback: Resolve to first active OWNER or active user from canonical records
+  const defaultUser =
+    canonicalUsers.find((u) => u.role === 'OWNER' && u.isActive !== false) ||
+    canonicalUsers.find((u) => u.isActive !== false) ||
+    DEFAULT_OWNER_USER;
+
   const defaultSession: UserSession = {
-    userId: DEFAULT_OWNER_USER.id,
-    username: DEFAULT_OWNER_USER.username,
-    displayName: DEFAULT_OWNER_USER.displayName,
-    role: 'OWNER',
+    userId: defaultUser.id,
+    username: defaultUser.username,
+    displayName: defaultUser.displayName,
+    role: defaultUser.role,
     loginTimestamp: new Date().toISOString(),
   };
 
@@ -229,14 +291,35 @@ export async function getCurrentSession(): Promise<UserSession> {
 
 /**
  * Updates the current active session in memory, sessionStorage, and Dexie settings.
+ * Validates the session against canonical AppUser records to prevent arbitrary role setting.
  */
 export async function setCurrentSession(session: UserSession): Promise<void> {
-  memorySession = session;
-  safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(session));
+  const canonicalUsers = await getPersistedUsers();
+  const canonicalUser = canonicalUsers.find((u) => u.id === session.userId);
+
+  if (!canonicalUser || canonicalUser.isActive === false) {
+    throw new AuthorizationError(
+      'AUTHENTICATION',
+      'UNKNOWN',
+      'အသုံးပြုသူ အကောင့် မရှိပါ သို့မဟုတ် ပိတ်ထားပါသည်'
+    );
+  }
+
+  // Enforce canonical role
+  const validatedSession: UserSession = {
+    userId: canonicalUser.id,
+    username: canonicalUser.username,
+    displayName: canonicalUser.displayName,
+    role: canonicalUser.role,
+    loginTimestamp: session.loginTimestamp || new Date().toISOString(),
+  };
+
+  memorySession = validatedSession;
+  safeSetSessionStorage(SESSION_STORAGE_KEY, JSON.stringify(validatedSession));
   try {
     await db.settings.put({
       key: SETTING_ACTIVE_SESSION_KEY,
-      value: session,
+      value: validatedSession,
       updatedAt: new Date().toISOString(),
     });
   } catch (err) {
@@ -455,6 +538,20 @@ export async function loginAsOwner(pin?: string): Promise<UserSession> {
  * Explicit testing/reset helper to safely override active session.
  */
 export async function resetSessionForTesting(role: UserRole = 'OWNER'): Promise<UserSession> {
+  const initialUsers: AppUser[] = [
+    { ...DEFAULT_OWNER_USER, isActive: true },
+    { ...DEFAULT_STAFF_USER, isActive: true },
+  ];
+  try {
+    await db.settings.put({
+      key: SETTING_USERS_KEY,
+      value: initialUsers,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Ignore db error in unit tests
+  }
+
   const session: UserSession = {
     userId: role === 'OWNER' ? DEFAULT_OWNER_USER.id : DEFAULT_STAFF_USER.id,
     username: role === 'OWNER' ? DEFAULT_OWNER_USER.username : DEFAULT_STAFF_USER.username,

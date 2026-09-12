@@ -10,6 +10,7 @@ import {
 import { db } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
 import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { enforcePermission } from './authorizationService';
 
 export type StockMovementType =
   | 'OPENING_BALANCE'
@@ -730,6 +731,7 @@ export async function reconcileProductStock(productId: string): Promise<{
   discrepancy: number;
   reconciled: boolean;
 }> {
+  await enforcePermission('STOCK_ADJUSTMENT', 'ကုန်ပစ္စည်း လက်ကျန်စာရင်းညှိနှိုင်းစစ်ဆေးခြင်း');
   return db.transaction(
     'rw',
     [db.products, db.transactions, db.sales, db.merchantPurchases, db.stockAdjustments, db.peerTrades, db.auditLogs],
