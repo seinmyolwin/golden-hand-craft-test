@@ -79,7 +79,7 @@ import { AppLockScreen } from './components/AppLockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { UserSwitchModal } from './components/UserSwitchModal';
 import { AppLockSettingsModal } from './components/AppLockSettingsModal';
-import { getCurrentSession, logoutUserSession, UserSession } from './services/authorizationService';
+import { getCurrentSession, logoutUserSession, UserSession, AUTH_SYNC_CHANNEL_NAME } from './services/authorizationService';
 
 // Modals
 import { NewEntryModal } from './components/NewEntryModal';
@@ -248,29 +248,6 @@ export default function App() {
   const [isResolvingSession, setIsResolvingSession] = useState<boolean>(true);
   const [isUserSwitchModalOpen, setIsUserSwitchModalOpen] = useState<boolean>(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    getCurrentSession()
-      .then((session) => {
-        if (isMounted) {
-          setCurrentSession(session);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setCurrentSession(null);
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsResolvingSession(false);
-        }
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   // Security Lock State (using sessionStorage to persist session across page refresh)
   const [appLockSettings, setAppLockSettings] = useState<AppLockSettings>(() => loadAppLockSettings());
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
@@ -390,6 +367,81 @@ export default function App() {
     setActionPrompt((prev) => ({ ...prev, isOpen: false }));
     setIsUpdateModalOpen(false);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const revalidateSession = () => {
+      getCurrentSession()
+        .then((session) => {
+          if (isMounted) {
+            setCurrentSession(session);
+            if (!session) {
+              closeAllModals();
+            }
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setCurrentSession(null);
+            closeAllModals();
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsResolvingSession(false);
+          }
+        });
+    };
+
+    revalidateSession();
+
+    // 1. Cross-tab sync via BroadcastChannel
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel(AUTH_SYNC_CHANNEL_NAME);
+        channel.onmessage = () => {
+          revalidateSession();
+        };
+      }
+    } catch {
+      // Ignore if BroadcastChannel unsupported
+    }
+
+    // 2. Storage event fallback for cross-tab sync
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'shwe_let_yar_auth_event' || e.key === 'shwe_let_yar_rbac_session') {
+        revalidateSession();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 3. Tab visibility / focus revalidation
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        revalidateSession();
+      }
+    };
+    const handleFocus = () => {
+      revalidateSession();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      if (channel) {
+        try {
+          channel.close();
+        } catch {}
+      }
+      window.removeEventListener('storage', handleStorage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [closeAllModals]);
 
   // Back Key Navigation Handling for Phone & Tablet (Hardware & Gestures)
   const activeTabRef = useRef<TabType>(activeTab);

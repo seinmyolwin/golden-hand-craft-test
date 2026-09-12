@@ -506,7 +506,7 @@ export function calculateProductStockLedger(
 }
 
 /**
- * Computes stock ledger summary for all products
+ * Computes stock ledger summary for all products efficiently in O(P + N) single-pass
  */
 export function calculateAllProductsStockLedgerSummaries(
   products: Product[] = [],
@@ -516,14 +516,87 @@ export function calculateAllProductsStockLedgerSummaries(
   merchantPurchases: MerchantPurchaseRecord[] = [],
   peerTrades: PeerTradeRecord[] = []
 ): ProductStockLedgerSummary[] {
+  if (products.length === 0) return [];
+
+  // Group records by productId in O(N) single-pass index maps
+  const txsByProduct = new Map<string, TransactionRecord[]>();
+  for (const tx of transactions) {
+    if (!tx || !Array.isArray(tx.items) || tx.status === 'CANCELLED') continue;
+    const seenProds = new Set<string>();
+    for (const item of tx.items) {
+      if (!item?.productId || seenProds.has(item.productId)) continue;
+      seenProds.add(item.productId);
+      let list = txsByProduct.get(item.productId);
+      if (!list) {
+        list = [];
+        txsByProduct.set(item.productId, list);
+      }
+      list.push(tx);
+    }
+  }
+
+  const salesByProduct = new Map<string, SaleRecord[]>();
+  for (const sale of sales) {
+    if (!sale || !Array.isArray(sale.items) || sale.status === 'CANCELLED') continue;
+    const seenProds = new Set<string>();
+    for (const item of sale.items) {
+      if (!item?.productId || seenProds.has(item.productId)) continue;
+      seenProds.add(item.productId);
+      let list = salesByProduct.get(item.productId);
+      if (!list) {
+        list = [];
+        salesByProduct.set(item.productId, list);
+      }
+      list.push(sale);
+    }
+  }
+
+  const purchasesByProduct = new Map<string, MerchantPurchaseRecord[]>();
+  for (const pur of merchantPurchases) {
+    if (!pur || !Array.isArray(pur.items) || pur.status === 'CANCELLED') continue;
+    const seenProds = new Set<string>();
+    for (const item of pur.items) {
+      if (!item?.productId || seenProds.has(item.productId)) continue;
+      seenProds.add(item.productId);
+      let list = purchasesByProduct.get(item.productId);
+      if (!list) {
+        list = [];
+        purchasesByProduct.set(item.productId, list);
+      }
+      list.push(pur);
+    }
+  }
+
+  const adjustmentsByProduct = new Map<string, StockAdjustmentRecord[]>();
+  for (const adj of stockAdjustments) {
+    if (!adj?.productId || adj.status === 'CANCELLED') continue;
+    let list = adjustmentsByProduct.get(adj.productId);
+    if (!list) {
+      list = [];
+      adjustmentsByProduct.set(adj.productId, list);
+    }
+    list.push(adj);
+  }
+
+  const peerTradesByProduct = new Map<string, PeerTradeRecord[]>();
+  for (const trade of peerTrades) {
+    if (!trade?.productId) continue;
+    let list = peerTradesByProduct.get(trade.productId);
+    if (!list) {
+      list = [];
+      peerTradesByProduct.set(trade.productId, list);
+    }
+    list.push(trade);
+  }
+
   return products.map((prod) =>
     calculateProductStockLedger(
       prod,
-      transactions,
-      sales,
-      stockAdjustments,
-      merchantPurchases,
-      peerTrades
+      txsByProduct.get(prod.id) || [],
+      salesByProduct.get(prod.id) || [],
+      adjustmentsByProduct.get(prod.id) || [],
+      purchasesByProduct.get(prod.id) || [],
+      peerTradesByProduct.get(prod.id) || []
     )
   );
 }
@@ -789,28 +862,71 @@ export async function reconcileAllProductsStock(): Promise<{
   totalAdjusted: number;
   results: Array<{ productId: string; name: string; prev: number; curr: number }>;
 }> {
-  const products = await db.products.toArray();
-  const results: Array<{ productId: string; name: string; prev: number; curr: number }> = [];
-  let adjustedCount = 0;
+  await enforcePermission('STOCK_ADJUSTMENT', 'ကုန်ပစ္စည်း လက်ကျန်စာရင်းညှိနှိုင်းစစ်ဆေးခြင်း');
+  return db.transaction(
+    'rw',
+    [db.products, db.transactions, db.sales, db.merchantPurchases, db.stockAdjustments, db.peerTrades, db.auditLogs],
+    async () => {
+      const products = await db.products.toArray();
+      const txs = await db.transactions.toArray();
+      const sales = await db.sales.toArray();
+      const purchases = await db.merchantPurchases.toArray();
+      const adjs = await db.stockAdjustments.toArray();
+      const trades = await db.peerTrades.toArray();
 
-  for (const p of products) {
-    const res = await reconcileProductStock(p.id);
-    if (res.reconciled) {
-      adjustedCount++;
-      results.push({
-        productId: p.id,
-        name: p.name,
-        prev: res.previousStock,
-        curr: res.newStock,
-      });
+      const summaries = calculateAllProductsStockLedgerSummaries(
+        products,
+        txs,
+        sales,
+        adjs,
+        purchases,
+        trades
+      );
+
+      const results: Array<{ productId: string; name: string; prev: number; curr: number }> = [];
+      let adjustedCount = 0;
+      const nowIso = new Date().toISOString();
+
+      for (let i = 0; i < products.length; i++) {
+        const product = products[i];
+        const summary = summaries[i];
+        const previousStock = product.currentStock ?? product.openingStock ?? 0;
+        const newStock = summary.calculatedClosingBalance;
+        const discrepancy = previousStock - newStock;
+
+        if (discrepancy !== 0) {
+          adjustedCount++;
+          await db.products.update(product.id, {
+            currentStock: newStock,
+            updatedAt: nowIso,
+            revision: (product.revision || 0) + 1,
+          });
+
+          await db.auditLogs.put({
+            id: generateStableId('audit'),
+            action: 'ကုန်ပစ္စည်း လက်ကျန်စာရင်းညှိနှိုင်းမှု (Ledger Reconcile)',
+            details: `${product.name}: ယခင်လက်ကျန် ${previousStock} -> စာရင်းစစ်လက်ကျန် ${newStock} (ကွာဟချက်: ${discrepancy})`,
+            timestamp: nowIso,
+            entityType: 'PRODUCT',
+            entityId: product.id,
+          });
+
+          results.push({
+            productId: product.id,
+            name: product.name,
+            prev: previousStock,
+            curr: newStock,
+          });
+        }
+      }
+
+      return {
+        totalChecked: products.length,
+        totalAdjusted: adjustedCount,
+        results,
+      };
     }
-  }
-
-  return {
-    totalChecked: products.length,
-    totalAdjusted: adjustedCount,
-    results,
-  };
+  );
 }
 
 /**

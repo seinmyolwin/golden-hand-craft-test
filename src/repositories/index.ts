@@ -976,11 +976,18 @@ export class SaleRepository implements ISaleRepository {
 
         // 4. Update merchant receivable balance & totals
         if (merchant) {
+          const grandTotalVal = sale.grandTotal ?? sale.totalAmount ?? 0;
+          const paidVal = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+          const currentBal = (merchant as any).currentBalance ?? merchant.currentReceivableBalance ?? 0;
+          const remainingVal = sale.remainingReceivableBalance !== undefined
+            ? sale.remainingReceivableBalance
+            : (currentBal + grandTotalVal - paidVal);
+
           const updatedMerchant: Merchant = {
             ...merchant,
-            currentReceivableBalance: sale.remainingReceivableBalance,
-            totalPurchasesValue: (merchant.totalPurchasesValue || 0) + (sale.grandTotal || 0),
-            totalPaidAmount: (merchant.totalPaidAmount || 0) + (sale.cashPaidByMerchant || 0),
+            currentReceivableBalance: remainingVal,
+            totalPurchasesValue: (merchant.totalPurchasesValue || 0) + grandTotalVal,
+            totalPaidAmount: (merchant.totalPaidAmount || 0) + paidVal,
             updatedAt: now,
           };
           await this.database.merchants.put(updatedMerchant);
@@ -1018,15 +1025,19 @@ export class SaleRepository implements ISaleRepository {
         await this.database.sales.put(enrichedSale);
 
         // 7. Audit Log
+        const grandTotalVal = sale.grandTotal ?? sale.totalAmount ?? 0;
+        const paidVal = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+        const remainingVal = sale.remainingReceivableBalance ?? (sale as any).remainingBalance ?? 0;
+
         const auditEntry = await recordAuditEvent(
           {
             action: 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း (Atomic)',
             actionType: 'SALE',
-            details: `ဘောင်ချာ ${enrichedSale.voucherNo} - ${sale.merchantName}: ကျသင့်ငွေ ${(sale.grandTotal || 0).toLocaleString()} ကျပ် | ပေးငွေ: ${(sale.cashPaidByMerchant || 0).toLocaleString()} ကျပ် | ကျန်ငွေ: ${sale.remainingReceivableBalance.toLocaleString()} ကျပ်`,
+            details: `ဘောင်ချာ ${enrichedSale.voucherNo} - ${sale.merchantName}: ကျသင့်ငွေ ${grandTotalVal.toLocaleString()} ကျပ် | ပေးငွေ: ${paidVal.toLocaleString()} ကျပ် | ကျန်ငွေ: ${remainingVal.toLocaleString()} ကျပ်`,
             referenceType: 'SALE',
             referenceId: enrichedSale.id,
             referenceVoucherNo: enrichedSale.voucherNo,
-            amount: sale.grandTotal || 0,
+            amount: grandTotalVal,
             timestamp: `${sale.date} ${sale.time || ''}`.trim() || now,
           },
           this.database

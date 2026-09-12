@@ -102,6 +102,38 @@ const USER_PERMISSIONS: ReadonlySet<PermissionAction> = new Set<PermissionAction
 export const SESSION_STORAGE_KEY = 'shwe_let_yar_rbac_session';
 export const SETTING_USERS_KEY = 'rbac_users';
 export const SETTING_ACTIVE_SESSION_KEY = 'rbac_active_session';
+export const AUTH_SYNC_CHANNEL_NAME = 'shwe_let_yar_auth_sync';
+
+export type AuthSyncMessage =
+  | { type: 'SESSION_CHANGED'; userId: string; role: UserRole; timestamp: string }
+  | { type: 'SESSION_LOGOUT'; timestamp: string }
+  | { type: 'USERS_UPDATED'; timestamp: string };
+
+/**
+ * Broadcasts session and user changes across browser tabs.
+ */
+export function broadcastAuthSync(message: AuthSyncMessage): void {
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(AUTH_SYNC_CHANNEL_NAME);
+      channel.postMessage(message);
+      channel.close();
+    }
+  } catch {
+    // Ignore error in restricted/offline environments
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(
+        'shwe_let_yar_auth_event',
+        JSON.stringify({ ...message, _nonce: Date.now() })
+      );
+    }
+  } catch {
+    // Ignore error in restricted/offline environments
+  }
+}
 
 // In-memory active session cache
 let memorySession: UserSession | null = null;
@@ -162,6 +194,11 @@ export async function savePersistedUsers(users: AppUser[]): Promise<void> {
     key: SETTING_USERS_KEY,
     value: users,
     updatedAt: new Date().toISOString(),
+  });
+
+  broadcastAuthSync({
+    type: 'USERS_UPDATED',
+    timestamp: new Date().toISOString(),
   });
 }
 
@@ -297,6 +334,10 @@ export async function clearCurrentSession(): Promise<void> {
   } catch {
     // Ignore error in restricted/offline environments
   }
+  broadcastAuthSync({
+    type: 'SESSION_LOGOUT',
+    timestamp: new Date().toISOString(),
+  });
 }
 
 /**
@@ -368,6 +409,13 @@ export async function setCurrentSession(session: Partial<UserSession> | null): P
   } catch (err) {
     console.warn('Failed to persist session to db.settings:', err);
   }
+
+  broadcastAuthSync({
+    type: 'SESSION_CHANGED',
+    userId: validatedSession.userId,
+    role: validatedSession.role,
+    timestamp: validatedSession.loginTimestamp,
+  });
 
   return validatedSession;
 }
