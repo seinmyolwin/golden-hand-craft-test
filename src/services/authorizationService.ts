@@ -551,12 +551,7 @@ export async function switchUserSession(
  * Clears the active user session (logout).
  */
 export async function logoutUserSession(): Promise<void> {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    } catch {}
-  }
+  await clearCurrentSession();
 }
 
 /**

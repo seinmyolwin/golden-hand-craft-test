@@ -244,8 +244,28 @@ export default function App() {
   }, []);
 
   // User Session & Role State
-  const [currentSession, setCurrentSession] = useState<UserSession | null>(() => getCurrentSession());
+  const [currentSession, setCurrentSession] = useState<UserSession | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem('shwe_let_yar_rbac_session');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return null;
+  });
   const [isUserSwitchModalOpen, setIsUserSwitchModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    getCurrentSession().then((session) => {
+      if (isMounted && session) {
+        setCurrentSession(session);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Security Lock State (using sessionStorage to persist session across page refresh)
   const [appLockSettings, setAppLockSettings] = useState<AppLockSettings>(() => loadAppLockSettings());
@@ -1698,14 +1718,17 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // App Lock Screen Guard
-  if (appLockSettings.enabled && !isUnlocked) {
+  // Session & App Lock Screen Guard
+  if (!currentSession || (appLockSettings.enabled && !isUnlocked)) {
     return (
       <ErrorBoundary>
-        <AppLockScreen
+        <LoginScreen
           appLockSettings={appLockSettings}
           shopSettings={shopSettings}
-          onUnlock={handleUnlock}
+          onLoginSuccess={(session) => {
+            setCurrentSession(session);
+            handleUnlock();
+          }}
           onUpdateAppLockSettings={handleUpdateAppLock}
         />
       </ErrorBoundary>
