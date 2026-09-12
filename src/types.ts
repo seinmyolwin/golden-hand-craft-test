@@ -793,6 +793,7 @@ export interface AutoRecoverySnapshot {
     softDeletedItems?: SoftDeletedItem[];
     attachments?: AttachmentRecord[];
     rawMaterialPresets?: RawMaterialPreset[];
+    rbacUsers?: AppUser[];
   };
 }
 
@@ -1000,6 +1001,8 @@ export interface BackupDataPayload {
   rawMaterialCategories?: string[];
   masterDataCategories?: MasterDataCategory[];
   attachments?: AttachmentRecord[];
+  rbacUsers?: AppUser[];
+  rbac_users?: AppUser[];
 }
 
 export interface VersionedBackupFile {

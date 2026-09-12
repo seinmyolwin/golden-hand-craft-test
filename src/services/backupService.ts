@@ -1,5 +1,5 @@
 import { db, ShweLetYarDatabase } from '../db/database';
-import { enforcePermission } from './authorizationService';
+import { enforcePermission, getPersistedUsers, SETTING_USERS_KEY } from './authorizationService';
 import { blobToBase64, processImageInput, base64ToBlob } from './attachmentService';
 import {
   getBusinessInitialization,
@@ -35,6 +35,7 @@ import {
   BackupValidationError,
   BackupValidationWarning,
   EntityComparisonCount,
+  AppUser,
 } from '../types';
 import {
   getStoredShopSettings,
@@ -157,6 +158,7 @@ export async function createCompleteBackup(options?: {
   const rawMaterialCategories = getStoredRawMaterialCategories();
   const masterDataCategories = await masterDataService.getMasterDataCategories();
   const presetsFromStore = rawMaterialPresets.length > 0 ? rawMaterialPresets : getStoredRawMaterialPresets();
+  const rbacUsers = await getPersistedUsers();
 
   // Find date range
   const allDates: string[] = [];
@@ -268,6 +270,8 @@ export async function createCompleteBackup(options?: {
     cashMovements,
     dailyClosings,
     returnsAndRefunds,
+    rbacUsers,
+    rbac_users: rbacUsers,
   };
 
   const dataPayloadString = JSON.stringify(data);
@@ -390,6 +394,9 @@ export function normalizeRawBackup(raw: any): {
   const masterDataCategories: MasterDataCategory[] | undefined = Array.isArray(rawData.masterDataCategories)
     ? rawData.masterDataCategories
     : undefined;
+  const rbacUsers: AppUser[] | undefined = Array.isArray(rawData.rbacUsers || rawData.rbac_users)
+    ? (rawData.rbacUsers || rawData.rbac_users)
+    : undefined;
   const businessInitialization = rawData.businessInitialization || raw.businessInitialization;
 
   const totalRecords =
@@ -491,6 +498,8 @@ export function normalizeRawBackup(raw: any): {
     cashMovements,
     dailyClosings,
     returnsAndRefunds,
+    rbacUsers,
+    rbac_users: rbacUsers,
   };
 
   return { normalized, metadata, formatVersion, checksum };
@@ -1552,6 +1561,13 @@ export async function executeSafeRestore(
               updatedAt: new Date().toISOString(),
             });
           }
+          if (data.rbacUsers && data.rbacUsers.length > 0) {
+            await db.settings.put({
+              key: SETTING_USERS_KEY,
+              value: data.rbacUsers,
+              updatedAt: new Date().toISOString(),
+            });
+          }
           if (data.rawMaterialPresets.length > 0) {
             saveStoredRawMaterialPresets(data.rawMaterialPresets);
           }
@@ -1637,6 +1653,27 @@ export async function executeSafeRestore(
             await db.settings.put({
               key: 'masterDataCategories',
               value: Array.from(catMap.values()),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          if (data.rbacUsers && data.rbacUsers.length > 0) {
+            const currentUsers = await getPersistedUsers();
+            const userMap = new Map<string, AppUser>(currentUsers.map((u) => [u.id, u]));
+            data.rbacUsers.forEach((incomingUser) => {
+              const existing = userMap.get(incomingUser.id);
+              if (!existing) {
+                userMap.set(incomingUser.id, incomingUser);
+              } else {
+                const incomingTime = new Date(incomingUser.updatedAt || incomingUser.createdAt || 0).getTime();
+                const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+                if (incomingTime > existingTime) {
+                  userMap.set(incomingUser.id, incomingUser);
+                }
+              }
+            });
+            await db.settings.put({
+              key: SETTING_USERS_KEY,
+              value: Array.from(userMap.values()),
               updatedAt: new Date().toISOString(),
             });
           }

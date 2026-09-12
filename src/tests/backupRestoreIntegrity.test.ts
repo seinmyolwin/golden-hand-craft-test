@@ -45,7 +45,14 @@ import {
   CashMovementRecord,
   DailyClosingRecord,
   ReturnRecord,
+  AppUser,
 } from '../types';
+import {
+  getPersistedUsers,
+  SETTING_USERS_KEY,
+  DEFAULT_OWNER_USER,
+  DEFAULT_STAFF_USER,
+} from '../services/authorizationService';
 import { generateStableId } from '../utils/idGenerator';
 
 describe('Backup and Restore Reliability Audit', () => {
@@ -66,6 +73,7 @@ describe('Backup and Restore Reliability Audit', () => {
       db.rawMaterialPresets.clear(),
       db.attachments.clear(),
       db.recoverySnapshots.clear(),
+      db.settings.clear(),
     ]);
   });
 
@@ -960,5 +968,48 @@ describe('Backup and Restore Reliability Audit', () => {
     expect(report.warnings.some((w) => w.code === 'ORPHAN_RETURN_REFERENCE')).toBe(true);
     expect(report.warnings.some((w) => w.code === 'MISSING_PRODUCT_REFERENCE')).toBe(true);
     expect(report.warnings.some((w) => w.code === 'INVALID_RETURN_QUANTITY')).toBe(true);
+  });
+
+  // Test Case 17: User Accounts & RBAC Roles Backup/Restore Integrity (OVERWRITE & SMART_MERGE)
+  it('17. Preserves user account roles and deactivated (isActive: false) status across backup and restore', async () => {
+    // 1. Setup active owner and deactivated staff user in db.settings
+    const deactivatedStaff: AppUser = {
+      ...DEFAULT_STAFF_USER,
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+    };
+    await db.settings.put({
+      key: SETTING_USERS_KEY,
+      value: [DEFAULT_OWNER_USER, deactivatedStaff],
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Verify initial state
+    const usersBefore = await getPersistedUsers();
+    expect(usersBefore.length).toBe(2);
+    expect(usersBefore.find((u) => u.id === DEFAULT_STAFF_USER.id)?.isActive).toBe(false);
+
+    // 2. Generate backup
+    const backup = await createCompleteBackup();
+    expect(backup.data.rbacUsers).toBeDefined();
+    expect(backup.data.rbacUsers?.length).toBe(2);
+    const backupStaff = backup.data.rbacUsers?.find((u) => u.id === DEFAULT_STAFF_USER.id);
+    expect(backupStaff?.isActive).toBe(false);
+
+    // 3. Clear settings table (simulating fresh DB restore target)
+    await db.settings.clear();
+
+    // 4. Restore backup via OVERWRITE
+    const report = await validateBackupFile(backup);
+    expect(report.isValid).toBe(true);
+    const restoreResult = await executeSafeRestore(report, 'OVERWRITE');
+    expect(restoreResult.success).toBe(true);
+
+    // 5. Assert rbac_users restored with isActive: false preserved
+    const usersAfter = await getPersistedUsers();
+    expect(usersAfter.length).toBe(2);
+    const restoredStaff = usersAfter.find((u) => u.id === DEFAULT_STAFF_USER.id);
+    expect(restoredStaff?.isActive).toBe(false);
+    expect(restoredStaff?.role).toBe('USER');
   });
 });
