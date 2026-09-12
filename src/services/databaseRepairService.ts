@@ -22,6 +22,7 @@ import {
 import { runDatabaseDiagnostics } from './databaseHealthService';
 import { createAutoRecoverySnapshot, restoreFromSnapshot, CURRENT_APP_VERSION } from './backupService';
 import { generateStableId } from '../utils/idGenerator';
+import { enforcePermission } from './authorizationService';
 
 /**
  * Explicit Repair Capability Matrix
@@ -854,6 +855,7 @@ export async function executeAtomicRepair(
   auditId?: string;
   postRepairReport?: DatabaseHealthReport;
 }> {
+  await enforcePermission('DATABASE_REPAIR', 'ဒေတာဘေ့စ် ပြုပြင်ခြင်း (Database Repair)');
   // Step 1: Explicit user confirmation is strictly MANDATORY
   if (!userConfirmed) {
     repairAction.status = 'REJECTED';

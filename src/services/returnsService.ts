@@ -28,6 +28,7 @@ import {
 import { db } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
 import { DailyClosingLockedError } from '../repositories/errors';
+import { enforcePermission } from './authorizationService';
 
 export interface ProcessSalesReturnParams {
   saleId: string;
@@ -291,6 +292,7 @@ export async function validatePurchaseReturn(
 export async function processSalesReturnAtomic(
   params: ProcessSalesReturnParams
 ): Promise<ReturnRecord> {
+  await enforcePermission('PROCESS_RETURN_REFUND', 'အရောင်းကုန်ပစ္စည်း ပြန်သွင်းခြင်း/ငွေပြန်အမ်းခြင်း');
   const {
     saleId,
     items,
@@ -472,6 +474,7 @@ export async function processSalesReturnAtomic(
 export async function processPurchaseReturnAtomic(
   params: ProcessPurchaseReturnParams
 ): Promise<ReturnRecord> {
+  await enforcePermission('PROCESS_RETURN_REFUND', 'ကုန်ဝယ်ယူမှု ပြန်လည်ပို့ဆောင်ခြင်း/ငွေပြန်ရယူခြင်း');
   const {
     purchaseId,
     referenceType,
@@ -672,6 +675,7 @@ export async function cancelReturnAtomic(
   returnId: string,
   cancellationReason: string
 ): Promise<ReturnRecord> {
+  await enforcePermission('PROCESS_RETURN_REFUND', 'ကုန်ပြန်ပို့မှတ်တမ်း ပယ်ဖျက်ခြင်း');
   const returnRecord = await db.returnsAndRefunds.get(returnId);
   if (!returnRecord) {
     throw new Error(`Return record with ID ${returnId} not found.`);

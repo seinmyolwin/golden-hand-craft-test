@@ -1,5 +1,6 @@
 import { db } from '../db/database';
 import { recordAuditEvent } from './auditTrailService';
+import { enforcePermission } from './authorizationService';
 import {
   BusinessInitializationRecord,
   InitializationState,
@@ -166,6 +167,7 @@ export function validateBusinessInitialization(record: BusinessInitializationRec
 export async function saveBusinessInitializationDraft(
   draft: Partial<BusinessInitializationRecord>
 ): Promise<BusinessInitializationRecord> {
+  await enforcePermission('BUSINESS_INITIALIZATION', 'စီးပွားရေးလုပ်ငန်း စတင်တည်ထောင်မှု မူကြမ်းပြင်ဆင်ခြင်း');
   const current = await getBusinessInitialization();
 
   if (current.state === 'ACTIVE' && draft.state && draft.state !== 'ACTIVE') {
@@ -204,6 +206,7 @@ export async function confirmAndActivateBusiness(
   record: BusinessInitializationRecord,
   options?: { operationId?: string }
 ): Promise<BusinessInitializationRecord> {
+  await enforcePermission('BUSINESS_INITIALIZATION', 'စီးပွားရေးလုပ်ငန်း စတင်တည်ထောင်မှု အတည်ပြုဖွင့်လှစ်ခြင်း');
   const current = await getBusinessInitialization();
 
   const opId = options?.operationId || record.operationId || generateStableId('init_op');

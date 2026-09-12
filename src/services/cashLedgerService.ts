@@ -27,6 +27,7 @@ import {
 import { db, ShweLetYarDatabase } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
 import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { enforcePermission } from './authorizationService';
 
 /**
  * Myanmar localized labels for cash movement types
@@ -309,6 +310,7 @@ export async function recordDirectCashMovementAtomic(
   },
   targetDb: ShweLetYarDatabase = db
 ): Promise<CashMovementRecord> {
+  await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ငွေသားစာရင်း တိုက်ရိုက်မှတ်တမ်းတင်ခြင်း');
   if (!params.amount || params.amount <= 0 || isNaN(params.amount)) {
     throw new Error('ငွေပမာဏသည် သုညထက်ကြီးသော ကိန်းဂဏန်း ဖြစ်ရပါမည်');
   }

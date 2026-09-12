@@ -28,6 +28,7 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
   onSaveAndSelect,
   availableCategories = DEFAULT_PRODUCT_CATEGORIES,
 }) => {
+  const isEditing = Boolean(productToEdit);
   const [masterCats, setMasterCats] = useState<string[]>([]);
 
   useEffect(() => {

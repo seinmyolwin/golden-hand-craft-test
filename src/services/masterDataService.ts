@@ -9,6 +9,7 @@ import {
   stockMovementRepo,
 } from '../repositories';
 import { generateStableId } from '../utils/idGenerator';
+import { enforcePermission } from './authorizationService';
 
 export interface ReferentialCheckResult {
   hasReferences: boolean;
@@ -124,6 +125,7 @@ export class MasterDataService {
   }
 
   async saveProduct(productData: Partial<Product>): Promise<Product> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်း ပြင်ဆင်/ထည့်သွင်းခြင်း');
     const allProducts = await productRepo.getAll();
     const validation = this.validateProduct(productData, allProducts, productData.id);
     if (!validation.isValid) {
@@ -200,6 +202,7 @@ export class MasterDataService {
   async deleteProductSafe(
     productId: string
   ): Promise<{ success: boolean; softDeleted: boolean; message: string }> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ကုန်ပစ္စည်း ဖျက်ပစ်ခြင်း');
     const product = await productRepo.getById(productId);
     if (!product) {
       throw new Error(`Product "${productId}" not found`);
@@ -289,6 +292,7 @@ export class MasterDataService {
   }
 
   async saveSupplier(supplierData: Partial<Supplier>): Promise<Supplier> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ပေးသွင်းသူ ပြင်ဆင်/ထည့်သွင်းခြင်း');
     const isNew = !supplierData.id;
     const allSuppliers = await supplierRepo.getAll();
     const validation = this.validateSupplier(supplierData, allSuppliers, supplierData.id);
@@ -329,6 +333,7 @@ export class MasterDataService {
   async deleteSupplierSafe(
     supplierId: string
   ): Promise<{ success: boolean; softDeleted: boolean; message: string }> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ပေးသွင်းသူ ဖျက်ပစ်ခြင်း');
     const supplier = await supplierRepo.getById(supplierId);
     if (!supplier) {
       throw new Error(`Supplier "${supplierId}" not found`);
@@ -420,6 +425,7 @@ export class MasterDataService {
   }
 
   async saveMerchant(merchantData: Partial<Merchant>): Promise<Merchant> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်သည် ပြင်ဆင်/ထည့်သွင်းခြင်း');
     const isNew = !merchantData.id;
     const allMerchants = await merchantRepo.getAll();
     const validation = this.validateMerchant(merchantData, allMerchants, merchantData.id);
@@ -467,6 +473,7 @@ export class MasterDataService {
   async deleteMerchantSafe(
     merchantId: string
   ): Promise<{ success: boolean; softDeleted: boolean; message: string }> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ကုန်သည် ဖျက်ပစ်ခြင်း');
     const merchant = await merchantRepo.getById(merchantId);
     if (!merchant) {
       throw new Error(`Merchant "${merchantId}" not found`);
@@ -534,6 +541,7 @@ export class MasterDataService {
   }
 
   async addCategory(domain: CategoryDomain, name: string): Promise<MasterDataCategory> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'အမျိုးအစား အသစ်ထည့်သွင်းခြင်း');
     const trimmed = (name || '').trim();
     if (!trimmed) {
       throw new Error('အမျိုးအစားအမည် ထည့်သွင်းရန် လိုအပ်ပါသည်');
@@ -579,6 +587,7 @@ export class MasterDataService {
   }
 
   async renameCategory(categoryId: string, newName: string): Promise<MasterDataCategory> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'အမျိုးအစား အမည်ပြင်ဆင်ခြင်း');
     const trimmed = (newName || '').trim();
     if (!trimmed) {
       throw new Error('အမျိုးအစားအမည် ထည့်သွင်းရန် လိုအပ်ပါသည်');
@@ -623,6 +632,7 @@ export class MasterDataService {
   }
 
   async deactivateCategory(categoryId: string): Promise<MasterDataCategory> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'အမျိုးအစား ပိတ်သိမ်းခြင်း');
     const allCategories = await this.getMasterDataCategories();
     const target = allCategories.find((c) => c.id === categoryId);
     if (!target) {
@@ -654,6 +664,7 @@ export class MasterDataService {
   }
 
   async reactivateCategory(categoryId: string): Promise<MasterDataCategory> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'အမျိုးအစား ပြန်လည်ဖွင့်လှစ်ခြင်း');
     const allCategories = await this.getMasterDataCategories();
     const target = allCategories.find((c) => c.id === categoryId);
     if (!target) {
@@ -687,6 +698,7 @@ export class MasterDataService {
   async deleteCategorySafe(
     categoryId: string
   ): Promise<{ success: boolean; softDeactivated: boolean; message: string }> {
+    await enforcePermission('DELETE_MASTER_DATA', 'အမျိုးအစား ဖျက်ပစ်ခြင်း');
     const allCategories = await this.getMasterDataCategories();
     const target = allCategories.find((c) => c.id === categoryId);
     if (!target) {
@@ -715,7 +727,7 @@ export class MasterDataService {
       (s) => (s.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name)
     );
     const isReferencedByPurchase = purchases.some(
-      (pur) => (pur.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name) || pur.category === categoryId || pur.category === target.name
+      (pur: any) => (pur.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name) || pur.category === categoryId || pur.category === target.name
     );
     const isReferencedByAdjustment = adjustments.some(
       (adj: any) => adj.categoryId === categoryId || adj.category === target.name

@@ -1,4 +1,5 @@
 import { db, ShweLetYarDatabase } from '../db/database';
+import { enforcePermission } from './authorizationService';
 import { blobToBase64, processImageInput, base64ToBlob } from './attachmentService';
 import {
   getBusinessInitialization,
@@ -20,6 +21,7 @@ import {
   ReturnRecord,
   SoftDeletedItem,
   AuditLogEntry,
+  MasterDataCategory,
   RawMaterialPreset,
   ShopSettings,
   AppLockSettings,
@@ -101,6 +103,7 @@ export async function createCompleteBackup(options?: {
   customNotes?: string;
   shopSettings?: ShopSettings;
 }): Promise<VersionedBackupFile> {
+  await enforcePermission('BACKUP_EXPORT', 'ဒေတာ မိတ္တူ ထုတ်ယူခြင်း (Export Backup)');
   // 1. Fetch all datasets from Dexie IndexedDB tables
   const [
     products,
@@ -1174,6 +1177,7 @@ export async function createAutoRecoverySnapshot(
   reason: string,
   targetDb: ShweLetYarDatabase = db
 ): Promise<string> {
+  await enforcePermission('BACKUP_RESTORE', `အလိုအလျောက် ပြန်လည်ရယူရေး Snapshot ရယူခြင်း: ${reason}`);
   const snapshotId = generateStableId('rec');
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -1362,6 +1366,7 @@ export async function executeSafeRestore(
   snapshotId: string;
   stats: Record<string, number>;
 }> {
+  await enforcePermission('BACKUP_RESTORE', 'ဒေတာ ပြန်လည်သွင်းယူခြင်း (Restore Backup)');
   if (!report.isValid || !report.normalizedData) {
     throw new Error('မမှန်ကန်သော Backup ဒေတာဖြစ်သဖြင့် Restore ပြုလုပ်၍ မရပါ');
   }
@@ -1836,6 +1841,7 @@ export async function restoreFromSnapshot(
   snapshotId: string,
   targetDb: ShweLetYarDatabase = db
 ): Promise<{ success: boolean; message: string }> {
+  await enforcePermission('BACKUP_RESTORE', 'အရန်သိမ်းဆည်းမှုမှ ပြန်လည်ရယူခြင်း (Snapshot Rollback)');
   const snapshot = await targetDb.recoverySnapshots.get(snapshotId);
   if (!snapshot) {
     throw new Error('အဆိုပါ Snapshot မတွေ့ရှိပါ');
@@ -1942,6 +1948,7 @@ export async function restoreFromSnapshot(
  * Deletes a single recovery snapshot
  */
 export async function deleteRecoverySnapshot(snapshotId: string): Promise<void> {
+  await enforcePermission('BACKUP_RESTORE', 'အရန်သိမ်းဆည်းမှု ဖျက်ပစ်ခြင်း');
   await db.recoverySnapshots.delete(snapshotId);
 }
 
@@ -1949,5 +1956,6 @@ export async function deleteRecoverySnapshot(snapshotId: string): Promise<void> 
  * Clears all recovery snapshots
  */
 export async function clearAllRecoverySnapshots(): Promise<void> {
+  await enforcePermission('BACKUP_RESTORE', 'အရန်သိမ်းဆည်းမှုများ အားလုံး ရှင်းလင်းခြင်း');
   await db.recoverySnapshots.clear();
 }

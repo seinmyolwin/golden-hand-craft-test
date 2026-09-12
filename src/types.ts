@@ -1192,4 +1192,51 @@ export interface RepairCapability {
   description: string;
 }
 
+// ============================================================================
+// Phase 18C: RBAC & Financial Operation Authorization Types
+// ============================================================================
+
+export type UserRole = 'OWNER' | 'USER';
+
+export interface AppUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  pinSalt?: string;
+  pinHash?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSession {
+  userId: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  loginTimestamp: string;
+  token?: string;
+}
+
+export type PermissionAction =
+  | 'ACCESS_SETTINGS'
+  | 'ACCESS_AUDIT_HISTORY'
+  | 'MANAGE_MASTER_DATA'
+  | 'DELETE_MASTER_DATA'
+  | 'VOID_TRANSACTION'
+  | 'DELETE_FINANCIAL_RECORD'
+  | 'STOCK_TRANSFER'
+  | 'STOCK_ADJUSTMENT'
+  | 'CASH_ADJUSTMENT'
+  | 'DAILY_CLOSING_CORRECTION'
+  | 'PROCESS_RETURN_REFUND'
+  | 'BACKUP_EXPORT'
+  | 'BACKUP_RESTORE'
+  | 'BUSINESS_INITIALIZATION'
+  | 'DATABASE_REPAIR'
+  | 'CLEAR_DATABASE'
+  | 'MANAGE_USERS'
+  | 'OPERATIONAL_DATA_ENTRY';
+
 

@@ -16,6 +16,7 @@ import { DailyClosingRecord, CashMovementRecord, AuditLogEntry } from '../types'
 import { db, ShweLetYarDatabase } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
 import { calculateDailyCashSummary, buildCashIdempotencyKey } from './cashLedgerService';
+import { enforcePermission } from './authorizationService';
 
 export interface DailyClosingInput {
   closingDate: string; // YYYY-MM-DD
@@ -207,6 +208,7 @@ export async function correctDailyClosingAtomic(
   input: DailyClosingCorrectionInput,
   targetDb: ShweLetYarDatabase = db
 ): Promise<DailyClosingRecord> {
+  await enforcePermission('DAILY_CLOSING_CORRECTION', 'နေ့ချုပ်စာရင်း ပြင်ဆင်ညှိနှိုင်းခြင်း');
   const { closingDate, newActualCountedCash, correctionReason, notes, correctedBy } = input;
 
   if (!closingDate) {

@@ -55,6 +55,7 @@ import {
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
 import { recordAuditEvent } from '../services/auditTrailService';
+import { enforcePermission } from '../services/authorizationService';
 
 export * from './types';
 export * from './errors';
@@ -79,6 +80,7 @@ export class ProductRepository implements IProductRepository {
   }
 
   async save(product: Product): Promise<string> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်း မာစတာဒေတာ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const toSave: Product = {
       ...product,
@@ -92,6 +94,7 @@ export class ProductRepository implements IProductRepository {
   }
 
   async saveMany(products: Product[]): Promise<void> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်း မာစတာဒေတာများ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const enriched = products.map((p) => ({
       ...p,
@@ -116,10 +119,12 @@ export class ProductRepository implements IProductRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ကုန်ပစ္စည်း ဖျက်ပစ်ခြင်း');
     await this.database.products.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်ပစ္စည်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.products.clear();
   }
 
@@ -140,6 +145,7 @@ export class SupplierRepository implements ISupplierRepository {
   }
 
   async save(supplier: Supplier): Promise<string> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ကြမ်းပေးသွင်းသူ မာစတာဒေတာ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const toSave: Supplier = {
       ...supplier,
@@ -152,6 +158,7 @@ export class SupplierRepository implements ISupplierRepository {
   }
 
   async saveMany(suppliers: Supplier[]): Promise<void> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ကြမ်းပေးသွင်းသူ မာစတာဒေတာများ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const enriched = suppliers.map((s) => ({
       ...s,
@@ -174,10 +181,12 @@ export class SupplierRepository implements ISupplierRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ပေးသွင်းသူ ဖျက်ပစ်ခြင်း');
     await this.database.suppliers.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ပေးသွင်းသူများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.suppliers.clear();
   }
 
@@ -198,6 +207,7 @@ export class MerchantRepository implements IMerchantRepository {
   }
 
   async save(merchant: Merchant): Promise<string> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ဝယ်ယူသူ/ကုန်သည် မာစတာဒေတာ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const toSave: Merchant = {
       ...merchant,
@@ -210,6 +220,7 @@ export class MerchantRepository implements IMerchantRepository {
   }
 
   async saveMany(merchants: Merchant[]): Promise<void> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ဝယ်ယူသူ/ကုန်သည် မာစတာဒေတာများ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
     const enriched = merchants.map((m) => ({
       ...m,
@@ -308,10 +319,12 @@ export class MerchantRepository implements IMerchantRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ကုန်သည် ဖျက်ပစ်ခြင်း');
     await this.database.merchants.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်သည်များ အားလုံးရှင်းလင်းခြင်း');
     await this.database.merchants.clear();
   }
 
@@ -537,6 +550,7 @@ export class TransactionRepository implements ITransactionRepository {
    * 6. Logs audit entry
    */
   async cancelInboundAtomic(txId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<TransactionRecord> {
+    await enforcePermission('VOID_TRANSACTION', 'ကုန်သိမ်းမှတ်တမ်း ပယ်ဖျက်ခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -818,10 +832,12 @@ export class TransactionRepository implements ITransactionRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'ကုန်သိမ်းငွေစာရင်း ဖျက်ပစ်ခြင်း');
     await this.database.transactions.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်သိမ်းငွေစာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.transactions.clear();
   }
 
@@ -1025,6 +1041,7 @@ export class SaleRepository implements ISaleRepository {
    * 6. Logs audit entry
    */
   async cancelSaleAtomic(saleId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<SaleRecord> {
+    await enforcePermission('VOID_TRANSACTION', 'အရောင်းမှတ်တမ်း ပယ်ဖျက်ခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -1165,10 +1182,12 @@ export class SaleRepository implements ISaleRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'အရောင်းငွေစာရင်း ဖျက်ပစ်ခြင်း');
     await this.database.sales.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'အရောင်းငွေစာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.sales.clear();
   }
 
@@ -1334,6 +1353,7 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
    * Atomic Purchase Cancellation
    */
   async cancelPurchaseAtomic(purchaseId: string, reason: string = 'သုံးစွဲသူမှ ပယ်ဖျက်သည်'): Promise<MerchantPurchaseRecord> {
+    await enforcePermission('VOID_TRANSACTION', 'ကုန်ဝယ်မှတ်တမ်း ပယ်ဖျက်ခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -1465,10 +1485,12 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'ကုန်ဝယ်ငွေစာရင်း ဖျက်ပစ်ခြင်း');
     await this.database.merchantPurchases.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်ဝယ်ငွေစာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.merchantPurchases.clear();
   }
 
@@ -1556,6 +1578,7 @@ export class OrderRepository implements IOrderRepository {
   }
 
   async cancelOrderAtomic(orderId: string, reason: string = 'အော်ဒါပယ်ဖျက်သည်'): Promise<MerchantOrder> {
+    await enforcePermission('VOID_TRANSACTION', 'အော်ဒါမှတ်တမ်း ပယ်ဖျက်ခြင်း');
     return this.database.transaction(
       'rw',
       [this.database.orders, this.database.auditLogs],
@@ -1598,10 +1621,12 @@ export class OrderRepository implements IOrderRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'အော်ဒါမှတ်တမ်း ဖျက်ပစ်ခြင်း');
     await this.database.orders.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'အော်ဒါမှတ်တမ်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.orders.clear();
   }
 
@@ -1622,11 +1647,13 @@ export class PeerTradeRepository implements IPeerTradeRepository {
   }
 
   async save(trade: PeerTradeRecord): Promise<string> {
+    await enforcePermission('STOCK_TRANSFER', 'အချင်းချင်း ကုန်ပစ္စည်း လွှဲပြောင်းဖလှယ်ခြင်း');
     await this.database.peerTrades.put(trade);
     return trade.id;
   }
 
   async saveTradeAtomic(trade: PeerTradeRecord): Promise<PeerTradeRecord> {
+    await enforcePermission('STOCK_TRANSFER', 'အချင်းချင်း ကုန်ပစ္စည်း လွှဲပြောင်းဖလှယ်ခြင်း');
     return this.database.transaction(
       'rw',
       [this.database.peerTrades, this.database.products, this.database.auditLogs, this.database.stockMovements],
@@ -1698,14 +1725,17 @@ export class PeerTradeRepository implements IPeerTradeRepository {
   }
 
   async saveMany(trades: PeerTradeRecord[]): Promise<void> {
+    await enforcePermission('STOCK_TRANSFER', 'အချင်းချင်း ကုန်ပစ္စည်း လွှဲပြောင်းဖလှယ်ခြင်း');
     await this.database.peerTrades.bulkPut(trades);
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'အချင်းချင်း ကုန်ပစ္စည်းလွှဲပြောင်းမှု ဖျက်ပစ်ခြင်း');
     await this.database.peerTrades.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'အချင်းချင်း ကုန်ပစ္စည်းလွှဲပြောင်းမှုများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.peerTrades.clear();
   }
 
@@ -1726,6 +1756,7 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
   }
 
   async save(adj: StockAdjustmentRecord): Promise<string> {
+    await enforcePermission('STOCK_ADJUSTMENT', 'ကုန်ပစ္စည်း လက်ကျန်ညှိနှိုင်းမှု ပြုလုပ်ခြင်း');
     await this.database.stockAdjustments.put(adj);
     return adj.id;
   }
@@ -1738,6 +1769,7 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
    * 4. Logs audit entry
    */
   async saveAdjustmentAtomic(adj: StockAdjustmentRecord): Promise<StockAdjustmentRecord> {
+    await enforcePermission('STOCK_ADJUSTMENT', 'ကုန်ပစ္စည်း လက်ကျန်ညှိနှိုင်းမှု ပြုလုပ်ခြင်း');
     return this.database.transaction(
       'rw',
       [this.database.stockAdjustments, this.database.products, this.database.auditLogs, this.database.stockMovements],
@@ -1810,14 +1842,17 @@ export class StockAdjustmentRepository implements IStockAdjustmentRepository {
   }
 
   async saveMany(adjustments: StockAdjustmentRecord[]): Promise<void> {
+    await enforcePermission('STOCK_ADJUSTMENT', 'ကုန်ပစ္စည်း လက်ကျန်ညှိနှိုင်းမှု ပြုလုပ်ခြင်း');
     await this.database.stockAdjustments.bulkPut(adjustments);
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_FINANCIAL_RECORD', 'လက်ကျန်ညှိနှိုင်းမှု ဖျက်ပစ်ခြင်း');
     await this.database.stockAdjustments.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'လက်ကျန်ညှိနှိုင်းမှုများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.stockAdjustments.clear();
   }
 
@@ -1851,6 +1886,7 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
     name?: string,
     reason: string = 'သုံးစွဲသူမှ ဖျက်ပစ်သည်'
   ): Promise<SoftDeletedItem> {
+    await enforcePermission('DELETE_MASTER_DATA', 'မော်ကွန်းထိန်းသိမ်း ဖျက်ပစ်ခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -1943,6 +1979,7 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
    * Atomic Restore from Recycle Bin
    */
   async restoreAtomic(softDeleteId: string): Promise<any> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'အမှိုက်ပုံးမှ ပြန်လည်ဆယ်ယူခြင်း');
     return this.database.transaction(
       'rw',
       [
@@ -2007,10 +2044,12 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'အမှိုက်ပုံးမှ အပြီးတိုင်ဖျက်ပစ်ခြင်း');
     await this.database.softDeletedItems.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'အမှိုက်ပုံးတစ်ခုလုံး ရှင်းလင်းခြင်း');
     await this.database.softDeletedItems.clear();
   }
 
@@ -2043,6 +2082,7 @@ export class AuditRepository implements IAuditRepository {
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'လုပ်ဆောင်ချက်မှတ်တမ်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.auditLogs.clear();
   }
 
@@ -2063,19 +2103,23 @@ export class RawMaterialPresetRepository implements IRawMaterialPresetRepository
   }
 
   async save(preset: RawMaterialPreset): Promise<string> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ကြမ်းအမျိုးအစား သတ်မှတ်ချက် သိမ်းဆည်းခြင်း');
     await this.database.rawMaterialPresets.put(preset);
     return preset.id;
   }
 
   async saveMany(presets: RawMaterialPreset[]): Promise<void> {
+    await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ကြမ်းအမျိုးအစား သတ်မှတ်ချက်များ သိမ်းဆည်းခြင်း');
     await this.database.rawMaterialPresets.bulkPut(presets);
   }
 
   async delete(id: string): Promise<void> {
+    await enforcePermission('DELETE_MASTER_DATA', 'ကုန်ကြမ်းအမျိုးအစား သတ်မှတ်ချက် ဖျက်ပစ်ခြင်း');
     await this.database.rawMaterialPresets.delete(id);
   }
 
   async clear(): Promise<void> {
+    await enforcePermission('CLEAR_DATABASE', 'ကုန်ကြမ်းအမျိုးအစား သတ်မှတ်ချက်များ အားလုံးရှင်းလင်းခြင်း');
     await this.database.rawMaterialPresets.clear();
   }
 
@@ -2094,6 +2138,9 @@ export class SettingsRepository implements ISettingsRepository {
   }
 
   async set<T>(key: string, value: T): Promise<void> {
+    if (!key.startsWith('rbac_')) {
+      await enforcePermission('ACCESS_SETTINGS', `စနစ်ဆက်တင်များ ပြင်ဆင်ခြင်း (${key})`);
+    }
     await this.database.settings.put({
       key,
       value,
@@ -2102,6 +2149,9 @@ export class SettingsRepository implements ISettingsRepository {
   }
 
   async delete(key: string): Promise<void> {
+    if (!key.startsWith('rbac_')) {
+      await enforcePermission('ACCESS_SETTINGS', `စနစ်ဆက်တင် ဖျက်ပစ်ခြင်း (${key})`);
+    }
     await this.database.settings.delete(key);
   }
 
