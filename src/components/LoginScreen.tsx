@@ -27,8 +27,11 @@ import {
   handleFailedAttempt,
   handleSuccessfulUnlock,
   derivePinCredentials,
+  deriveRecoveryCredentials,
+  generateSecureRecoveryKey,
 } from '../services/cryptoSecurity';
 import { switchUserSession } from '../services/authorizationService';
+import { saveAppLockSettings } from '../utils/storage';
 
 interface LoginScreenProps {
   appLockSettings?: AppLockSettings;
@@ -48,6 +51,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [lockoutSeconds, setLockoutSeconds] = useState<number>(0);
+
+  // First-Time PIN Setup State
+  const [setupPin, setSetupPin] = useState<string>('');
+  const [confirmSetupPin, setConfirmSetupPin] = useState<string>('');
+  const [showSetupPin, setShowSetupPin] = useState<boolean>(false);
 
   // Recovery & Reset Modal State
   const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState<boolean>(false);
@@ -108,23 +116,70 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  // Select Owner -> If no PIN configured, log in immediately; otherwise show PIN keypad
-  const handleSelectOwner = async () => {
+  // Select Owner -> Always enter OWNER mode (shows PIN keypad if configured, or First-Time PIN Setup if not configured)
+  const handleSelectOwner = () => {
     setErrorMsg('');
     setEnteredPin('');
-    if (!hasConfiguredPin) {
-      // No PIN configured -> direct login as OWNER
-      setIsVerifying(true);
-      try {
-        const session = await switchUserSession('OWNER');
-        onLoginSuccess(session);
-      } catch (err: any) {
-        setErrorMsg(err.message || 'ဆိုင်ရှင်အကောင့်သို့ ဝင်ရောက်ရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');
-      } finally {
-        setIsVerifying(false);
+    setSetupPin('');
+    setConfirmSetupPin('');
+    setSelectedRole('OWNER');
+  };
+
+  // Handle First-Time Owner PIN Setup
+  const handleCreateFirstTimeOwnerPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isVerifying) return;
+    setErrorMsg('');
+
+    const cleanPin = setupPin.trim();
+    const cleanConfirm = confirmSetupPin.trim();
+
+    if (!cleanPin || cleanPin.length < 4) {
+      setErrorMsg('ဆိုင်ရှင် PIN သည် အနည်းဆုံး ၄ လုံး (ဂဏန်းများ) ဖြစ်ရပါမည်');
+      return;
+    }
+
+    if (cleanPin !== cleanConfirm) {
+      setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
+      return;
+    }
+
+    setIsVerifying(true);
+
+    try {
+      const pinCreds = await derivePinCredentials(cleanPin);
+      const recKey = generateSecureRecoveryKey();
+      const recCreds = await deriveRecoveryCredentials(recKey);
+
+      const updatedSettings: AppLockSettings = {
+        ...(appLockSettings || { enabled: true, autoLockMinutes: 5, lockOnStartup: true }),
+        enabled: true,
+        isPinInitialized: true,
+        pinSalt: pinCreds.salt,
+        pinHash: pinCreds.hash,
+        recoverySalt: recCreds.salt,
+        recoveryHash: recCreds.hash,
+        recoveryKeyDisplay: recKey,
+        failedAttempts: 0,
+        lockedUntilTimestamp: undefined,
+        lastResetAt: new Date().toISOString(),
+        lastUnlockedAt: new Date().toISOString(),
+      };
+      delete updatedSettings.passcode;
+      delete updatedSettings.pin;
+
+      saveAppLockSettings(updatedSettings);
+
+      if (onUpdateAppLockSettings) {
+        onUpdateAppLockSettings(updatedSettings);
       }
-    } else {
-      setSelectedRole('OWNER');
+
+      const session = await switchUserSession('OWNER', { pin: cleanPin });
+      onLoginSuccess(session);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'PIN သတ်မှတ်ရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -340,7 +395,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   </p>
                   <p className="text-[10px] text-amber-300/80 mt-1 flex items-center gap-1">
                     <KeyRound className="w-3 h-3" />
-                    <span>{hasConfiguredPin ? 'PIN စကားဝှက် လိုအပ်ပါသည်' : 'တိုက်ရိုက်ဝင်ရောက်နိုင်ပါသည်'}</span>
+                    <span>{hasConfiguredPin ? 'PIN စကားဝှက် လိုအပ်ပါသည်' : 'ပထမဆုံး လျှို့ဝှက် PIN သတ်မှတ်ရန်'}</span>
                   </p>
                 </div>
               </div>
@@ -384,9 +439,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <span>Offline-First PWA • အင်တာနက်မလိုဘဲ အပြည့်အဝ သုံးနိုင်ပါသည်</span>
             </div>
           </div>
-        ) : (
+        ) : hasConfiguredPin ? (
           /* ========================================================================= */
-          /* VIEW 2: OWNER PIN VERIFICATION KEYPAD */
+          /* VIEW 2A: OWNER PIN VERIFICATION KEYPAD */
           /* ========================================================================= */
           <div className="w-full mt-4 flex flex-col items-center">
             {/* Back to Role Selection Button */}
@@ -532,6 +587,101 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <span>PIN မေ့နေပါသလား? Recovery Key ဖြင့် ပြန်ယူမည်</span>
             </button>
           </div>
+        ) : (
+          /* ========================================================================= */
+          /* VIEW 2B: FIRST-TIME OWNER PIN SETUP */
+          /* ========================================================================= */
+          <form onSubmit={handleCreateFirstTimeOwnerPin} className="w-full mt-4 flex flex-col items-center text-left">
+            {/* Back to Role Selection Button */}
+            <div className="w-full flex items-center justify-between mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole(null);
+                  setSetupPin('');
+                  setConfirmSetupPin('');
+                  setErrorMsg('');
+                }}
+                className="text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span>← အခန်းကဏ္ဍ ပြန်ရွေးမည်</span>
+              </button>
+
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40 flex items-center gap-1">
+                <Crown className="w-3.5 h-3.5" />
+                <span>ပိုင်ရှင် PIN သတ်မှတ်ရန်</span>
+              </span>
+            </div>
+
+            <div className="w-full mb-4 p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-200 text-xs space-y-1">
+              <div className="flex items-center gap-2 font-bold text-amber-300">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>ဆိုင်ရှင်အကောင့် လုံခြုံရေး PIN သတ်မှတ်ပါ</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                ပထမဆုံးအကြိမ် ဆိုင်ရှင်အကောင့် အသုံးပြုရန် လျှို့ဝှက် PIN (၄ လုံး သို့မဟုတ် ၆ လုံး) သတ်မှတ်ပေးပါ။ ထို PIN ကို အသုံးပြု၍ ဆိုင်ရှင်အဖြစ် သီးသန့် ဝင်ရောက်နိုင်ပါမည်။
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="w-full mb-3 p-3 bg-rose-950/80 border border-rose-700 text-rose-300 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            <div className="w-full space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  ဆိုင်ရှင် PIN အသစ် (၄ လုံး သို့မဟုတ် ၆ လုံး) *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSetupPin ? 'text' : 'password'}
+                    autoFocus
+                    maxLength={8}
+                    required
+                    value={setupPin}
+                    onChange={(e) => setSetupPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="PIN ရိုက်ထည့်ပါ"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl font-mono text-center tracking-widest text-lg text-amber-300 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSetupPin(!showSetupPin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer"
+                  >
+                    {showSetupPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  PIN အသစ် ထပ်မံအတည်ပြုပါ *
+                </label>
+                <input
+                  type={showSetupPin ? 'text' : 'password'}
+                  maxLength={8}
+                  required
+                  value={confirmSetupPin}
+                  onChange={(e) => setConfirmSetupPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="PIN အသစ် ပြန်ရိုက်ထည့်ပါ"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl font-mono text-center tracking-widest text-lg text-amber-300 focus:outline-none"
+                />
+              </div>
+
+              <button
+                id="login-setup-owner-pin-submit-btn"
+                type="submit"
+                disabled={isVerifying || setupPin.length < 4}
+                className="w-full mt-2 py-3 bg-amber-500 hover:bg-amber-400 active:scale-[0.99] disabled:opacity-50 text-slate-950 font-black text-sm rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-950/40"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>{isVerifying ? 'PIN သတ်မှတ်နေပါသည်...' : 'PIN သတ်မှတ်ပြီး ဆိုင်ရှင်အဖြစ် ဝင်မည်'}</span>
+              </button>
+            </div>
+          </form>
         )}
       </div>
 

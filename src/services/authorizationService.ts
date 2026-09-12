@@ -462,15 +462,19 @@ export async function switchUserSession(
   let targetUser: AppUser | undefined;
 
   if (targetRoleOrUserId === 'OWNER') {
-    targetUser = users.find((u) => u.role === 'OWNER') || DEFAULT_OWNER_USER;
+    targetUser = users.find((u) => u.role === 'OWNER' && u.isActive !== false);
   } else if (targetRoleOrUserId === 'USER') {
-    targetUser = users.find((u) => u.role === 'USER') || DEFAULT_STAFF_USER;
+    targetUser = users.find((u) => u.role === 'USER' && u.isActive !== false);
   } else {
-    targetUser = users.find((u) => u.id === targetRoleOrUserId || u.username === targetRoleOrUserId);
+    targetUser = users.find((u) => (u.id === targetRoleOrUserId || u.username === targetRoleOrUserId) && u.isActive !== false);
   }
 
   if (!targetUser || !targetUser.isActive) {
-    throw new Error('သတ်မှတ်ထားသော အကောင့်ကို ရှာမတွေ့ပါ သို့မဟုတ် ပိတ်ထားပါသည်');
+    throw new AuthorizationError(
+      'UNAUTHORIZED_ROLE',
+      currentSession?.role || 'UNAUTHENTICATED',
+      'သတ်မှတ်ထားသော အကောင့်ကို ရှာမတွေ့ပါ သို့မဟုတ် ပိတ်ထားပါသည်'
+    );
   }
 
   // Privilege Escalation Check: If promoting to OWNER from USER or unauthenticated state
@@ -484,8 +488,9 @@ export async function switchUserSession(
       }
     } catch {}
 
-    const isLockEnabled = Boolean(lockSettings.enabled || (lockSettings as any).isEnabled);
-    if (isLockEnabled && (lockSettings.pinHash || lockSettings.passcode || lockSettings.pin)) {
+    const hasPinConfigured = Boolean(lockSettings.pinHash || lockSettings.passcode || lockSettings.pin);
+
+    if (hasPinConfigured) {
       if (!credentials?.pin) {
         throw new AuthorizationError(
           'ROLE_ESCALATION_REJECTED',
@@ -513,6 +518,15 @@ export async function switchUserSession(
           'ROLE_ESCALATION_REJECTED',
           currentSession?.role || 'UNAUTHENTICATED',
           'ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ ရာထူးတိုးမြှင့်ခွင့် ငြင်းပယ်ပါသည်'
+        );
+      }
+    } else {
+      // No PIN configured in lockSettings yet
+      if (!credentials?.pin || credentials.pin.trim().length < 4) {
+        throw new AuthorizationError(
+          'ROLE_ESCALATION_REJECTED',
+          currentSession?.role || 'UNAUTHENTICATED',
+          'ဆိုင်ရှင် (Owner) အဖြစ် ပြောင်းလဲရန် PIN သတ်မှတ်ထားခြင်း မရှိသေးပါ။ PIN သတ်မှတ်ပြီးမှသာ ဝင်ရောက်နိုင်ပါမည်'
         );
       }
     }

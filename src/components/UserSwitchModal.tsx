@@ -9,9 +9,18 @@ import {
   LogOut,
   Shield,
   ArrowRight,
+  Eye,
+  EyeOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { UserSession, AppLockSettings } from '../types';
 import { switchUserSession } from '../services/authorizationService';
+import {
+  derivePinCredentials,
+  deriveRecoveryCredentials,
+  generateSecureRecoveryKey,
+} from '../services/cryptoSecurity';
+import { saveAppLockSettings } from '../utils/storage';
 
 interface UserSwitchModalProps {
   isOpen: boolean;
@@ -32,6 +41,8 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
 }) => {
   const [selectedTarget, setSelectedTarget] = useState<'OWNER' | 'USER' | null>(null);
   const [pinInput, setPinInput] = useState<string>('');
+  const [confirmPinInput, setConfirmPinInput] = useState<string>('');
+  const [showPin, setShowPin] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
@@ -61,12 +72,59 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
     e.preventDefault();
     setIsProcessing(true);
     setErrorMsg('');
+
     try {
-      const newSession = await switchUserSession('OWNER', {
-        pin: hasConfiguredPin ? pinInput : undefined,
-      });
-      onSessionChanged(newSession);
-      onClose();
+      if (!hasConfiguredPin) {
+        // First time setup PIN
+        const cleanPin = pinInput.trim();
+        const cleanConfirm = confirmPinInput.trim();
+
+        if (cleanPin.length < 4) {
+          setErrorMsg('PIN သည် အနည်းဆုံး ၄ လုံး (ဂဏန်းများ) ဖြစ်ရပါမည်');
+          setIsProcessing(false);
+          return;
+        }
+
+        if (cleanPin !== cleanConfirm) {
+          setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
+          setIsProcessing(false);
+          return;
+        }
+
+        const pinCreds = await derivePinCredentials(cleanPin);
+        const recKey = generateSecureRecoveryKey();
+        const recCreds = await deriveRecoveryCredentials(recKey);
+
+        const updatedSettings: AppLockSettings = {
+          ...(appLockSettings || { enabled: true, autoLockMinutes: 5, lockOnStartup: true }),
+          enabled: true,
+          isPinInitialized: true,
+          pinSalt: pinCreds.salt,
+          pinHash: pinCreds.hash,
+          recoverySalt: recCreds.salt,
+          recoveryHash: recCreds.hash,
+          recoveryKeyDisplay: recKey,
+          failedAttempts: 0,
+          lockedUntilTimestamp: undefined,
+          lastResetAt: new Date().toISOString(),
+          lastUnlockedAt: new Date().toISOString(),
+        };
+        delete updatedSettings.passcode;
+        delete updatedSettings.pin;
+
+        saveAppLockSettings(updatedSettings);
+
+        const newSession = await switchUserSession('OWNER', { pin: cleanPin });
+        onSessionChanged(newSession);
+        onClose();
+      } else {
+        // Standard Owner PIN verification
+        const newSession = await switchUserSession('OWNER', {
+          pin: pinInput,
+        });
+        onSessionChanged(newSession);
+        onClose();
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'ဆိုင်ရှင်အကောင့်သို့ ပြောင်းလဲရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');
     } finally {
@@ -114,13 +172,10 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
               type="button"
               disabled={isOwnerActive || isProcessing}
               onClick={() => {
-                if (hasConfiguredPin) {
-                  setSelectedTarget('OWNER');
-                  setErrorMsg('');
-                } else {
-                  // Direct switch
-                  handleSwitchToOwnerSubmit({ preventDefault: () => {} } as any);
-                }
+                setSelectedTarget('OWNER');
+                setPinInput('');
+                setConfirmPinInput('');
+                setErrorMsg('');
               }}
               className={`w-full p-3.5 rounded-2xl border-2 text-left flex items-center justify-between transition-all ${
                 isOwnerActive
@@ -197,26 +252,60 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
             </div>
           </div>
         ) : (
-          /* OWNER PIN PROMPT */
+          /* OWNER PIN PROMPT OR SETUP */
           <form onSubmit={handleSwitchToOwnerSubmit} className="mt-4 space-y-4">
             <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2">
-              <KeyRound className="w-4 h-4 shrink-0" />
-              <span>ဆိုင်ရှင်အဆင့်သို့ ပြောင်းလဲရန် ဆိုင်ရှင် PIN ရိုက်ထည့်ပါ</span>
+              <KeyRound className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>
+                {hasConfiguredPin
+                  ? 'ဆိုင်ရှင်အဆင့်သို့ ပြောင်းလဲရန် ဆိုင်ရှင် PIN ရိုက်ထည့်ပါ'
+                  : 'ပထမဆုံးအကြိမ် ဆိုင်ရှင် PIN သတ်မှတ်ပါ'}
+              </span>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">ဆိုင်ရှင် PIN *</label>
-              <input
-                type="password"
-                autoFocus
-                maxLength={8}
-                required
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-                placeholder="PIN ၄ လုံး ရိုက်ထည့်ပါ"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl font-mono text-center tracking-widest text-lg text-amber-400 focus:outline-none focus:border-amber-400"
-              />
-            </div>
+            {hasConfiguredPin ? (
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">ဆိုင်ရှင် PIN *</label>
+                <input
+                  type="password"
+                  autoFocus
+                  maxLength={8}
+                  required
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="PIN ၄ လုံး ရိုက်ထည့်ပါ"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl font-mono text-center tracking-widest text-lg text-amber-400 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">ဆိုင်ရှင် PIN အသစ် *</label>
+                  <input
+                    type="password"
+                    autoFocus
+                    maxLength={8}
+                    required
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="PIN အသစ် ရိုက်ထည့်ပါ (အနည်းဆုံး ၄ လုံး)"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl font-mono text-center tracking-widest text-lg text-amber-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">PIN အသစ် ထပ်မံအတည်ပြုပါ *</label>
+                  <input
+                    type="password"
+                    maxLength={8}
+                    required
+                    value={confirmPinInput}
+                    onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="PIN အသစ် ပြန်ရိုက်ထည့်ပါ"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl font-mono text-center tracking-widest text-lg text-amber-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
@@ -224,6 +313,7 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
                 onClick={() => {
                   setSelectedTarget(null);
                   setPinInput('');
+                  setConfirmPinInput('');
                   setErrorMsg('');
                 }}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl cursor-pointer"
@@ -235,7 +325,13 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
                 disabled={isProcessing || pinInput.length < 4}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md"
               >
-                <span>{isProcessing ? 'စစ်ဆေးနေပါသည်...' : 'ဆိုင်ရှင်အဖြစ် ပြောင်းမည်'}</span>
+                <span>
+                  {isProcessing
+                    ? 'ဆောင်ရွက်နေပါသည်...'
+                    : hasConfiguredPin
+                    ? 'ဆိုင်ရှင်အဖြစ် ပြောင်းမည်'
+                    : 'PIN သတ်မှတ်၍ ဝင်မည်'}
+                </span>
               </button>
             </div>
           </form>
