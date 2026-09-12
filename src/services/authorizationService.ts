@@ -21,6 +21,8 @@ import { recordAuditEvent } from './auditTrailService';
 import { getStoredAppLockSettings } from '../utils/storage';
 import { verifyAppLockPin } from './cryptoSecurity';
 
+export type { PermissionAction, UserRole, AppUser, UserSession } from '../types';
+
 export class AuthorizationError extends Error {
   public readonly action: PermissionAction | string;
   public readonly effectiveRole: UserRole | string;

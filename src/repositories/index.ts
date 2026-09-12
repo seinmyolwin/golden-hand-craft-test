@@ -24,6 +24,7 @@ import {
   StockMovementRecord,
   CashMovementRecord,
   DailyClosingRecord,
+  PermissionAction,
 } from '../types';
 import {
   IProductRepository,
@@ -55,7 +56,7 @@ import {
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
 import { recordAuditEvent } from '../services/auditTrailService';
-import { enforcePermission } from '../services/authorizationService';
+import { enforcePermission, AuthorizationError } from '../services/authorizationService';
 
 export * from './types';
 export * from './errors';
@@ -2149,7 +2150,14 @@ export class SettingsRepository implements ISettingsRepository {
   }
 
   async set<T>(key: string, value: T): Promise<void> {
-    if (!key.startsWith('rbac_')) {
+    if (key === 'rbac_users') {
+      await enforcePermission('MANAGE_USERS', `သုံးစွဲသူ အကောင့်များ ပြင်ဆင်သိမ်းဆည်းခြင်း (${key})`);
+      if (!Array.isArray(value) || value.length === 0 || !value.some((u: any) => u.role === 'OWNER' && u.isActive !== false)) {
+        throw new AuthorizationError('MANAGE_USERS', 'OWNER', 'စနစ်တွင် အနည်းဆုံး အသုံးပြုနိုင်သော ပိုင်ရှင် (Active Owner) အကောင့် တစ်ခု ရှိရပါမည်။');
+      }
+    } else if (key === 'rbac_active_session') {
+      await enforcePermission('ACCESS_SETTINGS', `အသုံးပြုသူ Session ပြင်ဆင်ခြင်း (${key})`);
+    } else {
       await enforcePermission('ACCESS_SETTINGS', `စနစ်ဆက်တင်များ ပြင်ဆင်ခြင်း (${key})`);
     }
     await this.database.settings.put({
@@ -2160,7 +2168,12 @@ export class SettingsRepository implements ISettingsRepository {
   }
 
   async delete(key: string): Promise<void> {
-    if (!key.startsWith('rbac_')) {
+    if (key === 'rbac_users') {
+      await enforcePermission('MANAGE_USERS', `သုံးစွဲသူ အကောင့်များ ဖျက်ပစ်ခြင်း (${key})`);
+      throw new AuthorizationError('MANAGE_USERS', 'OWNER', 'အသုံးပြုသူစာရင်း (rbac_users) ကို လုံးဝဖျက်ပစ်ခွင့် မရှိပါ။');
+    } else if (key === 'rbac_active_session') {
+      await enforcePermission('ACCESS_SETTINGS', `အသုံးပြုသူ Session ဖျက်ပစ်ခြင်း (${key})`);
+    } else {
       await enforcePermission('ACCESS_SETTINGS', `စနစ်ဆက်တင် ဖျက်ပစ်ခြင်း (${key})`);
     }
     await this.database.settings.delete(key);
@@ -2204,6 +2217,71 @@ export class AttachmentRepository implements IAttachmentRepository {
   }
 }
 
+function getStockMovementPermission(movement: StockMovementRecord): PermissionAction {
+  if (movement.movementType === 'OPENING_BALANCE' || movement.referenceType === 'OPENING') {
+    return 'BUSINESS_INITIALIZATION';
+  }
+  if (
+    movement.movementType === 'STOCK_ADJUSTMENT_IN' ||
+    movement.movementType === 'STOCK_ADJUSTMENT_OUT' ||
+    movement.movementType === 'DAMAGE_LOSS' ||
+    movement.referenceType === 'STOCK_ADJUSTMENT' ||
+    (movement.referenceType as string) === 'ADJUSTMENT'
+  ) {
+    return 'STOCK_ADJUSTMENT';
+  }
+  if (
+    movement.movementType === 'TRANSACTION_CANCELLED_REVERSAL' ||
+    movement.movementType === 'SALE_CANCELLED_REVERSAL' ||
+    movement.movementType === 'PURCHASE_CANCELLED_REVERSAL' ||
+    movement.movementType === 'SALES_RETURN_CANCELLED_REVERSAL' ||
+    movement.movementType === 'PURCHASE_RETURN_CANCELLED_REVERSAL'
+  ) {
+    return 'VOID_TRANSACTION';
+  }
+  if (movement.referenceType === 'MANUAL') {
+    return 'STOCK_ADJUSTMENT';
+  }
+  return 'OPERATIONAL_DATA_ENTRY';
+}
+
+async function verifyStockMovementBusinessContext(
+  database: ShweLetYarDatabase,
+  movement: StockMovementRecord
+): Promise<PermissionAction> {
+  const basePermission = getStockMovementPermission(movement);
+  if (basePermission !== 'OPERATIONAL_DATA_ENTRY') {
+    return basePermission;
+  }
+
+  // Verify that an operational stock movement has a valid, existing business transaction context
+  let hasValidContext = false;
+  try {
+    if (movement.referenceType === 'TRANSACTION') {
+      const tx = await database.transactions.get(movement.referenceId);
+      if (tx) hasValidContext = true;
+    } else if (movement.referenceType === 'SALE') {
+      const sale = await database.sales.get(movement.referenceId);
+      if (sale) hasValidContext = true;
+    } else if (movement.referenceType === 'PURCHASE') {
+      const mp = await database.merchantPurchases.get(movement.referenceId);
+      if (mp) hasValidContext = true;
+    } else if (movement.referenceType === 'PEER_TRADE') {
+      const pt = await database.peerTrades.get(movement.referenceId);
+      if (pt) hasValidContext = true;
+    }
+  } catch {
+    hasValidContext = false;
+  }
+
+  // If no legitimate referenced entity exists in the database, direct injection is treated as STOCK_ADJUSTMENT
+  if (!hasValidContext) {
+    return 'STOCK_ADJUSTMENT';
+  }
+
+  return 'OPERATIONAL_DATA_ENTRY';
+}
+
 export class StockMovementRepository implements IStockMovementRepository {
   constructor(private database: ShweLetYarDatabase = db) {}
 
@@ -2244,6 +2322,8 @@ export class StockMovementRepository implements IStockMovementRepository {
   }
 
   async recordMovement(movement: StockMovementRecord): Promise<string> {
+    const requiredPermission = await verifyStockMovementBusinessContext(this.database, movement);
+    await enforcePermission(requiredPermission, `ကုန်ပစ္စည်းလှုပ်ရှားမှု စာရင်းရေးသွင်းခြင်း (${movement.movementType})`);
     if (movement.idempotencyKey) {
       const existing = await this.database.stockMovements.where('idempotencyKey').equals(movement.idempotencyKey).first();
       if (existing) {
@@ -2259,6 +2339,10 @@ export class StockMovementRepository implements IStockMovementRepository {
   }
 
   async recordMovementsAtomic(movements: StockMovementRecord[]): Promise<void> {
+    for (const m of movements) {
+      const requiredPermission = await verifyStockMovementBusinessContext(this.database, m);
+      await enforcePermission(requiredPermission, `ကုန်ပစ္စည်းလှုပ်ရှားမှု စာရင်းရေးသွင်းခြင်း (${m.movementType})`);
+    }
     return this.database.transaction('rw', [this.database.stockMovements], async () => {
       for (const m of movements) {
         if (m.idempotencyKey) {
@@ -2278,6 +2362,97 @@ export class StockMovementRepository implements IStockMovementRepository {
     await enforcePermission('CLEAR_DATABASE', 'ကုန်ပစ္စည်းလှုပ်ရှားမှု စာရင်းများ အားလုံးရှင်းလင်းခြင်း');
     await this.database.stockMovements.clear();
   }
+}
+
+function getCashMovementPermission(movement: CashMovementRecord): PermissionAction {
+  if (movement.type === 'OPENING_FLOAT' || movement.referenceType === 'OPENING') {
+    return 'BUSINESS_INITIALIZATION';
+  }
+  if (
+    movement.type === 'MANUAL_CASH_ADJUSTMENT' ||
+    movement.referenceType === 'MANUAL_ADJUSTMENT'
+  ) {
+    return 'CASH_ADJUSTMENT';
+  }
+  if (
+    movement.type === 'DAILY_CLOSING_CORRECTION' ||
+    movement.referenceType === 'DAILY_CLOSING_CORRECTION'
+  ) {
+    return 'DAILY_CLOSING_CORRECTION';
+  }
+  if (
+    movement.type === 'SALE_CANCELLED_CASH_REVERSAL' ||
+    movement.type === 'TRANSACTION_CANCELLED_CASH_REVERSAL' ||
+    movement.type === 'PURCHASE_CANCELLED_CASH_REVERSAL' ||
+    movement.type === 'SALES_RETURN_CANCELLED_CASH_REVERSAL' ||
+    movement.type === 'PURCHASE_RETURN_CANCELLED_CASH_REVERSAL'
+  ) {
+    return 'VOID_TRANSACTION';
+  }
+  return 'OPERATIONAL_DATA_ENTRY';
+}
+
+async function verifyCashMovementBusinessContext(
+  database: ShweLetYarDatabase,
+  movement: CashMovementRecord
+): Promise<PermissionAction> {
+  const basePermission = getCashMovementPermission(movement);
+  if (basePermission !== 'OPERATIONAL_DATA_ENTRY') {
+    return basePermission;
+  }
+
+  // Verify that an operational cash movement has a valid, existing business transaction context
+  let hasValidContext = false;
+  try {
+    if (movement.referenceType === 'SALE' || movement.type === 'SALE_PAYMENT_IN') {
+      const sale = await database.sales.get(movement.referenceId);
+      if (sale) hasValidContext = true;
+    } else if (
+      movement.referenceType === 'TRANSACTION' ||
+      movement.type === 'SUPPLIER_PAYOUT' ||
+      movement.type === 'SUPPLIER_ADVANCE_GIVEN' ||
+      movement.type === 'SUPPLIER_REPAYMENT_IN'
+    ) {
+      const tx = await database.transactions.get(movement.referenceId);
+      if (tx) hasValidContext = true;
+    } else if (
+      movement.referenceType === 'PURCHASE' ||
+      movement.type === 'MERCHANT_PURCHASE_PAYOUT'
+    ) {
+      const mp = await database.merchantPurchases.get(movement.referenceId);
+      if (mp) hasValidContext = true;
+    } else if (
+      movement.referenceType === 'MERCHANT_PAYMENT' ||
+      movement.type === 'MERCHANT_DEBT_COLLECTION_IN'
+    ) {
+      const m = await database.merchants.get(movement.referenceId);
+      if (m) hasValidContext = true;
+    } else if (movement.referenceType === 'SUPPLIER_ADVANCE') {
+      const s = await database.suppliers.get(movement.referenceId);
+      if (s) hasValidContext = true;
+    } else if (movement.referenceType === 'DAILY_CLOSING') {
+      const dc = await database.dailyClosings.get(movement.referenceId);
+      if (dc) hasValidContext = true;
+    } else if (
+      movement.referenceType === 'RETURN' ||
+      movement.referenceType === 'SALES_RETURN' ||
+      movement.referenceType === 'PURCHASE_RETURN' ||
+      movement.type === 'SALES_RETURN_REFUND_OUT' ||
+      movement.type === 'PURCHASE_RETURN_RECOVERY_IN'
+    ) {
+      const ret = await database.returnsAndRefunds.get(movement.referenceId);
+      if (ret) hasValidContext = true;
+    }
+  } catch {
+    hasValidContext = false;
+  }
+
+  // If no legitimate referenced entity exists in the database, direct injection is treated as CASH_ADJUSTMENT
+  if (!hasValidContext) {
+    return 'CASH_ADJUSTMENT';
+  }
+
+  return 'OPERATIONAL_DATA_ENTRY';
 }
 
 export class CashMovementRepository implements ICashMovementRepository {
@@ -2308,6 +2483,8 @@ export class CashMovementRepository implements ICashMovementRepository {
   }
 
   async recordMovement(movement: CashMovementRecord): Promise<string> {
+    const requiredPermission = await verifyCashMovementBusinessContext(this.database, movement);
+    await enforcePermission(requiredPermission, `ငွေသားလှုပ်ရှားမှု စာရင်းရေးသွင်းခြင်း (${movement.type})`);
     if (movement.idempotencyKey) {
       const existing = await this.database.cashMovements.where('idempotencyKey').equals(movement.idempotencyKey).first();
       if (existing) {
@@ -2319,6 +2496,10 @@ export class CashMovementRepository implements ICashMovementRepository {
   }
 
   async recordMovementsMany(movements: CashMovementRecord[]): Promise<void> {
+    for (const m of movements) {
+      const requiredPermission = await verifyCashMovementBusinessContext(this.database, m);
+      await enforcePermission(requiredPermission, `ငွေသားလှုပ်ရှားမှု စာရင်းရေးသွင်းခြင်း (${m.type})`);
+    }
     return this.database.transaction('rw', [this.database.cashMovements], async () => {
       for (const m of movements) {
         if (m.idempotencyKey) {

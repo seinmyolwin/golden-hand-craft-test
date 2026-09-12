@@ -777,4 +777,341 @@ describe('Phase 18C — OWNER / USER RBAC & Financial Operation Authorization', 
       expect(orderList.length).toBeGreaterThan(0);
     });
   });
+
+  describe('9. Hardened Repository Write Gates & RBAC Settings Protection', () => {
+    it('A. rejects USER calling StockMovementRepository.recordMovement with arbitrary adjustment record', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        stockMovementRepo.recordMovement({
+          id: generateStableId('mv'),
+          productId: 'prod_1',
+          productName: 'P1',
+          movementType: 'STOCK_ADJUSTMENT_IN',
+          quantity: 10,
+          direction: 'IN',
+          signedQuantity: 10,
+          referenceType: 'STOCK_ADJUSTMENT',
+          referenceId: 'adj_1',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_mv_adj_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('B. rejects USER calling StockMovementRepository.recordMovementsAtomic with arbitrary records', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        stockMovementRepo.recordMovementsAtomic([
+          {
+            id: generateStableId('mv'),
+            productId: 'prod_1',
+            productName: 'P1',
+            movementType: 'STOCK_ADJUSTMENT_OUT',
+            quantity: 5,
+            direction: 'OUT',
+            signedQuantity: -5,
+            referenceType: 'MANUAL',
+            referenceId: 'adj_2',
+            transactionDate: '2026-09-12',
+            idempotencyKey: 'idemp_mv_adj_2',
+            schemaVersion: 1,
+            status: 'COMPLETED',
+            createdAt: new Date().toISOString(),
+          },
+        ])
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('C. rejects USER calling CashMovementRepository.recordMovement with MANUAL_CASH_ADJUSTMENT', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        cashMovementRepo.recordMovement({
+          id: generateStableId('csh'),
+          amount: 50000,
+          direction: 'IN',
+          signedAmount: 50000,
+          type: 'MANUAL_CASH_ADJUSTMENT',
+          referenceType: 'MANUAL_ADJUSTMENT',
+          referenceId: 'adj_csh_1',
+          description: 'Fabricated cash adjustment',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_csh_adj_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('D. rejects USER calling CashMovementRepository.recordMovementsMany with fabricated protected records', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        cashMovementRepo.recordMovementsMany([
+          {
+            id: generateStableId('csh'),
+            amount: 100000,
+            direction: 'OUT',
+            signedAmount: -100000,
+            type: 'DAILY_CLOSING_CORRECTION',
+            referenceType: 'DAILY_CLOSING_CORRECTION',
+            referenceId: 'corr_1',
+            description: 'Unauthorized closing correction',
+            transactionDate: '2026-09-12',
+            idempotencyKey: 'idemp_csh_corr_1',
+            schemaVersion: 1,
+            status: 'COMPLETED',
+            createdAt: new Date().toISOString(),
+          },
+        ])
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('E. rejects USER attempting settingsRepo.set(rbac_users)', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        settingsRepo.set('rbac_users', [
+          {
+            id: 'hacker_owner',
+            username: 'hacker',
+            displayName: 'Hacker',
+            role: 'OWNER',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ])
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('F. rejects USER attempting settingsRepo.delete(rbac_users)', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(settingsRepo.delete('rbac_users')).rejects.toThrow(AuthorizationError);
+    });
+
+    it('G. rejects USER attempting to modify rbac_active_session through generic SettingsRepository', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        settingsRepo.set('rbac_active_session', {
+          userId: 'user_owner',
+          username: 'owner',
+          displayName: 'Owner',
+          role: 'OWNER',
+          loginTimestamp: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+
+      await expect(settingsRepo.delete('rbac_active_session')).rejects.toThrow(AuthorizationError);
+    });
+
+    it('H. rejects unauthenticated caller attempting protected repository mutation', async () => {
+      await clearCurrentSession();
+
+      await expect(
+        stockMovementRepo.recordMovement({
+          id: generateStableId('mv'),
+          productId: 'prod_1',
+          productName: 'P1',
+          movementType: 'SUPPLIER_INBOUND',
+          quantity: 10,
+          direction: 'IN',
+          signedQuantity: 10,
+          referenceType: 'TRANSACTION',
+          referenceId: 'tx_1',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_mv_unauth_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+
+      await expect(
+        cashMovementRepo.recordMovement({
+          id: generateStableId('csh'),
+          amount: 50000,
+          direction: 'IN',
+          signedAmount: 50000,
+          type: 'SALE_PAYMENT_IN',
+          referenceType: 'SALE',
+          referenceId: 'sale_1',
+          description: 'Unauthenticated payment',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_csh_unauth_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('I. allows OWNER legitimate operational and adjustment workflows', async () => {
+      await resetSessionForTesting('OWNER');
+
+      const mvId = await stockMovementRepo.recordMovement({
+        id: generateStableId('mv'),
+        productId: 'prod_1',
+        productName: 'P1',
+        movementType: 'STOCK_ADJUSTMENT_IN',
+        quantity: 10,
+        direction: 'IN',
+        signedQuantity: 10,
+        referenceType: 'STOCK_ADJUSTMENT',
+        referenceId: 'adj_owner_1',
+        transactionDate: '2026-09-12',
+        idempotencyKey: 'idemp_mv_owner_1',
+        schemaVersion: 1,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+      expect(mvId).toBeDefined();
+
+      const cshId = await cashMovementRepo.recordMovement({
+        id: generateStableId('csh'),
+        amount: 30000,
+        direction: 'IN',
+        signedAmount: 30000,
+        type: 'MANUAL_CASH_ADJUSTMENT',
+        referenceType: 'MANUAL_ADJUSTMENT',
+        referenceId: 'adj_owner_csh_1',
+        description: 'Owner cash adjustment',
+        transactionDate: '2026-09-12',
+        idempotencyKey: 'idemp_csh_owner_1',
+        schemaVersion: 1,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+      expect(cshId).toBeDefined();
+    });
+
+    it('J. rejects USER direct fabricated stock movement with nonexistent business reference', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        stockMovementRepo.recordMovement({
+          id: generateStableId('mv'),
+          productId: 'prod_1',
+          productName: 'P1',
+          movementType: 'SUPPLIER_INBOUND',
+          quantity: 20,
+          direction: 'IN',
+          signedQuantity: 20,
+          referenceType: 'TRANSACTION',
+          referenceId: 'nonexistent_tx_fake_999',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_mv_fake_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('K. rejects USER direct fabricated cash movement with nonexistent business reference', async () => {
+      await resetSessionForTesting('USER');
+
+      await expect(
+        cashMovementRepo.recordMovement({
+          id: generateStableId('csh'),
+          amount: 25000,
+          direction: 'IN',
+          signedAmount: 25000,
+          type: 'SALE_PAYMENT_IN',
+          referenceType: 'SALE',
+          referenceId: 'nonexistent_sale_fake_999',
+          description: 'Fabricated sale receipt',
+          transactionDate: '2026-09-12',
+          idempotencyKey: 'idemp_csh_fake_1',
+          schemaVersion: 1,
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        })
+      ).rejects.toThrow(AuthorizationError);
+    });
+
+    it('L. allows USER legitimate OPERATIONAL_DATA_ENTRY for verified business transactions', async () => {
+      await resetSessionForTesting('OWNER');
+      // Create legitimate business entities
+      await db.transactions.put({
+        id: 'tx_user_legit_1',
+        voucherNo: 'V-IN-1001',
+        supplierId: 'sup_1',
+        supplierName: 'Legit Supplier',
+        items: [],
+        totalGoodsValue: 50000,
+        paidAmount: 50000,
+        type: 'COLLECTION_AND_SETTLEMENT',
+        status: 'COMPLETED',
+        date: '2026-09-12',
+        time: '10:00',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await db.sales.put({
+        id: 'sale_user_legit_1',
+        voucherNo: 'V-OUT-2001',
+        merchantId: 'merch_1',
+        merchantName: 'Legit Merchant',
+        merchantTown: 'Mandalay',
+        items: [],
+        totalGoodsValue: 25000,
+        paidAmount: 25000,
+        cashPaidByMerchant: 25000,
+        paymentMethod: 'CASH',
+        date: '2026-09-12',
+        time: '10:00',
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Switch to USER role
+      await resetSessionForTesting('USER');
+
+      const mvId = await stockMovementRepo.recordMovement({
+        id: generateStableId('mv'),
+        productId: 'prod_1',
+        productName: 'P1',
+        movementType: 'SUPPLIER_INBOUND',
+        quantity: 20,
+        direction: 'IN',
+        signedQuantity: 20,
+        referenceType: 'TRANSACTION',
+        referenceId: 'tx_user_legit_1',
+        transactionDate: '2026-09-12',
+        idempotencyKey: 'idemp_mv_user_legit_1',
+        schemaVersion: 1,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+      expect(mvId).toBeDefined();
+
+      const cshId = await cashMovementRepo.recordMovement({
+        id: generateStableId('csh'),
+        amount: 25000,
+        direction: 'IN',
+        signedAmount: 25000,
+        type: 'SALE_PAYMENT_IN',
+        referenceType: 'SALE',
+        referenceId: 'sale_user_legit_1',
+        description: 'Legit sale receipt',
+        transactionDate: '2026-09-12',
+        idempotencyKey: 'idemp_csh_user_legit_1',
+        schemaVersion: 1,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      });
+      expect(cshId).toBeDefined();
+    });
+  });
 });
