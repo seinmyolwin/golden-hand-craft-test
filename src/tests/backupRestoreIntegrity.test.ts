@@ -1012,4 +1012,76 @@ describe('Backup and Restore Reliability Audit', () => {
     expect(restoredStaff?.isActive).toBe(false);
     expect(restoredStaff?.role).toBe('USER');
   });
+
+  // Test Case 18: SMART_MERGE Reactivation-Prevention Test (Older backup active staff does not overwrite newer local deactivation)
+  it('18. SMART_MERGE does not reactivate a locally-deactivated user from an older backup', async () => {
+    // 1. Local state: staff user deactivated NOW (newer timestamp)
+    const nowIso = new Date().toISOString();
+    const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const locallyDeactivatedStaff: AppUser = {
+      ...DEFAULT_STAFF_USER,
+      isActive: false,
+      updatedAt: nowIso,
+    };
+    await db.settings.put({
+      key: SETTING_USERS_KEY,
+      value: [DEFAULT_OWNER_USER, locallyDeactivatedStaff],
+      updatedAt: nowIso,
+    });
+
+    // 2. Simulate an OLDER backup file where the staff user was still active
+    //    (backup taken before the deactivation happened)
+    const olderBackupStaff: AppUser = {
+      ...DEFAULT_STAFF_USER,
+      isActive: true,
+      updatedAt: oneHourAgoIso,
+    };
+    const backup = await createCompleteBackup();
+    backup.data.rbacUsers = [DEFAULT_OWNER_USER, olderBackupStaff];
+
+    // 3. Restore via SMART_MERGE (not OVERWRITE)
+    const report = await validateBackupFile(backup);
+    expect(report.isValid).toBe(true);
+    const restoreResult = await executeSafeRestore(report, 'SMART_MERGE');
+    expect(restoreResult.success).toBe(true);
+
+    // 4. Local deactivation (newer) must win — user must remain inactive
+    const usersAfter = await getPersistedUsers();
+    const staffAfter = usersAfter.find((u) => u.id === DEFAULT_STAFF_USER.id);
+    expect(staffAfter?.isActive).toBe(false);
+  });
+
+  // Test Case 19: SMART_MERGE Deactivation Test (Newer incoming backup deactivation overwrites older local active staff)
+  it('19. SMART_MERGE applies a newer incoming deactivation over an older local active state', async () => {
+    const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const nowIso = new Date().toISOString();
+
+    const locallyActiveStaff: AppUser = {
+      ...DEFAULT_STAFF_USER,
+      isActive: true,
+      updatedAt: oneHourAgoIso,
+    };
+    await db.settings.put({
+      key: SETTING_USERS_KEY,
+      value: [DEFAULT_OWNER_USER, locallyActiveStaff],
+      updatedAt: oneHourAgoIso,
+    });
+
+    const newerBackupStaff: AppUser = {
+      ...DEFAULT_STAFF_USER,
+      isActive: false,
+      updatedAt: nowIso,
+    };
+    const backup = await createCompleteBackup();
+    backup.data.rbacUsers = [DEFAULT_OWNER_USER, newerBackupStaff];
+
+    const report = await validateBackupFile(backup);
+    const restoreResult = await executeSafeRestore(report, 'SMART_MERGE');
+    expect(restoreResult.success).toBe(true);
+
+    const usersAfter = await getPersistedUsers();
+    const staffAfter = usersAfter.find((u) => u.id === DEFAULT_STAFF_USER.id);
+    expect(staffAfter?.isActive).toBe(false);
+  });
 });
