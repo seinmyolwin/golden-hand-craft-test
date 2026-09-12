@@ -50,7 +50,9 @@ type GuideTab =
   | 'peer_trading'
   | 'backup_offline'
   | 'security_lock'
-  | 'zero_setup';
+  | 'zero_setup'
+  | 'vouchers_naming'
+  | 'rbac_multibranch';
 
 export const UserGuideModal: React.FC<UserGuideModalProps> = ({
   isOpen,
