@@ -10,7 +10,9 @@ import {
 import {
   formatMMK,
   getStoredProductCategories,
+  DEFAULT_PRODUCT_CATEGORIES,
 } from '../utils/storage';
+import { masterDataService } from '../services/masterDataService';
 import {
   Package,
   Search,
@@ -65,13 +67,21 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const [isLedgerModalOpen, setIsLedgerModalOpen] = useState<boolean>(false);
   const [selectedProductForLedger, setSelectedProductForLedger] = useState<Product | null>(null);
 
+  const [masterCategories, setMasterCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    masterDataService.getMasterDataCategories('FINISHED_GOODS', true)
+      .then((cats) => setMasterCategories(cats.map((c) => c.name)))
+      .catch(console.error);
+  }, [isCategoryModalOpen]);
+
   const categories = useMemo(() => {
-    const set = new Set<string>(getStoredProductCategories());
+    const set = new Set<string>(masterCategories.length > 0 ? masterCategories : getStoredProductCategories());
     (products || []).forEach((p) => {
       if (p && p.category) set.add(p.category);
     });
     return Array.from(set);
-  }, [products, isCategoryModalOpen]);
+  }, [products, masterCategories, isCategoryModalOpen]);
 
   const filteredProducts = useMemo(() => {
     return (products || []).filter((p) => {

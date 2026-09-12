@@ -1,6 +1,10 @@
 import { db, ShweLetYarDatabase } from '../db/database';
 import { blobToBase64, processImageInput, base64ToBlob } from './attachmentService';
 import {
+  getBusinessInitialization,
+  createEmptyOpeningPosition,
+} from './businessInitializationService';
+import {
   Product,
   Supplier,
   Merchant,
@@ -47,6 +51,7 @@ import {
   DEFAULT_SHOP_SETTINGS,
 } from '../utils/storage';
 import { generateStableId } from '../utils/idGenerator';
+import { masterDataService } from './masterDataService';
 import { safeJsonParse, deepSanitizeUntrustedObject } from '../utils/security';
 import {
   APP_VERSION,
@@ -147,6 +152,7 @@ export async function createCompleteBackup(options?: {
   const backupReminderSettings = getStoredBackupReminderSettings();
   const productCategories = getStoredProductCategories();
   const rawMaterialCategories = getStoredRawMaterialCategories();
+  const masterDataCategories = await masterDataService.getMasterDataCategories();
   const presetsFromStore = rawMaterialPresets.length > 0 ? rawMaterialPresets : getStoredRawMaterialPresets();
 
   // Find date range
@@ -232,6 +238,8 @@ export async function createCompleteBackup(options?: {
     })
   );
 
+  const businessInitialization = await getBusinessInitialization();
+
   const data: BackupDataPayload = {
     products,
     suppliers,
@@ -246,10 +254,12 @@ export async function createCompleteBackup(options?: {
     auditLogs,
     rawMaterialPresets: presetsFromStore,
     shopSettings,
+    businessInitialization,
     appLockSettings,
     backupReminderSettings,
     productCategories,
     rawMaterialCategories,
+    masterDataCategories,
     attachments: serializableAttachments,
     stockMovements,
     cashMovements,
@@ -374,6 +384,10 @@ export function normalizeRawBackup(raw: any): {
   const backupReminderSettings = rawData.backupReminderSettings || raw.backupReminderSettings;
   const productCategories = Array.isArray(rawData.productCategories) ? rawData.productCategories : undefined;
   const rawMaterialCategories = Array.isArray(rawData.rawMaterialCategories) ? rawData.rawMaterialCategories : undefined;
+  const masterDataCategories: MasterDataCategory[] | undefined = Array.isArray(rawData.masterDataCategories)
+    ? rawData.masterDataCategories
+    : undefined;
+  const businessInitialization = rawData.businessInitialization || raw.businessInitialization;
 
   const totalRecords =
     products.length +
@@ -392,7 +406,8 @@ export function normalizeRawBackup(raw: any): {
     stockMovements.length +
     cashMovements.length +
     dailyClosings.length +
-    returnsAndRefunds.length;
+    returnsAndRefunds.length +
+    (masterDataCategories?.length || 0);
 
   const counts = {
     products: products.length,
@@ -412,6 +427,7 @@ export function normalizeRawBackup(raw: any): {
     cashMovements: cashMovements.length,
     dailyClosings: dailyClosings.length,
     returnsAndRefunds: returnsAndRefunds.length,
+    masterDataCategories: masterDataCategories?.length || 0,
   };
 
   const allDates: string[] = [];
@@ -451,6 +467,7 @@ export function normalizeRawBackup(raw: any): {
     auditLogs,
     rawMaterialPresets,
     shopSettings,
+    businessInitialization,
     appLockSettings: (() => {
       if (!appLockSettings) return undefined;
       const clean = { ...appLockSettings };
@@ -465,6 +482,7 @@ export function normalizeRawBackup(raw: any): {
     backupReminderSettings,
     productCategories,
     rawMaterialCategories,
+    masterDataCategories,
     attachments,
     stockMovements,
     cashMovements,
@@ -1479,11 +1497,55 @@ export async function executeSafeRestore(
 
           // Shop settings & preferences
           if (data.shopSettings) saveStoredShopSettings(data.shopSettings);
+          if (data.businessInitialization) {
+            await db.settings.put({
+              key: 'businessInitialization',
+              value: data.businessInitialization,
+              updatedAt: new Date().toISOString(),
+            });
+          } else {
+            // Conservative Migration Rule for Legacy Backups (without businessInitialization metadata):
+            // Operational records alone must NOT automatically activate an unknown legacy business.
+            // If the legacy backup has pre-existing records (products, sales, transactions, shopSettings),
+            // migrate to state = 'SETUP_IN_PROGRESS' so the user can review business details and explicitly confirm activation.
+            // If it has no operational data, set to 'NOT_INITIALIZED'.
+            const hasExistingData =
+              (data.sales?.length || 0) +
+              (data.transactions?.length || 0) +
+              (data.products?.length || 0) +
+              (data.merchants?.length || 0) +
+              (data.suppliers?.length || 0) > 0;
+            const legacyInit = {
+              id: 'current_business',
+              state: (hasExistingData ? 'SETUP_IN_PROGRESS' : 'NOT_INITIALIZED') as any,
+              businessName: data.shopSettings?.shopName || '',
+              ownerName: data.shopSettings?.ownerName || '',
+              phone: data.shopSettings?.phone || '',
+              address: data.shopSettings?.address || '',
+              tagline: data.shopSettings?.tagline || '',
+              accountingStartDate: report.dateRange?.earliest || new Date().toISOString().slice(0, 10),
+              openingPosition: createEmptyOpeningPosition(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            await db.settings.put({
+              key: 'businessInitialization',
+              value: legacyInit,
+              updatedAt: new Date().toISOString(),
+            });
+          }
           if (data.productCategories && data.productCategories.length > 0) {
             saveStoredProductCategories(data.productCategories);
           }
           if (data.rawMaterialCategories && data.rawMaterialCategories.length > 0) {
             saveStoredRawMaterialCategories(data.rawMaterialCategories);
+          }
+          if (data.masterDataCategories && data.masterDataCategories.length > 0) {
+            await db.settings.put({
+              key: 'masterDataCategories',
+              value: data.masterDataCategories,
+              updatedAt: new Date().toISOString(),
+            });
           }
           if (data.rawMaterialPresets.length > 0) {
             saveStoredRawMaterialPresets(data.rawMaterialPresets);
@@ -1535,6 +1597,43 @@ export async function executeSafeRestore(
           if (data.rawMaterialCategories) {
             const current = getStoredRawMaterialCategories();
             saveStoredRawMaterialCategories(Array.from(new Set([...current, ...data.rawMaterialCategories])));
+          }
+          if (data.masterDataCategories && data.masterDataCategories.length > 0) {
+            const currentCats = await masterDataService.getMasterDataCategories();
+            const catMap = new Map<string, MasterDataCategory>(currentCats.map((c) => [c.id, c]));
+            data.masterDataCategories.forEach((incoming) => {
+              const existingById = catMap.get(incoming.id);
+              if (existingById) {
+                const incomingTime = new Date(incoming.updatedAt || incoming.createdAt || 0).getTime();
+                const existingTime = new Date(existingById.updatedAt || existingById.createdAt || 0).getTime();
+                if (incomingTime > existingTime) {
+                  catMap.set(incoming.id, incoming);
+                }
+              } else {
+                const existingByName = Array.from(catMap.values()).find(
+                  (c) => c.domain === incoming.domain && c.name.trim().toLowerCase() === incoming.name.trim().toLowerCase()
+                );
+                if (existingByName) {
+                  const incomingTime = new Date(incoming.updatedAt || incoming.createdAt || 0).getTime();
+                  const existingTime = new Date(existingByName.updatedAt || existingByName.createdAt || 0).getTime();
+                  if (incomingTime > existingTime) {
+                    catMap.set(existingByName.id, {
+                      ...existingByName,
+                      name: incoming.name,
+                      active: incoming.active,
+                      updatedAt: incoming.updatedAt,
+                    });
+                  }
+                } else {
+                  catMap.set(incoming.id, incoming);
+                }
+              }
+            });
+            await db.settings.put({
+              key: 'masterDataCategories',
+              value: Array.from(catMap.values()),
+              updatedAt: new Date().toISOString(),
+            });
           }
         }
 

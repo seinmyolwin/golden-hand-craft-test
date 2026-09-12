@@ -11,6 +11,7 @@ export default defineConfig(({ command }) => {
       tailwindcss(),
       VitePWA({
         disable: command === 'serve',
+        manifestFilename: 'manifest.json',
         registerType: 'prompt',
         includeAssets: [
           'favicon.ico',

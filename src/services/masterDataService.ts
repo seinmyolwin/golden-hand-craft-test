@@ -1,5 +1,5 @@
 import { db } from '../db/database';
-import { Product, Supplier, Merchant, RawMaterialPreset, StockMovementRecord } from '../types';
+import { Product, Supplier, Merchant, RawMaterialPreset, StockMovementRecord, CategoryDomain, MasterDataCategory } from '../types';
 import {
   productRepo,
   supplierRepo,
@@ -15,6 +15,27 @@ export interface ReferentialCheckResult {
   details: string[];
   referenceCount: number;
 }
+
+export const DEFAULT_FINISHED_GOODS_CATEGORIES: MasterDataCategory[] = [
+  { id: 'cat_fg_finished_goods', name: 'ကုန်ချော', domain: 'FINISHED_GOODS', active: true, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_fg_bamboo', name: 'ဝါးထည်', domain: 'FINISHED_GOODS', active: true, sortOrder: 2, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_fg_rattan', name: 'ကြိမ်ထည်', domain: 'FINISHED_GOODS', active: true, sortOrder: 3, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_fg_carving', name: 'ပန်းပု', domain: 'FINISHED_GOODS', active: true, sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_fg_other', name: 'အခြားလက်မှု', domain: 'FINISHED_GOODS', active: true, sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+];
+
+export const DEFAULT_RAW_MATERIAL_CATEGORIES_MD: MasterDataCategory[] = [
+  { id: 'cat_rm_bamboo', name: 'ဝါးကုန်ကြမ်း', domain: 'RAW_MATERIAL', active: true, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_rm_rattan', name: 'ကြိမ်ကုန်ကြမ်း', domain: 'RAW_MATERIAL', active: true, sortOrder: 2, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_rm_advance', name: 'ငွေကြိုယူ', domain: 'RAW_MATERIAL', active: true, sortOrder: 3, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_rm_paint_glue', name: 'ဆေးသုတ်ပစ္စည်း/ကော်', domain: 'RAW_MATERIAL', active: true, sortOrder: 4, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+  { id: 'cat_rm_other', name: 'အခြားကုန်ကြမ်း', domain: 'RAW_MATERIAL', active: true, sortOrder: 5, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+];
+
+export const DEFAULT_MASTER_DATA_CATEGORIES: MasterDataCategory[] = [
+  ...DEFAULT_FINISHED_GOODS_CATEGORIES,
+  ...DEFAULT_RAW_MATERIAL_CATEGORIES_MD,
+];
 
 export class MasterDataService {
   // ==========================================
@@ -479,6 +500,278 @@ export class MasterDataService {
         message: 'ကုန်သည်အား စနစ်တွင်းမှ အပြီးတိုင် ဖျက်ပစ်ပြီးပါပြီ',
       };
     }
+  }
+
+  // ==========================================
+  // MASTER DATA CATEGORY OPERATIONS
+  // ==========================================
+
+  async getMasterDataCategories(
+    domain?: CategoryDomain,
+    activeOnly: boolean = false
+  ): Promise<MasterDataCategory[]> {
+    let list: MasterDataCategory[] = [];
+    const setting = await db.settings.get('masterDataCategories');
+    if (setting && Array.isArray(setting.value) && setting.value.length > 0) {
+      list = setting.value;
+    } else {
+      list = DEFAULT_MASTER_DATA_CATEGORIES;
+      await db.settings.put({
+        key: 'masterDataCategories',
+        value: list,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    let filtered = list;
+    if (domain) {
+      filtered = filtered.filter((c) => c.domain === domain);
+    }
+    if (activeOnly) {
+      filtered = filtered.filter((c) => c.active !== false);
+    }
+    return filtered.sort((a, b) => (a.sortOrder || 99) - (b.sortOrder || 99));
+  }
+
+  async addCategory(domain: CategoryDomain, name: string): Promise<MasterDataCategory> {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      throw new Error('အမျိုးအစားအမည် ထည့်သွင်းရန် လိုအပ်ပါသည်');
+    }
+    if (domain !== 'FINISHED_GOODS' && domain !== 'RAW_MATERIAL') {
+      throw new Error('အမျိုးအစား နယ်ပယ် မမှန်ကန်ပါ');
+    }
+
+    const allCategories = await this.getMasterDataCategories();
+    const duplicate = allCategories.find(
+      (c) => c.domain === domain && c.active !== false && c.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error('ဤအမျိုးအစားအမည် ရှိနှင့်ပြီးဖြစ်ပါသည်');
+    }
+
+    const now = new Date().toISOString();
+    const newCat: MasterDataCategory = {
+      id: generateStableId('cat'),
+      name: trimmed,
+      domain,
+      active: true,
+      sortOrder: allCategories.filter((c) => c.domain === domain).length + 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const updatedList = [...allCategories, newCat];
+    await db.settings.put({
+      key: 'masterDataCategories',
+      value: updatedList,
+      updatedAt: now,
+    });
+
+    await auditRepo.log(
+      'CATEGORY_CREATED',
+      `အမျိုးအစားအသစ် ဖန်တီးခြင်း: ${trimmed} (${domain === 'FINISHED_GOODS' ? 'အချောထည်' : 'ကုန်ကြမ်း'})`,
+      'MASTER_DATA',
+      newCat.id
+    );
+
+    return newCat;
+  }
+
+  async renameCategory(categoryId: string, newName: string): Promise<MasterDataCategory> {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) {
+      throw new Error('အမျိုးအစားအမည် ထည့်သွင်းရန် လိုအပ်ပါသည်');
+    }
+
+    const allCategories = await this.getMasterDataCategories();
+    const target = allCategories.find((c) => c.id === categoryId);
+    if (!target) {
+      throw new Error('အမျိုးအစား ရှာမတွေ့ပါ');
+    }
+
+    const duplicate = allCategories.find(
+      (c) => c.id !== categoryId && c.domain === target.domain && c.active !== false && c.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      throw new Error('ဤအမျိုးအစားအမည် ရှိနှင့်ပြီးဖြစ်ပါသည်');
+    }
+
+    const oldName = target.name;
+    const now = new Date().toISOString();
+    const updatedCat: MasterDataCategory = {
+      ...target,
+      name: trimmed,
+      updatedAt: now,
+    };
+
+    const updatedList = allCategories.map((c) => (c.id === categoryId ? updatedCat : c));
+    await db.settings.put({
+      key: 'masterDataCategories',
+      value: updatedList,
+      updatedAt: now,
+    });
+
+    await auditRepo.log(
+      'CATEGORY_RENAMED',
+      `အမျိုးအစားအမည် ပြောင်းလဲခြင်း: "${oldName}" -> "${trimmed}"`,
+      'MASTER_DATA',
+      categoryId
+    );
+
+    return updatedCat;
+  }
+
+  async deactivateCategory(categoryId: string): Promise<MasterDataCategory> {
+    const allCategories = await this.getMasterDataCategories();
+    const target = allCategories.find((c) => c.id === categoryId);
+    if (!target) {
+      throw new Error('အမျိုးအစား ရှာမတွေ့ပါ');
+    }
+
+    const now = new Date().toISOString();
+    const updatedCat: MasterDataCategory = {
+      ...target,
+      active: false,
+      updatedAt: now,
+    };
+
+    const updatedList = allCategories.map((c) => (c.id === categoryId ? updatedCat : c));
+    await db.settings.put({
+      key: 'masterDataCategories',
+      value: updatedList,
+      updatedAt: now,
+    });
+
+    await auditRepo.log(
+      'CATEGORY_DEACTIVATED',
+      `အမျိုးအစား ပိတ်ထားခြင်း (Deactivated): ${target.name}`,
+      'MASTER_DATA',
+      categoryId
+    );
+
+    return updatedCat;
+  }
+
+  async reactivateCategory(categoryId: string): Promise<MasterDataCategory> {
+    const allCategories = await this.getMasterDataCategories();
+    const target = allCategories.find((c) => c.id === categoryId);
+    if (!target) {
+      throw new Error('အမျိုးအစား ရှာမတွေ့ပါ');
+    }
+
+    const now = new Date().toISOString();
+    const updatedCat: MasterDataCategory = {
+      ...target,
+      active: true,
+      updatedAt: now,
+    };
+
+    const updatedList = allCategories.map((c) => (c.id === categoryId ? updatedCat : c));
+    await db.settings.put({
+      key: 'masterDataCategories',
+      value: updatedList,
+      updatedAt: now,
+    });
+
+    await auditRepo.log(
+      'CATEGORY_REACTIVATED',
+      `အမျိုးအစား ပြန်လည်ဖွင့်လှစ်ခြင်း (Reactivated): ${target.name}`,
+      'MASTER_DATA',
+      categoryId
+    );
+
+    return updatedCat;
+  }
+
+  async deleteCategorySafe(
+    categoryId: string
+  ): Promise<{ success: boolean; softDeactivated: boolean; message: string }> {
+    const allCategories = await this.getMasterDataCategories();
+    const target = allCategories.find((c) => c.id === categoryId);
+    if (!target) {
+      throw new Error('အမျိုးအစား ရှာမတွေ့ပါ');
+    }
+
+    const products = await db.products.toArray();
+    const presets = await db.rawMaterialPresets.toArray();
+    const txs = await db.transactions.toArray();
+    const sales = await db.sales.toArray();
+    const purchases = await db.merchantPurchases.toArray();
+    const adjustments = await db.stockAdjustments.toArray();
+    const peerTrades = await db.peerTrades.toArray();
+    const movements = await db.stockMovements.toArray();
+
+    const isReferencedByProduct = products.some(
+      (p) => p.categoryId === categoryId || p.category === target.name
+    );
+    const isReferencedByPreset = presets.some(
+      (pr) => pr.category === categoryId || pr.categoryLabel === target.name || pr.category === target.name
+    );
+    const isReferencedByTx = txs.some(
+      (t) => (t.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name)
+    );
+    const isReferencedBySale = sales.some(
+      (s) => (s.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name)
+    );
+    const isReferencedByPurchase = purchases.some(
+      (pur) => (pur.items || []).some((item: any) => item.categoryId === categoryId || item.category === target.name) || pur.category === categoryId || pur.category === target.name
+    );
+    const isReferencedByAdjustment = adjustments.some(
+      (adj: any) => adj.categoryId === categoryId || adj.category === target.name
+    );
+    const isReferencedByTrade = peerTrades.some(
+      (trade: any) => trade.categoryId === categoryId || trade.category === target.name
+    );
+    const isReferencedByMovement = movements.some(
+      (m: any) => m.categoryId === categoryId || m.category === target.name
+    );
+
+    if (
+      isReferencedByProduct ||
+      isReferencedByPreset ||
+      isReferencedByTx ||
+      isReferencedBySale ||
+      isReferencedByPurchase ||
+      isReferencedByAdjustment ||
+      isReferencedByTrade ||
+      isReferencedByMovement
+    ) {
+      await this.deactivateCategory(categoryId);
+      return {
+        success: true,
+        softDeactivated: true,
+        message: 'အသုံးပြုထားသော ကုန်ပစ္စည်း/ကုန်ကြမ်း/သမိုင်းဝင် မှတ်တမ်းများ ရှိနေသဖြင့် အပြီးတိုင်ဖျက်မည့်အစား ပိတ်ထား (Deactivate) လိုက်ပါသည်',
+      };
+    } else {
+      const now = new Date().toISOString();
+      const updatedList = allCategories.filter((c) => c.id !== categoryId);
+      await db.settings.put({
+        key: 'masterDataCategories',
+        value: updatedList,
+        updatedAt: now,
+      });
+
+      await auditRepo.log(
+        'CATEGORY_DELETED',
+        `အမျိုးအစား အပြီးတိုင်ဖျက်ပစ်ခြင်း: ${target.name}`,
+        'MASTER_DATA',
+        categoryId
+      );
+
+      return {
+        success: true,
+        softDeactivated: false,
+        message: 'အမျိုးအစားအား စနစ်တွင်းမှ အပြီးတိုင် ဖျက်ပစ်ပြီးပါပြီ',
+      };
+    }
+  }
+
+  async resolveCategoryDisplay(categoryRef: string, domain?: CategoryDomain): Promise<string> {
+    if (!categoryRef) return 'အထွေထွေ';
+    const allCats = await this.getMasterDataCategories(domain);
+    const found = allCats.find((c) => c.id === categoryRef || c.name === categoryRef);
+    return found ? found.name : categoryRef;
   }
 }
 

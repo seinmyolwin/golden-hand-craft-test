@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
-import { Product } from '../types';
-import { X, Plus, Edit2, Trash2, Check, Tag, AlertCircle } from 'lucide-react';
-import {
-  getStoredProductCategories,
-  saveStoredProductCategories,
-} from '../utils/storage';
+import React, { useState, useEffect } from 'react';
+import { Product, MasterDataCategory, CategoryDomain } from '../types';
+import { X, Plus, Edit2, Trash2, Check, Tag, AlertCircle, Power, RotateCcw } from 'lucide-react';
+import { masterDataService } from '../services/masterDataService';
 
 interface CategoryManageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  products: Product[];
-  onUpdateProduct: (product: Product) => void;
+  products?: Product[];
+  onUpdateProduct?: (product: Product) => void;
   onCategoriesChanged?: () => void;
+  initialDomain?: CategoryDomain;
 }
 
 export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
@@ -20,95 +18,109 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
   products = [],
   onUpdateProduct,
   onCategoriesChanged,
+  initialDomain = 'FINISHED_GOODS',
 }) => {
-  const [categories, setCategories] = useState<string[]>(() => {
-    const stored = getStoredProductCategories();
-    const fromProducts = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
-    const merged = Array.from(new Set([...stored, ...fromProducts]));
-    return merged;
-  });
+  const [domain, setDomain] = useState<CategoryDomain>(initialDomain);
+  const [categories, setCategories] = useState<MasterDataCategory[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   const [newCatName, setNewCatName] = useState<string>('');
-  const [editingCat, setEditingCat] = useState<string | null>(null);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+
+  const loadCategories = async () => {
+    setLoading(true);
+    try {
+      const list = await masterDataService.getMasterDataCategories(domain);
+      setCategories(list);
+    } catch (err: any) {
+      console.error('Failed to load categories', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setDomain(initialDomain);
+      loadCategories();
+    }
+  }, [isOpen, initialDomain]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadCategories();
+    }
+  }, [domain]);
 
   if (!isOpen) return null;
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
+    setErrorMsg('');
     const trimmed = newCatName.trim();
     if (!trimmed) return;
-    if (categories.includes(trimmed)) {
-      alert('ဤအမျိုးအစား အမည် ရှိပြီးသားဖြစ်ပါသည်');
-      return;
+    try {
+      await masterDataService.addCategory(domain, trimmed);
+      setNewCatName('');
+      await loadCategories();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'အမျိုးအစား ထည့်သွင်း၍ မရပါ');
     }
-    const updated = [...categories, trimmed];
-    setCategories(updated);
-    saveStoredProductCategories(updated);
-    setNewCatName('');
-    if (onCategoriesChanged) onCategoriesChanged();
   };
 
-  const handleStartEdit = (cat: string) => {
-    setEditingCat(cat);
-    setEditValue(cat);
+  const handleStartEdit = (cat: MasterDataCategory) => {
+    setErrorMsg('');
+    setEditingCatId(cat.id);
+    setEditValue(cat.name);
   };
 
-  const handleSaveEdit = (oldCat: string) => {
+  const handleSaveEdit = async (cat: MasterDataCategory) => {
+    setErrorMsg('');
     const trimmed = editValue.trim();
-    if (!trimmed || trimmed === oldCat) {
-      setEditingCat(null);
+    if (!trimmed || trimmed === cat.name) {
+      setEditingCatId(null);
       return;
     }
 
-    if (categories.some((c) => c !== oldCat && c.toLowerCase() === trimmed.toLowerCase())) {
-      alert('ဤအမျိုးအစား အမည် ရှိပြီးသားဖြစ်ပါသည်');
-      return;
+    try {
+      await masterDataService.renameCategory(cat.id, trimmed);
+      setEditingCatId(null);
+      await loadCategories();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'အမည် ပြောင်းလဲ၍ မရပါ');
     }
-
-    // Update categories list
-    const updated = categories.map((c) => (c === oldCat ? trimmed : c));
-    setCategories(updated);
-    saveStoredProductCategories(updated);
-
-    // Update all matching products
-    const affectedProducts = products.filter((p) => p.category === oldCat);
-    affectedProducts.forEach((p) => {
-      onUpdateProduct({
-        ...p,
-        category: trimmed,
-      });
-    });
-
-    setEditingCat(null);
-    if (onCategoriesChanged) onCategoriesChanged();
   };
 
-  const handleDeleteCategory = (cat: string) => {
-    const affectedCount = products.filter((p) => p.category === cat).length;
-    if (affectedCount > 0) {
-      const confirmDelete = window.confirm(
-        `"${cat}" အမျိုးအစားတွင် ကုန်ပစ္စည်း ${affectedCount} မျိုး ရှိနေပါသည်။ ဖျက်သိမ်းပြီး ၎င်းပစ္စည်းများကို "အထွေထွေ" သို့ ပြောင်းလဲလိုပါသလား?`
-      );
-      if (!confirmDelete) return;
-
-      // Reassign affected products to 'အထွေထွေ'
-      products
-        .filter((p) => p.category === cat)
-        .forEach((p) => {
-          onUpdateProduct({
-            ...p,
-            category: 'အထွေထွေ',
-          });
-        });
+  const handleToggleActive = async (cat: MasterDataCategory) => {
+    setErrorMsg('');
+    try {
+      if (cat.active) {
+        await masterDataService.deactivateCategory(cat.id);
+      } else {
+        await masterDataService.reactivateCategory(cat.id);
+      }
+      await loadCategories();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'အဆင့် အပြောင်းအလဲ လုပ်၍ မရပါ');
     }
+  };
 
-    const updated = categories.filter((c) => c !== cat);
-    if (!updated.includes('အထွေထွေ') && affectedCount > 0) {
-      updated.push('အထွေထွေ');
+  const handleDeleteCategory = async (cat: MasterDataCategory) => {
+    setErrorMsg('');
+    try {
+      const res = await masterDataService.deleteCategorySafe(cat.id);
+      if (res.message) {
+        alert(res.message);
+      }
+      await loadCategories();
+      if (onCategoriesChanged) onCategoriesChanged();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'ဖျက်ပစ်၍ မရပါ');
     }
-    setCategories(updated);
-    saveStoredProductCategories(updated);
-    if (onCategoriesChanged) onCategoriesChanged();
   };
 
   return (
@@ -122,10 +134,10 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">
-                ကုန်ပစ္စည်း အမျိုးအစား (Category) စီမံခြင်း
+                အမျိုးအစားများ စီမံခန့်ခွဲခြင်း (Category Master Data)
               </h3>
               <p className="text-[11px] text-slate-400">
-                စိတ်ကြိုက် အမျိုးအစားအသစ် ထည့်သွင်းခြင်းနှင့် အမည်ပြောင်းလဲခြင်း
+                စနစ်၏ ပင်မ အမျိုးအစား စာရင်းများအား ပြင်ဆင်ပိတ်သိမ်းခြင်း
               </p>
             </div>
           </div>
@@ -138,17 +150,55 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
           </button>
         </div>
 
+        {/* Domain Tabs */}
+        <div className="flex border-b border-slate-200 bg-slate-50 p-1 gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setDomain('FINISHED_GOODS')}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+              domain === 'FINISHED_GOODS'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+          >
+            အချောထည် အမျိုးအစားများ (Finished Goods)
+          </button>
+          <button
+            type="button"
+            onClick={() => setDomain('RAW_MATERIAL')}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+              domain === 'RAW_MATERIAL'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:bg-slate-200/60'
+            }`}
+          >
+            ကုန်ကြမ်း အမျိုးအစားများ (Raw Materials)
+          </button>
+        </div>
+
+        {/* Error message */}
+        {errorMsg && (
+          <div className="mx-4 mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 flex items-center gap-2 shrink-0">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Content */}
         <div className="p-4 space-y-4 overflow-y-auto text-xs flex-1">
           {/* Add New Category Box */}
           <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
             <label className="font-bold text-emerald-900 block">
-              အမျိုးအစား အသစ်ထည့်သွင်းရန်
+              {domain === 'FINISHED_GOODS' ? 'အချောထည်' : 'ကုန်ကြမ်း'} အမျိုးအစား အသစ်ထည့်သွင်းရန်
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="ဥပမာ - ဝါးလက်မှု၊ ကျွန်းပန်းပု၊ ကြိမ်ခြင်း..."
+                placeholder={
+                  domain === 'FINISHED_GOODS'
+                    ? 'ဥပမာ - ဝါးလက်မှု၊ ကျွန်းပန်းပု၊ ကြိမ်ခြင်း...'
+                    : 'ဥပမာ - ဝါးကုန်ကြမ်း၊ ကြိမ်ကုန်ကြမ်း...'
+                }
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
                 onKeyDown={(e) => {
@@ -163,7 +213,11 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
                 type="button"
                 onClick={handleAddCategory}
                 disabled={!newCatName.trim()}
-                className={`px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
+                className={`px-3.5 py-2 ${
+                  domain === 'FINISHED_GOODS'
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-amber-600 hover:bg-amber-500'
+                } text-white font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs ${
                   !newCatName.trim() ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
@@ -177,87 +231,128 @@ export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between text-slate-600 font-bold px-1">
               <span>လက်ရှိအမျိုးအစားများ ({categories.length})</span>
-              <span className="text-[11px] font-normal text-slate-500">ပစ္စည်းအရေအတွက်</span>
+              <span className="text-[11px] font-normal text-slate-500">အခြေအနေ / အပြောင်းအလဲ</span>
             </div>
 
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-              {categories.map((cat) => {
-                const count = products.filter((p) => p.category === cat).length;
-                const isEditing = editingCat === cat;
+            {loading ? (
+              <div className="py-8 text-center text-slate-400 font-semibold">
+                ဒေတာ ရယူနေပါသည်...
+              </div>
+            ) : categories.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 font-semibold border border-dashed border-slate-200 rounded-xl">
+                အမျိုးအစား တစ်ခုမျှ မရှိသေးပါ
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                {categories.map((cat) => {
+                  const isEditing = editingCatId === cat.id;
+                  const refCount = domain === 'FINISHED_GOODS'
+                    ? products.filter((p) => p.categoryId === cat.id || p.category === cat.name).length
+                    : 0;
 
-                return (
-                  <div
-                    key={cat}
-                    className="p-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
-                  >
-                    {isEditing ? (
-                      <div className="flex-1 flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEdit(cat);
-                            if (e.key === 'Escape') setEditingCat(null);
-                          }}
-                          autoFocus
-                          className="flex-1 px-2.5 py-1.5 bg-white border border-emerald-500 rounded-lg text-xs font-bold focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEdit(cat)}
-                          className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
-                          title="သိမ်းမည်"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingCat(null)}
-                          className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg cursor-pointer"
-                          title="မလုပ်တော့ပါ"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800 text-xs sm:text-sm">{cat}</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                            {count} မျိုး
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
+                  return (
+                    <div
+                      key={cat.id}
+                      className={`p-2.5 flex items-center justify-between gap-3 transition-colors ${
+                        !cat.active ? 'bg-slate-50/80 opacity-75' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      {isEditing ? (
+                        <div className="flex-1 flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEdit(cat);
+                              if (e.key === 'Escape') setEditingCatId(null);
+                            }}
+                            autoFocus
+                            className="flex-1 px-2.5 py-1.5 bg-white border border-emerald-500 rounded-lg text-xs font-bold focus:outline-none"
+                          />
                           <button
                             type="button"
-                            onClick={() => handleStartEdit(cat)}
-                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
-                            title="အမည်ပြင်မည်"
+                            onClick={() => handleSaveEdit(cat)}
+                            className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
+                            title="သိမ်းမည်"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Check className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteCategory(cat)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                            title="ဖျက်မည်"
+                            onClick={() => setEditingCatId(null)}
+                            className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg cursor-pointer"
+                            title="မလုပ်တော့ပါ"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className={`font-bold text-xs sm:text-sm truncate ${
+                              !cat.active ? 'text-slate-400 line-through' : 'text-slate-800'
+                            }`}>
+                              {cat.name}
+                            </span>
+                            {domain === 'FINISHED_GOODS' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 shrink-0">
+                                {refCount} မျိုး
+                              </span>
+                            )}
+                            {cat.active ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                အသုံးပြုနိုင်သည်
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600 border border-slate-300 shrink-0">
+                                ပိတ်ထားသည်
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(cat)}
+                              className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                              title="အမည်ပြင်မည်"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(cat)}
+                              className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
+                                cat.active
+                                  ? 'text-amber-600 hover:bg-amber-50'
+                                  : 'text-emerald-600 hover:bg-emerald-50'
+                              }`}
+                              title={cat.active ? 'ပိတ်ထားမည် (Deactivate)' : 'ပြန်ဖွင့်မည် (Reactivate)'}
+                            >
+                              {cat.active ? <Power className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                              title="ဖျက်မည်"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <span>
-              အမျိုးအစား အမည်ကို ပြင်ဆင်လိုက်ပါက ၎င်းအမျိုးအစားဝင် ကုန်ပစ္စည်းအားလုံး၏ စာရင်းတွင် အလိုအလျောက် ပြောင်းလဲပေးမည်ဖြစ်ပါသည်။
+              အသုံးပြုထားပြီးသော အမျိုးအစားများကို အပြီးတိုင် ဖျက်မည့်အစား ပိတ်ထား (Deactivate) မည်ဖြစ်ပြီး၊ သမိုင်းဝင် စာရင်းဇယားများနှင့် ဘဏ္ဍာရေး အစီရင်ခံစာများ တိကျမှု ပျက်စီးမည် မဟုတ်ပါ။
             </span>
           </div>
         </div>

@@ -1,3 +1,15 @@
+export type CategoryDomain = 'FINISHED_GOODS' | 'RAW_MATERIAL';
+
+export interface MasterDataCategory {
+  id: string;
+  name: string;
+  domain: CategoryDomain;
+  active: boolean;
+  sortOrder?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -5,6 +17,7 @@ export interface Product {
   defaultWholesalePrice?: number; // Wholesale selling price in MMK
   unit: string; // e.g. ထည်, ချပ်, လုံး
   category: string;
+  categoryId?: string;
   openingStock?: number; // Starting inventory count
   currentStock?: number; // Real-time available stock
   minStockAlert?: number; // Low stock alert threshold
@@ -25,6 +38,8 @@ export interface Supplier {
   initialAdvance?: number; // Initial opening advance balance
   currentAdvanceBalance?: number; // Current remaining advance/debt owed by supplier
   advanceBalance?: number;
+  payableBalance?: number; // ပေးရန်ကျန်
+  totalAdvanceDeducted?: number;
   active?: boolean;
   totalGoodsValueDelivered?: number; // Cumulative goods delivered
   totalGoodsDeliveredValue?: number;
@@ -288,7 +303,8 @@ export type CashReferenceType =
   | 'DAILY_CLOSING_CORRECTION'
   | 'RETURN'
   | 'SALES_RETURN'
-  | 'PURCHASE_RETURN';
+  | 'PURCHASE_RETURN'
+  | 'OPENING';
 
 export interface CashMovementRecord {
   id: string;
@@ -424,6 +440,112 @@ export interface ShopSettings {
   thermalPrinterWidth?: '58mm' | '80mm';
   receiptFooterNote?: string;
   rawMaterialPresets?: RawMaterialPreset[];
+}
+
+// ============================================================================
+// Phase 18A: Business Initialization & Opening Position Types
+// ============================================================================
+
+export type InitializationState =
+  | 'NOT_INITIALIZED'
+  | 'SETUP_IN_PROGRESS'
+  | 'READY_FOR_CONFIRMATION'
+  | 'ACTIVE';
+
+export interface OpeningCashPosition {
+  cashAmount: number; // MMK in hand
+  notes?: string;
+}
+
+export interface OpeningReceivablePosition {
+  merchantId: string;
+  merchantName: string;
+  merchantTown?: string;
+  amount: number; // MMK merchant owes business
+  notes?: string;
+}
+
+export interface OpeningPayablePosition {
+  supplierId?: string;
+  supplierName?: string;
+  merchantId?: string;
+  merchantName?: string;
+  counterpartName: string;
+  amount: number; // MMK business owes counterpart
+  notes?: string;
+}
+
+export interface OpeningAdvancePosition {
+  type: 'SUPPLIER_ADVANCE' | 'MERCHANT_ADVANCE' | 'WORKER_ADVANCE' | 'OTHER_ADVANCE';
+  counterpartId?: string;
+  counterpartName: string;
+  amount: number; // Cash advance
+  notes?: string;
+}
+
+export interface OpeningRawMaterialPosition {
+  id?: string;
+  presetId?: string;
+  category?: string;
+  name: string; // e.g. "ဝါး", "ကြိမ်"
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number; // quantity * unitPrice
+  notes?: string;
+}
+
+export interface OpeningFinishedGoodsPosition {
+  productId: string;
+  productName: string;
+  category?: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number; // Valuation price
+  totalValue: number; // quantity * unitPrice
+  notes?: string;
+}
+
+export interface OpeningIssuedMaterialPosition {
+  workerId?: string;
+  workerName: string;
+  materialName: string;
+  unit: string;
+  quantity: number;
+  unitPrice?: number;
+  totalValue?: number;
+  cashAdvance?: number; // Cash advance given with materials
+  notes?: string;
+}
+
+export interface OpeningPosition {
+  cash: OpeningCashPosition;
+  receivables: OpeningReceivablePosition[];
+  payables: OpeningPayablePosition[];
+  advances: OpeningAdvancePosition[];
+  rawMaterials: OpeningRawMaterialPosition[];
+  finishedGoods: OpeningFinishedGoodsPosition[];
+  issuedMaterials: OpeningIssuedMaterialPosition[];
+  openingCapital: number; // Total opening capital / equity position in MMK
+  notes?: string;
+}
+
+export interface BusinessInitializationRecord {
+  id: string; // 'current_business'
+  state: InitializationState;
+  businessName: string;
+  tagline?: string;
+  ownerName?: string;
+  phone?: string;
+  address?: string;
+  businessType?: string;
+  accountingStartDate: string; // YYYY-MM-DD
+  activationTimestamp?: string; // ISO string
+  activationDate?: string; // YYYY-MM-DD
+  operationId?: string; // Idempotency key
+  openingPosition: OpeningPosition;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BackupReminderSettings {
@@ -870,10 +992,12 @@ export interface BackupDataPayload {
   dailyClosings?: DailyClosingRecord[];
   returnsAndRefunds?: ReturnRecord[];
   shopSettings: ShopSettings;
+  businessInitialization?: BusinessInitializationRecord;
   appLockSettings?: AppLockSettings;
   backupReminderSettings?: BackupReminderSettings;
   productCategories?: string[];
   rawMaterialCategories?: string[];
+  masterDataCategories?: MasterDataCategory[];
   attachments?: AttachmentRecord[];
 }
 

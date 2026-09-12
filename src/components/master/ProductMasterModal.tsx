@@ -6,6 +6,7 @@ import {
   formatMMK,
   parseBilingualNumber,
 } from '../../utils/storage';
+import { masterDataService } from '../../services/masterDataService';
 import { Package, X, Check, Plus, AlertCircle } from 'lucide-react';
 
 interface ProductMasterModalProps {
@@ -27,7 +28,17 @@ export const ProductMasterModal: React.FC<ProductMasterModalProps> = ({
   onSaveAndSelect,
   availableCategories = DEFAULT_PRODUCT_CATEGORIES,
 }) => {
-  const isEditing = Boolean(productToEdit);
+  const [masterCats, setMasterCats] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      masterDataService.getMasterDataCategories('FINISHED_GOODS', true)
+        .then((cats) => setMasterCats(cats.map((c) => c.name)))
+        .catch(console.error);
+    }
+  }, [isOpen]);
+
+  const categoriesList = masterCats.length > 0 ? masterCats : availableCategories;
 
   const [name, setName] = useState<string>('');
   const [category, setCategory] = useState<string>(DEFAULT_PRODUCT_CATEGORIES[0] || 'ကုန်ချော');
