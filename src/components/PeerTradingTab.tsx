@@ -289,9 +289,15 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
         <button
           type="button"
           onClick={() => {
-            if (products.length > 0 && !selectedProductId) {
-              setSelectedProductId(products[0].id);
-              setAgreedUnitPrice(products[0].defaultWholesalePrice || products[0].defaultPrice || 0);
+            if (products.length > 0 && lineItems.length === 0) {
+              setLineItems([
+                {
+                  id: '1',
+                  productId: products[0]?.id || '',
+                  quantity: 10,
+                  agreedUnitPrice: products[0]?.defaultWholesalePrice || products[0]?.defaultPrice || 0,
+                },
+              ]);
             }
             setIsModalOpen(true);
           }}

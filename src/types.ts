@@ -167,9 +167,12 @@ export interface TransactionRecord {
 export interface SaleRecord {
   id: string;
   voucherNo: string; // e.g. SALE-20260831-001
-  merchantId: string;
-  merchantName: string;
-  merchantTown: string;
+  type?: 'RETAIL' | 'WHOLESALE' | 'MERCHANT' | string;
+  merchantId?: string;
+  merchantName?: string;
+  merchantTown?: string;
+  customerName?: string;
+  customerPhone?: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   items: SaleItem[];
@@ -177,6 +180,7 @@ export interface SaleRecord {
   totalItemsCount?: number;
   totalGoodsValue?: number; // ကုန်ပစ္စည်းတန်ဖိုးစုစုပေါင်း
   totalAmount?: number;
+  subtotal?: number;
   deliveryFee?: number; // သယ်ယူပို့ဆောင်ခ/ဂိတ်ပို့ခ
   discount?: number; // လျှော့စျေး
   grandTotal?: number; // ကျသင့်ငွေစုစုပေါင်း
@@ -184,8 +188,10 @@ export interface SaleRecord {
   cashPaidByMerchant?: number; // ကုန်သည်ပေးငွေ
   paidAmount?: number;
   paymentMethod?: PaymentMethod | string;
+  paymentType?: PaymentMethod | string;
   remainingReceivableBalance?: number; // ကုန်သည်ထံမှ ရရန်ကျန်ငွေ
   remainingReceivable?: number;
+  balance?: number;
   // Transport & Delivery details
   deliveryVehicle?: string; // တင်ပေးလိုက်သည့်ကား / ယာဉ်အမှတ် / ဂိတ်
   driverOrContact?: string; // ယာဉ်မောင်း / ဆက်သွယ်ရမည့်သူ

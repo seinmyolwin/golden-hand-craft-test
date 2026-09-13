@@ -3,6 +3,16 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// Global Error Handlers for unhandled runtime errors and unhandled promise rejections
+window.onerror = (message, source, lineno, colno, error) => {
+  console.error('[Global Error Handler]:', { message, source, lineno, colno, error });
+  return false;
+};
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Global Unhandled Rejection Handler]:', event.reason);
+});
+
 // Register service worker for offline capability & updates in production builds
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {

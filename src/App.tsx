@@ -58,6 +58,8 @@ import {
 import { generateStableId, generateVoucherNo } from './utils/idGenerator';
 import { CURRENT_APP_VERSION } from './constants/version';
 
+import { AlertTriangle } from 'lucide-react';
+
 // UI Components
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
