@@ -79,7 +79,7 @@ import { AppLockScreen } from './components/AppLockScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { UserSwitchModal } from './components/UserSwitchModal';
 import { AppLockSettingsModal } from './components/AppLockSettingsModal';
-import { getCurrentSession, logoutUserSession, UserSession, AUTH_SYNC_CHANNEL_NAME } from './services/authorizationService';
+import { getCurrentSession, logoutUserSession, UserSession, AUTH_SYNC_CHANNEL_NAME, enforcePermission } from './services/authorizationService';
 
 // Modals
 import { NewEntryModal } from './components/NewEntryModal';
@@ -247,6 +247,26 @@ export default function App() {
   const [currentSession, setCurrentSession] = useState<UserSession | null>(null);
   const [isResolvingSession, setIsResolvingSession] = useState<boolean>(true);
   const [isUserSwitchModalOpen, setIsUserSwitchModalOpen] = useState<boolean>(false);
+
+  // RBAC Tab Access Guard: Automatically redirect staff away from unauthorized tabs
+  useEffect(() => {
+    if (currentSession && currentSession.role !== 'OWNER') {
+      const allowed = currentSession.allowedTabs || shopSettings.staffAllowedTabs || [
+        'daily',
+        'inventory',
+        'orders',
+        'sales',
+        'purchases',
+        'peers',
+        'merchants',
+        'suppliers',
+        'history',
+      ];
+      if (!allowed.includes(activeTab as any)) {
+        setActiveTab('daily');
+      }
+    }
+  }, [currentSession, activeTab, shopSettings.staffAllowedTabs]);
 
   // Security Lock State (using sessionStorage to persist session across page refresh)
   const [appLockSettings, setAppLockSettings] = useState<AppLockSettings>(() => loadAppLockSettings());
@@ -621,6 +641,12 @@ export default function App() {
   }, []);
 
   const handleUpdateAppLock = useCallback(async (updated: AppLockSettings) => {
+    try {
+      await enforcePermission('ACCESS_SETTINGS', 'App Lock ဆက်တင် ပြင်ဆင်ခြင်း');
+    } catch (err: any) {
+      alert(err.message || 'ခွင့်ပြုချက်မရှိပါ: App Lock ဆက်တင်အား ဆိုင်ရှင် (OWNER) သာ ပြင်ဆင်ခွင့်ရှိပါသည်');
+      throw err;
+    }
     setAppLockSettings(updated);
     if (!updated.enabled) {
       try {
@@ -2005,6 +2031,7 @@ export default function App() {
               sales={sales}
               stockAdjustments={stockAdjustments}
               shopSettings={shopSettings}
+              currentSession={currentSession}
               deletedRecordsCount={deletedItems.length}
               backupReminderSettings={backupReminderSettings}
               onUpdateBackupReminderSettings={setBackupReminderSettings}
@@ -2046,6 +2073,8 @@ export default function App() {
           todaySalesCount={todaySalesCount}
           lowStockAlertCount={lowStockAlertCount}
           pendingOrdersCount={pendingOrdersCount}
+          currentSession={currentSession}
+          allowedTabs={currentSession?.allowedTabs || shopSettings.staffAllowedTabs}
         />
 
         {/* Modals */}

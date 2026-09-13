@@ -54,6 +54,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   const [selectedVoucher, setSelectedVoucher] = useState<MerchantPurchaseRecord | null>(null);
 
   // New Purchase Form State
+  const [selectedMerchantId, setSelectedMerchantId] = useState('');
   const [sellerName, setSellerName] = useState('');
   const [sellerPhone, setSellerPhone] = useState('');
   const [sellerAddress, setSellerAddress] = useState('');
@@ -130,10 +131,38 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   const paidAmount = parseBilingualNumber(paidAmountStr);
   const remainingPayable = Math.max(0, totalCalculated - paidAmount);
 
+  const handleMerchantSelect = (merchantId: string) => {
+    setSelectedMerchantId(merchantId);
+    if (merchantId === '__NEW__') {
+      setSellerName('');
+      setSellerPhone('');
+      setSellerAddress('');
+    } else if (merchantId) {
+      const found = merchants.find((m) => m.id === merchantId);
+      if (found) {
+        setSellerName(found.name);
+        setSellerPhone(found.phone || '');
+        setSellerAddress(found.town || found.address || '');
+      }
+    } else {
+      setSellerName('');
+      setSellerPhone('');
+      setSellerAddress('');
+    }
+  };
+
   const handleOpenNewModal = () => {
-    setSellerName('');
-    setSellerPhone('');
-    setSellerAddress('');
+    const defaultId = merchants.length > 0 ? merchants[0].id : '__NEW__';
+    setSelectedMerchantId(defaultId);
+    if (merchants.length > 0) {
+      setSellerName(merchants[0].name);
+      setSellerPhone(merchants[0].phone || '');
+      setSellerAddress(merchants[0].town || merchants[0].address || '');
+    } else {
+      setSellerName('');
+      setSellerPhone('');
+      setSellerAddress('');
+    }
     setPurchaseDate(selectedDate || getTodayDateString());
     setPurchaseTime(getCurrentTimeString());
     setPaidAmountStr('');
@@ -148,7 +177,16 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!sellerName.trim()) {
+    if (!selectedMerchantId) {
+      alert('ဝယ်ယူသည့် ဆိုင်/ကုန်သည် ရွေးချယ်ပေးပါ');
+      return;
+    }
+
+    const isNew = selectedMerchantId === '__NEW__';
+    const selectedMerchant = !isNew ? merchants.find((m) => m.id === selectedMerchantId) : null;
+    const finalMerchantName = selectedMerchant ? selectedMerchant.name : sellerName.trim();
+
+    if (!finalMerchantName) {
       alert('ဝယ်ယူသည့် ဆိုင်/ကုန်သည်/ရွာသား အမည် ထည့်သွင်းပေးပါ');
       return;
     }
@@ -176,14 +214,18 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
 
     setIsSubmitting(true);
 
+    const targetMerchantId = !isNew && selectedMerchant
+      ? selectedMerchant.id
+      : generateStableId('merch');
+
     const purchaseNo = generateVoucherNo('PUR', purchaseDate);
     const newRecord: MerchantPurchaseRecord = {
       id: generateStableId('pur'),
       purchaseNo,
-      merchantId: generateStableId('sel'),
-      merchantName: sellerName.trim(),
-      merchantTown: sellerAddress.trim() || 'အထွေထွေ',
-      sellerPhone: sellerPhone.trim(),
+      merchantId: targetMerchantId,
+      merchantName: finalMerchantName,
+      merchantTown: (selectedMerchant?.town || sellerAddress.trim()) || 'အထွေထွေ',
+      sellerPhone: selectedMerchant?.phone || sellerPhone.trim(),
       date: purchaseDate,
       time: purchaseTime,
       items: validItems,
@@ -521,40 +563,104 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="p-4 space-y-3.5 text-xs flex-1 overflow-y-auto overscroll-contain">
-              {/* Seller Information */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Seller / Merchant Selection */}
+              <div className="space-y-2.5">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    ဝယ်ယူသည့် ဆိုင်/ကုန်သည်/ရွာသား အမည် *
+                    ဝယ်ယူသည့်ဆိုင်/ကုန်သည် *
                   </label>
-                  <input
-                    type="text"
+                  <select
+                    id="merchant-select"
                     required
-                    placeholder="ဥပမာ - ဝါးကုန်သည် ဦးတင်လှ"
-                    value={sellerName}
-                    onChange={(e) => setSellerName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500"
-                    list="merchant-sellers-list"
-                  />
-                  <datalist id="merchant-sellers-list">
+                    value={selectedMerchantId}
+                    onChange={(e) => handleMerchantSelect(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">-- ကုန်သည်/ဆိုင် ရွေးချယ်ပါ --</option>
                     {merchants.map((m) => (
-                      <option key={m.id} value={m.name}>
-                        {m.town ? `${m.name} (${m.town})` : m.name}
+                      <option key={m.id} value={m.id}>
+                        {m.name} {m.town ? `(${m.town})` : ''} {m.phone ? `- ${m.phone}` : ''}
                       </option>
                     ))}
-                  </datalist>
+                    <option value="__NEW__" className="font-bold text-amber-700">
+                      + ကုန်သည်အသစ်
+                    </option>
+                  </select>
                 </div>
 
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">ဖုန်းနံပါတ် / ဆက်သွယ်ရန်</label>
-                  <input
-                    type="text"
-                    placeholder="09-xxxxxxxxx"
-                    value={sellerPhone}
-                    onChange={(e) => setSellerPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
+                {/* If New Merchant is selected, display name, phone, address inputs */}
+                {selectedMerchantId === '__NEW__' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1 text-xs">
+                        ကုန်သည်/ဆိုင် အမည် *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="ဥပမာ - ဝါးကုန်သည် ဦးတင်လှ"
+                        value={sellerName}
+                        onChange={(e) => setSellerName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1 text-xs">
+                        ဖုန်းနံပါတ်
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="09-xxxxxxxxx"
+                        value={sellerPhone}
+                        onChange={(e) => setSellerPhone(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1 text-xs">
+                        မြို့နယ်/လိပ်စာ
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="ဥပမာ - မန္တလေး / ကျောက်ပန်းတောင်း"
+                        value={sellerAddress}
+                        onChange={(e) => setSellerAddress(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                ) : selectedMerchantId ? (
+                  /* If existing merchant is selected, show details badge */
+                  <div className="flex flex-wrap items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+                    <div>
+                      <span className="text-slate-500">ဆိုင်/ကုန်သည်:</span>{' '}
+                      <span className="font-bold text-slate-900">{sellerName}</span>
+                    </div>
+                    {sellerAddress && (
+                      <div>
+                        <span className="text-slate-500">မြို့နယ်:</span>{' '}
+                        <span className="font-semibold text-slate-800">{sellerAddress}</span>
+                      </div>
+                    )}
+                    {sellerPhone && (
+                      <div>
+                        <span className="text-slate-500">ဖုန်း:</span>{' '}
+                        <span className="font-semibold text-slate-800">{sellerPhone}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const m = merchants.find((x) => x.id === selectedMerchantId);
+                      if (m && (m.payableBalance || 0) > 0) {
+                        return (
+                          <div className="ml-auto text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded">
+                            လက်ရှိပေးရန်ကျန်: {(m.payableBalance || 0).toLocaleString()} ကျပ်
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                ) : null}
               </div>
 
               {/* Date & Time */}

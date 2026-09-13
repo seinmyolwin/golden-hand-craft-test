@@ -294,6 +294,7 @@ export async function getCurrentSession(): Promise<UserSession | null> {
           username: canonicalUser.username,
           displayName: canonicalUser.displayName,
           role: canonicalUser.role,
+          allowedTabs: canonicalUser.allowedTabs,
           loginTimestamp: parsed.loginTimestamp || canonicalSession.loginTimestamp || new Date().toISOString(),
           sessionToken: canonicalSession.sessionToken,
         };
@@ -315,6 +316,7 @@ export async function getCurrentSession(): Promise<UserSession | null> {
     username: canonicalUser.username,
     displayName: canonicalUser.displayName,
     role: canonicalUser.role,
+    allowedTabs: canonicalUser.allowedTabs,
     loginTimestamp: canonicalSession.loginTimestamp || new Date().toISOString(),
     sessionToken: canonicalSession.sessionToken,
   };
@@ -394,6 +396,7 @@ export async function setCurrentSession(session: Partial<UserSession> | null): P
     username: canonicalUser.username,
     displayName: canonicalUser.displayName,
     role: canonicalUser.role,
+    allowedTabs: canonicalUser.allowedTabs,
     loginTimestamp: session.loginTimestamp || new Date().toISOString(),
     sessionToken: token,
   };

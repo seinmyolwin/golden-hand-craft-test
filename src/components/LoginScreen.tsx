@@ -96,10 +96,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     return () => clearInterval(timer);
   }, [lockoutSeconds]);
 
-  // Check if PIN is configured for Owner
+  // Check if PIN is configured for Owner (matching authorizationService logic)
   const hasConfiguredPin = Boolean(
-    appLockSettings?.enabled &&
-      (appLockSettings?.pinHash || appLockSettings?.passcode || appLockSettings?.pin)
+    appLockSettings?.pinHash || appLockSettings?.passcode || appLockSettings?.pin
   );
 
   // Direct Staff Login (No PIN required)
@@ -170,11 +169,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       saveAppLockSettings(updatedSettings);
 
+      const session = await switchUserSession('OWNER', { pin: cleanPin });
+
       if (onUpdateAppLockSettings) {
-        onUpdateAppLockSettings(updatedSettings);
+        await onUpdateAppLockSettings(updatedSettings);
       }
 
-      const session = await switchUserSession('OWNER', { pin: cleanPin });
       onLoginSuccess(session);
     } catch (err: any) {
       setErrorMsg(err.message || 'PIN သတ်မှတ်ရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');

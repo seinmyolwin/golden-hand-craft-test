@@ -12,6 +12,8 @@ import {
   AutoRecoverySnapshot,
   RawMaterialPreset,
   BackupValidationReport,
+  UserSession,
+  ActiveTab,
 } from '../types';
 import {
   exportSuppliersCSV,
@@ -120,6 +122,7 @@ interface SettingsBackupTabProps {
   sales: SaleRecord[];
   stockAdjustments: StockAdjustmentRecord[];
   shopSettings?: ShopSettings;
+  currentSession?: UserSession | null;
   deletedRecordsCount?: number;
   backupReminderSettings?: BackupReminderSettings;
   onUpdateBackupReminderSettings?: (newSettings: BackupReminderSettings) => void;
@@ -167,6 +170,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   sales = [],
   stockAdjustments = [],
   shopSettings = DEFAULT_SHOP_SETTINGS,
+  currentSession,
   deletedRecordsCount = 0,
   backupReminderSettings,
   onUpdateBackupReminderSettings,
@@ -197,6 +201,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   isCheckingUpdates = false,
   onSaveSettings,
 }) => {
+  const isOwner = currentSession ? currentSession.role === 'OWNER' : true;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingPin, setEditingPin] = useState(false);
   const [newPin, setNewPin] = useState('');
@@ -411,6 +416,11 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isOwner) {
+      alert('Backup ပြန်လည်သွင်းယူခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -431,6 +441,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleLoad100Suppliers = () => {
+    if (!isOwner) {
+      alert('နမူနာဒေတာ သွင်းခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
+      return;
+    }
     if (confirm('စမ်းသပ်ရန် ကုန်ကြမ်းပေးသွင်းသူ ၁၀၀ ဦး စာရင်းကို ထည့်သွင်းလိုပါသလား?')) {
       const generated = generate100SampleSuppliers();
       onRestoreData(products, generated, transactions, merchants, sales, stockAdjustments, shopSettings);
@@ -439,6 +453,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleResetDefaults = () => {
+    if (!isOwner) {
+      alert('မူလနမူနာဒေတာ ပြန်သတ်မှတ်ခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
+      return;
+    }
     if (confirm('မူလနမူနာ ဒေတာများအတိုင်း အစမှ ပြန်လည်သတ်မှတ်လိုပါသလား?')) {
       onRestoreData(DEFAULT_PRODUCTS, INITIAL_SUPPLIERS, INITIAL_TRANSACTIONS, INITIAL_MERCHANTS, INITIAL_SALES, [], DEFAULT_SHOP_SETTINGS);
       alert('မူလနမူနာဒေတာများ အောင်မြင်စွာ ပြန်လည်သတ်မှတ်ပြီးပါပြီ');
@@ -446,6 +464,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleClearAll = () => {
+    if (!isOwner) {
+      alert('ဒေတာများ ရှင်းထုတ်ခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
+      return;
+    }
     if (onOpenClearDataModal) {
       onOpenClearDataModal();
     } else {
@@ -610,6 +632,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   const handleShweLetYarDocBackup = async (useFolderPicker: boolean = false) => {
+    if (!isOwner) {
+      alert('Backup ထုတ်ယူခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
+      return;
+    }
     setIsBackingUp(true);
     try {
       const backup = await createCompleteBackup({
@@ -670,7 +696,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
-          {onOpenZeroSettings && (
+          {onOpenZeroSettings && isOwner && (
             <button
               id="settings-zero-start-btn"
               type="button"
@@ -1021,94 +1047,101 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
 
         {/* Toggle Lock and Change PIN row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50/60 p-3 rounded-xl text-xs border border-amber-200">
-          <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
-            <input
-              type="checkbox"
-              checked={appLockSettings?.enabled ?? false}
-              onChange={(e) =>
-                onUpdateAppLockSettings?.({
-                  ...(appLockSettings || { enabled: false }),
-                  enabled: e.target.checked,
-                })
-              }
-              className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
-            />
-            <span>App ဖွင့်တိုင်း Password / PIN တောင်းမည်</span>
-          </label>
-
-          <div className="flex items-center gap-2">
-            {editingPin ? (
-              <div className="flex items-center gap-2">
-                <span className="text-slate-600 font-medium">PIN အသစ်:</span>
-                <input
-                  type="password"
-                  maxLength={8}
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="၄~၈ လုံး"
-                  className="w-24 px-2 py-1 bg-white border border-amber-300 rounded-lg text-center font-extrabold text-sm tracking-widest text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (newPin.length < 4) {
-                      alert('PIN သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်');
-                      return;
-                    }
-                    const pinCreds = await derivePinCredentials(newPin);
-                    const updated: AppLockSettings = {
-                      ...(appLockSettings || { enabled: true }),
-                      pinSalt: pinCreds.salt,
-                      pinHash: pinCreds.hash,
-                      isPinInitialized: true,
-                      enabled: true,
-                      failedAttempts: 0,
-                      lockedUntilTimestamp: undefined,
-                    };
-                    delete updated.passcode;
-                    delete updated.pin;
-                    onUpdateAppLockSettings?.(updated);
-                    setEditingPin(false);
-                    setNewPin('');
-                    alert('PIN အသစ် ပြောင်းလဲပြီးပါပြီ!');
-                  }}
-                  className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg cursor-pointer"
-                >
-                  သိမ်းမည်
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingPin(false);
-                    setNewPin('');
-                  }}
-                  className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg cursor-pointer"
-                >
-                  ပယ်ဖျက်
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-slate-600 font-medium">
-                  {appLockSettings?.isPinInitialized || appLockSettings?.pinHash
-                    ? 'PIN သတ်မှတ်ထားပြီး (****)'
-                    : 'PIN မသတ်မှတ်ရသေးပါ'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewPin('');
-                    setEditingPin(true);
-                  }}
-                  className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold rounded-lg cursor-pointer transition-colors"
-                >
-                  PIN ပြောင်းမည်
-                </button>
-              </div>
-            )}
+        {!isOwner ? (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>App Lock နှင့် Password/PIN စနစ်ကို ဆိုင်ရှင် (OWNER) သာ ပြင်ဆင်ခွင့်ရှိပါသည်</span>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50/60 p-3 rounded-xl text-xs border border-amber-200">
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+              <input
+                type="checkbox"
+                checked={appLockSettings?.enabled ?? false}
+                onChange={(e) =>
+                  onUpdateAppLockSettings?.({
+                    ...(appLockSettings || { enabled: false }),
+                    enabled: e.target.checked,
+                  })
+                }
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+              />
+              <span>App ဖွင့်တိုင်း Password / PIN တောင်းမည်</span>
+            </label>
+
+            <div className="flex items-center gap-2">
+              {editingPin ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-600 font-medium">PIN အသစ်:</span>
+                  <input
+                    type="password"
+                    maxLength={8}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="၄~၈ လုံး"
+                    className="w-24 px-2 py-1 bg-white border border-amber-300 rounded-lg text-center font-extrabold text-sm tracking-widest text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (newPin.length < 4) {
+                        alert('PIN သည် အနည်းဆုံး ၄ လုံး ရှိရပါမည်');
+                        return;
+                      }
+                      const pinCreds = await derivePinCredentials(newPin);
+                      const updated: AppLockSettings = {
+                        ...(appLockSettings || { enabled: true }),
+                        pinSalt: pinCreds.salt,
+                        pinHash: pinCreds.hash,
+                        isPinInitialized: true,
+                        enabled: true,
+                        failedAttempts: 0,
+                        lockedUntilTimestamp: undefined,
+                      };
+                      delete updated.passcode;
+                      delete updated.pin;
+                      onUpdateAppLockSettings?.(updated);
+                      setEditingPin(false);
+                      setNewPin('');
+                      alert('PIN အသစ် ပြောင်းလဲပြီးပါပြီ!');
+                    }}
+                    className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg cursor-pointer"
+                  >
+                    သိမ်းမည်
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPin(false);
+                      setNewPin('');
+                    }}
+                    className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg cursor-pointer"
+                  >
+                    ပယ်ဖျက်
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-600 font-medium">
+                    {appLockSettings?.isPinInitialized || appLockSettings?.pinHash
+                      ? 'PIN သတ်မှတ်ထားပြီး (****)'
+                      : 'PIN မသတ်မှတ်ရသေးပါ'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPin('');
+                      setEditingPin(true);
+                    }}
+                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold rounded-lg cursor-pointer transition-colors"
+                  >
+                    PIN ပြောင်းမည်
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Security Disclosure Notice */}
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
@@ -1120,7 +1153,8 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
 
         {/* PASSWORD KEY RESET & RECOVERY OPTION SECTION */}
-        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+        {isOwner && (
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
@@ -1276,6 +1310,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </form>
           )}
         </div>
+        )}
       </div>
 
       {/* Multi-Device Hotspot Sync & Zapya Offline Transfer Card */}
@@ -1465,15 +1500,22 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <span>စာရင်းစစ်မှတ်တမ်း (Audit Trail)</span>
               </button>
             )}
-            <button
-              id="settings-db-health-btn"
-              type="button"
-              onClick={() => setIsDatabaseHealthOpen(true)}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0"
-            >
-              <Activity className="w-4 h-4 text-emerald-300" />
-              <span>ကျန်းမာရေး စစ်ဆေးမည် (Run Diagnostics)</span>
-            </button>
+            {!isOwner ? (
+              <span className="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold text-xs rounded-xl flex items-center gap-1.5 border border-slate-200">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>စစ်ဆေးပြုပြင်ခြင်းကို ဆိုင်ရှင်သာ လုပ်ဆောင်နိုင်ပါသည်</span>
+              </span>
+            ) : (
+              <button
+                id="settings-db-health-btn"
+                type="button"
+                onClick={() => setIsDatabaseHealthOpen(true)}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0"
+              >
+                <Activity className="w-4 h-4 text-emerald-300" />
+                <span>ကျန်းမာရေး စစ်ဆေးမည် (Run Diagnostics)</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1521,26 +1563,33 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="အကြောင်းပြချက် (ရွေးချယ်ရန်)..."
-              value={snapshotReason}
-              onChange={(e) => setSnapshotReason(e.target.value)}
-              className="text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg w-40 sm:w-48 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                onTakeSnapshotNow?.(snapshotReason || 'ကိုယ်တိုင် မှတ်တမ်းယူ (Manual Snapshot)');
-                setSnapshotReason('');
-              }}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>Snapshot ယူမည်</span>
-            </button>
-          </div>
+          {isOwner ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="အကြောင်းပြချက် (ရွေးချယ်ရန်)..."
+                value={snapshotReason}
+                onChange={(e) => setSnapshotReason(e.target.value)}
+                className="text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg w-40 sm:w-48 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  onTakeSnapshotNow?.(snapshotReason || 'ကိုယ်တိုင် မှတ်တမ်းယူ (Manual Snapshot)');
+                  setSnapshotReason('');
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>Snapshot ယူမည်</span>
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>ဆိုင်ရှင်သာ Snapshot ရယူနိုင်ပါသည်</span>
+            </span>
+          )}
         </div>
 
         {snapshots.length === 0 ? (
@@ -1573,22 +1622,24 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                     <span>အရောင်း: {snap.recordCounts.sales}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `"${snap.date} ${snap.time}" မှတ်တမ်းသို့ ဒေတာအားလုံး ပြန်လည်ပြောင်းလဲယူလိုပါသလား?`
-                      )
-                    ) {
-                      onRestoreSnapshot?.(snap);
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-white hover:bg-blue-600 hover:text-white text-blue-700 font-bold border border-blue-300 rounded-lg cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs self-end sm:self-auto"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>ပြန်ယူမည်</span>
-                </button>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `"${snap.date} ${snap.time}" မှတ်တမ်းသို့ ဒေတာအားလုံး ပြန်လည်ပြောင်းလဲယူလိုပါသလား?`
+                        )
+                      ) {
+                        onRestoreSnapshot?.(snap);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-white hover:bg-blue-600 hover:text-white text-blue-700 font-bold border border-blue-300 rounded-lg cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs self-end sm:self-auto"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>ပြန်ယူမည်</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -1623,22 +1674,30 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onOpenBackupReminderModal}
-              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <BellRing className="w-4 h-4 text-emerald-600" />
-              <span>သတိပေးချက် စမ်းသပ်မည် (Test Alert)</span>
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={onOpenBackupReminderModal}
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <BellRing className="w-4 h-4 text-emerald-600" />
+                <span>သတိပေးချက် စမ်းသပ်မည် (Test Alert)</span>
+              </button>
+            ) : (
+              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>ဆိုင်ရှင်သာ ပြင်ဆင်နိုင်ပါသည်</span>
+              </span>
+            )}
           </div>
         </div>
 
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/50 p-3 rounded-lg text-xs">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+            <label className={`flex items-center gap-2 font-bold text-slate-800 ${!isOwner ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}>
               <input
                 type="checkbox"
+                disabled={!isOwner}
                 checked={backupReminderSettings?.enabled ?? true}
                 onChange={(e) =>
                   onUpdateBackupReminderSettings?.({
@@ -1661,6 +1720,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </span>
             <input
               type="time"
+              disabled={!isOwner}
               value={backupReminderSettings?.reminderTime || '17:30'}
               onChange={(e) =>
                 onUpdateBackupReminderSettings?.({
@@ -1762,72 +1822,82 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="p-3.5 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 flex flex-col justify-between">
+        {!isOwner ? (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold flex items-center gap-2.5">
+            <Lock className="w-5 h-5 text-slate-500 shrink-0" />
             <div>
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည် (v3.0 Verified)</span>
-                <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-semibold">အကြံပြုချက်</span>
-              </div>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                လက်ရှိ စာရင်းသွင်းထားသော ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို SHA-256 Checksum ပါဝင်သော JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
-              </p>
-            </div>
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                id="direct-download-backup-btn"
-                disabled={isBackingUp}
-                onClick={() => handleShweLetYarDocBackup(false)}
-                className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>{isBackingUp ? 'Backup ဖိုင် ထုတ်ယူနေပါသည်...' : 'Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်'}</span>
-              </button>
-              <button
-                type="button"
-                id="download-backup-btn"
-                disabled={isBackingUp}
-                onClick={() => handleShweLetYarDocBackup(true)}
-                className="w-full py-2 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
-              >
-                <FolderOpen className="w-4 h-4 text-slate-600" />
-                <span>နေရာရွေးပြီး Backup သိမ်းမည် (Folder Picker)</span>
-              </button>
+              <span className="font-bold block text-slate-900">ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်း (Backup & Restore)</span>
+              <span>ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်</span>
             </div>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3.5 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည် (v3.0 Verified)</span>
+                  <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-semibold">အကြံပြုချက်</span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  လက်ရှိ စာရင်းသွင်းထားသော ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို SHA-256 Checksum ပါဝင်သော JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
+                </p>
+              </div>
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  id="direct-download-backup-btn"
+                  disabled={isBackingUp}
+                  onClick={() => handleShweLetYarDocBackup(false)}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{isBackingUp ? 'Backup ဖိုင် ထုတ်ယူနေပါသည်...' : 'Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်'}</span>
+                </button>
+                <button
+                  type="button"
+                  id="download-backup-btn"
+                  disabled={isBackingUp}
+                  onClick={() => handleShweLetYarDocBackup(true)}
+                  className="w-full py-2 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
+                >
+                  <FolderOpen className="w-4 h-4 text-slate-600" />
+                  <span>နေရာရွေးပြီး Backup သိမ်းမည် (Folder Picker)</span>
+                </button>
+              </div>
+            </div>
 
-          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Safe Restore)</span>
-                <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">Integrity Verified</span>
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Safe Restore)</span>
+                  <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">Integrity Verified</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး ဖိုင်စစ်ဆေးမှု၊ နှိုင်းယှဉ်ချက်များနှင့် Smart Merge / Clean Overwrite အဆင့်ဆင့် ပြုလုပ်ပါမည်
+                </p>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး ဖိုင်စစ်ဆေးမှု၊ နှိုင်းယှဉ်ချက်များနှင့် Smart Merge / Clean Overwrite အဆင့်ဆင့် ပြုလုပ်ပါမည်
-              </p>
-            </div>
-            <div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".json"
-                className="hidden"
-              />
-              <button
-                type="button"
-                id="restore-backup-btn"
-                disabled={isValidating}
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-2.5 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
-              >
-                <Upload className="w-4 h-4 text-slate-600" />
-                <span>{isValidating ? 'ဖိုင်စစ်ဆေးနေပါသည်...' : 'Backup ဖိုင် ရွေးမည် (Preview & Validate)'}</span>
-              </button>
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".json"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  id="restore-backup-btn"
+                  disabled={isValidating}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2.5 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                >
+                  <Upload className="w-4 h-4 text-slate-600" />
+                  <span>{isValidating ? 'ဖိုင်စစ်ဆေးနေပါသည်...' : 'Backup ဖိုင် ရွေးမည် (Preview & Validate)'}</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Auto-Recovery Safety Snapshots Management Card */}
@@ -1852,52 +1922,61 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              id="open-snapshots-modal-btn"
-              onClick={() => setIsSnapshotsModalOpen(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0"
-            >
-              <History className="w-4 h-4" />
-              <span>Safety Snapshots ကြည့်မည် / ပြန်ယူမည် ({snapshots.length})</span>
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                id="open-snapshots-modal-btn"
+                onClick={() => setIsSnapshotsModalOpen(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0"
+              >
+                <History className="w-4 h-4" />
+                <span>Safety Snapshots ကြည့်မည် / ပြန်ယူမည် ({snapshots.length})</span>
+              </button>
+            ) : (
+              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>ဆိုင်ရှင်သာ စီမံခွင့်ရှိပါသည်</span>
+              </span>
+            )}
           </div>
         </div>
 
         {/* Quick Emergency Snapshot Bar */}
-        <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
-          <input
-            type="text"
-            placeholder="Snapshot အကြောင်းပြချက် (ဥပမာ - လကုန်စာရင်းမရှင်းမီ မှတ်တမ်း)"
-            value={emergencyReason}
-            onChange={(e) => setEmergencyReason(e.target.value)}
-            className="w-full sm:flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="button"
-            disabled={isCreatingSnapshot}
-            onClick={async () => {
-              setIsCreatingSnapshot(true);
-              try {
-                const reason = emergencyReason.trim() || 'Manual Safety Snapshot';
-                await createAutoRecoverySnapshot(reason);
-                if (onTakeSnapshotNow) {
-                  onTakeSnapshotNow(reason);
+        {isOwner && (
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
+            <input
+              type="text"
+              placeholder="Snapshot အကြောင်းပြချက် (ဥပမာ - လကုန်စာရင်းမရှင်းမီ မှတ်တမ်း)"
+              value={emergencyReason}
+              onChange={(e) => setEmergencyReason(e.target.value)}
+              className="w-full sm:flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              disabled={isCreatingSnapshot}
+              onClick={async () => {
+                setIsCreatingSnapshot(true);
+                try {
+                  const reason = emergencyReason.trim() || 'Manual Safety Snapshot';
+                  await createAutoRecoverySnapshot(reason);
+                  if (onTakeSnapshotNow) {
+                    onTakeSnapshotNow(reason);
+                  }
+                  setEmergencyReason('');
+                  alert(`Safety Snapshot "${reason}" ကို IndexedDB ထဲသို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ`);
+                } catch (e: any) {
+                  alert(`Snapshot သိမ်းဆည်းရာတွင် အမှားဖြစ်ပွားပါသည်: ${e?.message || e}`);
+                } finally {
+                  setIsCreatingSnapshot(false);
                 }
-                setEmergencyReason('');
-                alert(`Safety Snapshot "${reason}" ကို IndexedDB ထဲသို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ`);
-              } catch (e: any) {
-                alert(`Snapshot သိမ်းဆည်းရာတွင် အမှားဖြစ်ပွားပါသည်: ${e?.message || e}`);
-              } finally {
-                setIsCreatingSnapshot(false);
-              }
-            }}
-            className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-            <span>{isCreatingSnapshot ? 'သိမ်းဆည်းနေပါသည်...' : 'Snapshot ချက်ချင်း ရယူမည်'}</span>
-          </button>
-        </div>
+              }}
+              className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>{isCreatingSnapshot ? 'သိမ်းဆည်းနေပါသည်...' : 'Snapshot ချက်ချင်း ရယူမည်'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Individual Excel Exports */}
@@ -2095,7 +2174,12 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </div>
 
             <div className="space-y-2 pt-1 border-t border-emerald-100">
-              {shopSettings?.isLiveConfirmed || shopSettings?.hideSampleDataButtons ? (
+              {!isOwner ? (
+                <div className="p-3 bg-white/80 border border-slate-200 rounded-xl text-center text-xs text-slate-500 font-semibold flex items-center justify-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>ဆိုင်ရှင်သာ ပြောင်းလဲနိုင်ပါသည်</span>
+                </div>
+              ) : shopSettings?.isLiveConfirmed || shopSettings?.hideSampleDataButtons ? (
                 <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-2 text-center">
                   <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-bold text-xs">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -2163,15 +2247,22 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </div>
 
             <div className="pt-1 border-t border-amber-200">
-              <button
-                type="button"
-                id="settings-zero-data-btn"
-                onClick={onOpenZeroSettings || handleClearAll}
-                className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black text-xs rounded-xl cursor-pointer transition-all shadow-xs border border-amber-400 flex items-center justify-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                <span>ဆိုင်စာရင်းသစ် စတင်မည် (၀ သတ်မှတ်)</span>
-              </button>
+              {!isOwner ? (
+                <div className="p-2.5 bg-amber-100/60 border border-amber-300 rounded-xl text-center text-xs text-amber-900 font-bold flex items-center justify-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                  <span>ဆိုင်ရှင်သာ စတင်အသုံးပြုခွင့်ရှိပါသည်</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  id="settings-zero-data-btn"
+                  onClick={onOpenZeroSettings || handleClearAll}
+                  className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-400 active:scale-98 text-slate-950 font-black text-xs rounded-xl cursor-pointer transition-all shadow-xs border border-amber-400 flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                  <span>ဆိုင်စာရင်းသစ် စတင်မည် (၀ သတ်မှတ်)</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -2193,15 +2284,22 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             </div>
 
             <div className="pt-1 border-t border-rose-100">
-              <button
-                type="button"
-                id="settings-clear-all-data-btn"
-                onClick={handleClearAll}
-                className="w-full py-2.5 px-3 bg-rose-600 hover:bg-rose-500 active:scale-98 text-white font-bold text-xs rounded-xl cursor-pointer transition-all shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>ဒေတာအားလုံး အပြီးရှင်းထုတ်မည်</span>
-              </button>
+              {!isOwner ? (
+                <div className="p-2.5 bg-rose-100/60 border border-rose-200 rounded-xl text-center text-xs text-rose-900 font-bold flex items-center justify-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-rose-600" />
+                  <span>ဆိုင်ရှင် (OWNER) သာ ရှင်းထုတ်ခွင့်ရှိပါသည်</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  id="settings-clear-all-data-btn"
+                  onClick={handleClearAll}
+                  className="w-full py-2.5 px-3 bg-rose-600 hover:bg-rose-500 active:scale-98 text-white font-bold text-xs rounded-xl cursor-pointer transition-all shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>ဒေတာအားလုံး အပြီးရှင်းထုတ်မည်</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

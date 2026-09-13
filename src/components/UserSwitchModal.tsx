@@ -50,8 +50,7 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({
 
   const isOwnerActive = currentSession?.role === 'OWNER';
   const hasConfiguredPin = Boolean(
-    appLockSettings?.enabled &&
-      (appLockSettings?.pinHash || appLockSettings?.passcode || appLockSettings?.pin)
+    appLockSettings?.pinHash || appLockSettings?.passcode || appLockSettings?.pin
   );
 
   const handleSwitchToStaff = async () => {

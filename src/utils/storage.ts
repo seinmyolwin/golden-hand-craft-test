@@ -742,7 +742,8 @@ export function computeDailySummary(
   transactions: TransactionRecord[] = [],
   _products: Product[] = []
 ): DailySummary {
-  const dayTxs = (transactions || []).filter((t) => t && t.date === date);
+  const targetDate = (date || '').trim().slice(0, 10);
+  const dayTxs = (transactions || []).filter((t) => t && (t.date || '').trim().slice(0, 10) === targetDate);
   const visitedSupplierIds = new Set<string>();
   let totalGoodsCount = 0;
   let totalGoodsValue = 0;
@@ -759,7 +760,7 @@ export function computeDailySummary(
     totalGoodsValue += tx.totalGoodsValue || 0;
     totalAdvanceDeducted += tx.advanceDeducted || 0;
     totalNewAdvanceGiven += tx.newAdvanceTaken || 0;
-    totalCashPaid += tx.cashPaidToSupplier || 0;
+    totalCashPaid += (tx.cashPaidToSupplier ?? tx.netCashPaidToSupplier ?? 0);
 
     if (tx.type === 'RAW_MATERIAL_CREDIT') {
       totalMaterialCreditGiven += tx.materialTotalValue || tx.newAdvanceTaken || 0;
@@ -773,7 +774,7 @@ export function computeDailySummary(
       totalRepaymentReceived += tx.cashRepaymentReceived;
     }
 
-    if (tx.type === 'COLLECTION_AND_SETTLEMENT' && tx.items && Array.isArray(tx.items) && tx.items.length > 0) {
+    if ((tx.type === 'COLLECTION_AND_SETTLEMENT' || !tx.type) && tx.items && Array.isArray(tx.items) && tx.items.length > 0) {
       tx.items.forEach((item) => {
         if (!item) return;
         const isRawMaterial =

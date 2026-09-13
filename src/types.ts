@@ -445,6 +445,7 @@ export interface ShopSettings {
   thermalPrinterWidth?: '58mm' | '80mm';
   receiptFooterNote?: string;
   rawMaterialPresets?: RawMaterialPreset[];
+  staffAllowedTabs?: ActiveTab[];
 }
 
 // ============================================================================
@@ -1227,6 +1228,7 @@ export interface AppUser {
   pinSalt?: string;
   pinHash?: string;
   isActive: boolean;
+  allowedTabs?: ActiveTab[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1236,6 +1238,7 @@ export interface UserSession {
   username: string;
   displayName: string;
   role: UserRole;
+  allowedTabs?: ActiveTab[];
   loginTimestamp: string;
   sessionToken?: string;
   token?: string;

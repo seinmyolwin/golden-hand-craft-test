@@ -202,10 +202,12 @@ export function calculateCashLedger(
     const { startDate, endDate, typeFilter, paymentMethodFilter, searchQuery } = filterOptions;
 
     if (startDate) {
-      filtered = filtered.filter((e) => e.transactionDate >= startDate);
+      const start = startDate.trim().slice(0, 10);
+      filtered = filtered.filter((e) => (e.transactionDate || '').trim().slice(0, 10) >= start);
     }
     if (endDate) {
-      filtered = filtered.filter((e) => e.transactionDate <= endDate);
+      const end = endDate.trim().slice(0, 10);
+      filtered = filtered.filter((e) => (e.transactionDate || '').trim().slice(0, 10) <= end);
     }
     if (typeFilter && typeFilter !== 'ALL') {
       if (typeFilter === 'IN' || typeFilter === 'OUT') {
@@ -234,6 +236,10 @@ export function calculateCashLedger(
   let totalCashIn = 0;
   let totalCashOut = 0;
   for (const entry of filtered) {
+    if (entry.type === 'OPENING_FLOAT') {
+      // Opening float is capital/float, not daily operational cash-in
+      continue;
+    }
     if (entry.signedAmount > 0) {
       totalCashIn += entry.signedAmount;
     } else {

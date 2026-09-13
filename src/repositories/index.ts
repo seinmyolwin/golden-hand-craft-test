@@ -403,10 +403,16 @@ export class TransactionRepository implements ITransactionRepository {
         }
 
         const now = new Date().toISOString();
+        const normalizedTxDate = (tx.date || now.slice(0, 10)).trim().slice(0, 10);
+        const cashPaid = tx.cashPaidToSupplier ?? tx.netCashPaidToSupplier ?? (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) ?? 0;
         const enrichedTx: TransactionRecord = {
           ...tx,
           id: tx.id || generateStableId('tx'),
-          voucherNo: tx.voucherNo || generateVoucherNo('TX', tx.date),
+          voucherNo: tx.voucherNo || generateVoucherNo('TX', normalizedTxDate),
+          date: normalizedTxDate,
+          type: tx.type || 'COLLECTION_AND_SETTLEMENT',
+          cashPaidToSupplier: cashPaid,
+          netCashPaidToSupplier: tx.netCashPaidToSupplier ?? cashPaid,
           status: 'COMPLETED',
           createdAt: tx.createdAt || now,
           updatedAt: now,
@@ -444,7 +450,7 @@ export class TransactionRepository implements ITransactionRepository {
               counterpartName: tx.supplierName || supplier.name,
               unitPrice: item.unitPrice,
               totalValue: (item.quantity || 0) * (item.unitPrice || 0),
-              transactionDate: tx.date || now.slice(0, 10),
+              transactionDate: normalizedTxDate,
               transactionTime: tx.time,
               createdAt: now,
               status: 'COMPLETED',
@@ -467,7 +473,6 @@ export class TransactionRepository implements ITransactionRepository {
         await this.database.suppliers.put(updatedSupplier);
 
         // 5. Cash Ledger Recording
-        const cashPaid = tx.cashPaidToSupplier || tx.netCashPaidToSupplier || (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) || 0;
         if (cashPaid > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_PAYOUT', enrichedTx.id);
@@ -484,11 +489,38 @@ export class TransactionRepository implements ITransactionRepository {
             counterpartName: tx.supplierName || supplier.name,
             paymentMethod: tx.paymentMethod || 'CASH',
             description: `ကုန်သိမ်းငွေပေးချေမှု: ${tx.supplierName || supplier.name} (ဘောင်ချာ ${enrichedTx.voucherNo})`,
-            transactionDate: tx.date || now.slice(0, 10),
+            transactionDate: normalizedTxDate,
             transactionTime: tx.time || now.slice(11, 16),
             notes: tx.notes,
             status: 'COMPLETED',
             idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        // 5b. Cash Advance given during collection
+        if (tx.newAdvanceTaken && tx.newAdvanceTaken > 0) {
+          const advCashId = generateStableId('csh');
+          const advIdempotencyKey = buildCashIdempotencyKey('SUPPLIER_ADVANCE_GIVEN', enrichedTx.id);
+          await this.database.cashMovements.put({
+            id: advCashId,
+            amount: Math.abs(tx.newAdvanceTaken),
+            direction: 'OUT',
+            signedAmount: -Math.abs(tx.newAdvanceTaken),
+            type: 'SUPPLIER_ADVANCE_GIVEN',
+            typeLabelMy: getCashMovementTypeLabel('SUPPLIER_ADVANCE_GIVEN'),
+            referenceType: 'TRANSACTION',
+            referenceId: enrichedTx.id,
+            referenceVoucherNo: enrichedTx.voucherNo,
+            counterpartName: tx.supplierName || supplier.name,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကုန်သိမ်းစဉ် အကြိုငွေထုတ်ပေးမှု: ${tx.supplierName || supplier.name} (ဘောင်ချာ ${enrichedTx.voucherNo})`,
+            transactionDate: normalizedTxDate,
+            transactionTime: tx.time || now.slice(11, 16),
+            notes: tx.newAdvanceReason || tx.notes,
+            status: 'COMPLETED',
+            idempotencyKey: advIdempotencyKey,
             schemaVersion: 1,
             createdAt: now,
           });
@@ -510,7 +542,7 @@ export class TransactionRepository implements ITransactionRepository {
             counterpartName: tx.supplierName || supplier.name,
             paymentMethod: tx.paymentMethod || 'CASH',
             description: `ကြိုတင်ငွေပြန်ဆပ်မှု: ${tx.supplierName || supplier.name} (ဘောင်ချာ ${enrichedTx.voucherNo})`,
-            transactionDate: tx.date || now.slice(0, 10),
+            transactionDate: normalizedTxDate,
             transactionTime: tx.time || now.slice(11, 16),
             notes: tx.notes,
             status: 'COMPLETED',
@@ -659,6 +691,33 @@ export class TransactionRepository implements ITransactionRepository {
             counterpartName: tx.supplierName,
             paymentMethod: tx.paymentMethod || 'CASH',
             description: `ကြိုတင်ငွေပြန်ဆပ်မှုဖျက်သိမ်း (Reversal): ${tx.supplierName} (ဘောင်ချာ ${tx.voucherNo || tx.id})`,
+            transactionDate: now.slice(0, 10),
+            transactionTime: now.slice(11, 16),
+            reversalOf: tx.id,
+            notes: reason,
+            status: 'COMPLETED',
+            idempotencyKey,
+            schemaVersion: 1,
+            createdAt: now,
+          });
+        }
+
+        if (tx.newAdvanceTaken && tx.newAdvanceTaken > 0) {
+          const cashId = generateStableId('csh');
+          const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'ADV_REV');
+          await this.database.cashMovements.put({
+            id: cashId,
+            amount: Math.abs(tx.newAdvanceTaken),
+            direction: 'IN',
+            signedAmount: Math.abs(tx.newAdvanceTaken),
+            type: 'TRANSACTION_CANCELLED_CASH_REVERSAL',
+            typeLabelMy: getCashMovementTypeLabel('TRANSACTION_CANCELLED_CASH_REVERSAL'),
+            referenceType: 'TRANSACTION',
+            referenceId: tx.id,
+            referenceVoucherNo: tx.voucherNo,
+            counterpartName: tx.supplierName,
+            paymentMethod: tx.paymentMethod || 'CASH',
+            description: `ကုန်သိမ်းအကြိုငွေဖျက်သိမ်း (Reversal): ${tx.supplierName} (ဘောင်ချာ ${tx.voucherNo || tx.id})`,
             transactionDate: now.slice(0, 10),
             transactionTime: now.slice(11, 16),
             reversalOf: tx.id,
@@ -1273,23 +1332,41 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           }
         }
 
-        const merchant = await this.database.merchants.get(purchase.merchantId);
+        const now = new Date().toISOString();
+        let merchant = purchase.merchantId ? await this.database.merchants.get(purchase.merchantId) : undefined;
         if (!merchant) {
-          throw new EntityNotFoundError('Merchant', purchase.merchantId);
+          // Upsert-create merchant directly within the transaction if not existing
+          const newMerchantId = purchase.merchantId || generateStableId('merch');
+          merchant = {
+            id: newMerchantId,
+            code: `M-${newMerchantId.slice(-6).toUpperCase()}`,
+            name: (purchase.merchantName || 'အမည်မသိ ကုန်သည်').trim(),
+            town: (purchase.merchantTown || 'အထွေထွေ').trim(),
+            phone: (purchase.sellerPhone || '').trim(),
+            role: 'SUPPLIER',
+            payableBalance: purchase.remainingPayableBalance || 0,
+            totalPurchasedFromMerchant: purchase.totalAmount || 0,
+            currentReceivableBalance: 0,
+            totalPurchasesValue: 0,
+            totalPaidAmount: 0,
+            createdAt: now,
+            updatedAt: now,
+          };
+          await this.database.merchants.put(merchant);
+        } else {
+          const currentPayable = merchant.payableBalance || 0;
+          const updatedPayable = currentPayable + (purchase.remainingPayableBalance || 0);
+          await this.database.merchants.update(merchant.id, {
+            payableBalance: updatedPayable,
+            totalPurchasedFromMerchant: (merchant.totalPurchasedFromMerchant || 0) + (purchase.totalAmount || 0),
+            updatedAt: now,
+          });
         }
 
-        const currentPayable = merchant.payableBalance || 0;
-        const updatedPayable = currentPayable + (purchase.remainingPayableBalance || 0);
-        await this.database.merchants.update(purchase.merchantId, {
-          payableBalance: updatedPayable,
-          totalPurchasedFromMerchant: (merchant.totalPurchasedFromMerchant || 0) + (purchase.totalAmount || 0),
-          updatedAt: new Date().toISOString(),
-        });
-
-        const now = new Date().toISOString();
         const enrichedPurchase: MerchantPurchaseRecord = {
           ...purchase,
           id: purchase.id || generateStableId('pur'),
+          merchantId: merchant.id,
           purchaseNo: purchase.purchaseNo || generateVoucherNo('PUR', purchase.date),
           status: 'COMPLETED',
           createdAt: purchase.createdAt || now,

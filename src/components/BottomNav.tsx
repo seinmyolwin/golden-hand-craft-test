@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActiveTab } from '../types';
+import { ActiveTab, UserSession } from '../types';
 import {
   ArrowDownLeft,
   Package,
@@ -14,6 +14,18 @@ import {
   Boxes,
 } from 'lucide-react';
 
+export const DEFAULT_STAFF_ALLOWED_TABS: ActiveTab[] = [
+  'daily',
+  'inventory',
+  'orders',
+  'sales',
+  'purchases',
+  'peers',
+  'merchants',
+  'suppliers',
+  'history',
+];
+
 interface BottomNavProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
@@ -21,6 +33,8 @@ interface BottomNavProps {
   todaySalesCount: number;
   lowStockAlertCount: number;
   pendingOrdersCount?: number;
+  currentSession?: UserSession | null;
+  allowedTabs?: ActiveTab[];
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
@@ -30,6 +44,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   todaySalesCount,
   lowStockAlertCount,
   pendingOrdersCount = 0,
+  currentSession,
+  allowedTabs,
 }) => {
   const navItems = [
     {
@@ -108,11 +124,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     },
   ];
 
+  const isOwner = currentSession ? currentSession.role === 'OWNER' : !allowedTabs;
+  const effectiveAllowedTabs = allowedTabs || currentSession?.allowedTabs || DEFAULT_STAFF_ALLOWED_TABS;
+  const visibleNavItems = isOwner
+    ? navItems
+    : navItems.filter((item) => effectiveAllowedTabs.includes(item.id));
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-lg pb-safe">
       <div className="max-w-5xl mx-auto px-1 sm:px-2">
         <div className="flex items-center justify-between overflow-x-auto scrollbar-none py-1">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (

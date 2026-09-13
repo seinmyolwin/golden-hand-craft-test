@@ -42,9 +42,10 @@ export async function getPreviousClosingCash(
   date: string,
   targetDb: ShweLetYarDatabase = db
 ): Promise<number> {
+  const cleanDate = (date || '').trim().slice(0, 10);
   const previousClosings = await targetDb.dailyClosings
     .where('closingDate')
-    .below(date)
+    .below(cleanDate)
     .reverse()
     .sortBy('closingDate');
 
@@ -52,6 +53,21 @@ export async function getPreviousClosingCash(
     const lastClosed = previousClosings[0];
     return lastClosed.actualCountedCash ?? lastClosed.expectedClosingCash ?? 0;
   }
+
+  // If no prior closing exists, check initial setup opening cash from business initialization
+  try {
+    const initSetting = await targetDb.settings.get('businessInitialization');
+    if (initSetting && initSetting.value) {
+      const val = initSetting.value as any;
+      const initCash = val.openingPosition?.cash?.cashAmount;
+      if (typeof initCash === 'number' && !isNaN(initCash) && initCash >= 0) {
+        return initCash;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   return 0;
 }
 
@@ -90,24 +106,24 @@ export async function recordDailyClosingAtomic(
     }
 
     // 2. Fetch all cash movements for the date
+    const targetDate = closingDate.trim().slice(0, 10);
     const dayMovements = await targetDb.cashMovements
-      .where('transactionDate')
-      .equals(closingDate)
+      .filter((m) => (m.transactionDate || '').trim().slice(0, 10) === targetDate)
       .toArray();
 
     // 3. Determine opening cash (use provided or carry over from previous closed day)
     let openingCash = input.openingCash;
     if (openingCash === undefined) {
-      openingCash = await getPreviousClosingCash(closingDate, targetDb);
+      openingCash = await getPreviousClosingCash(targetDate, targetDb);
     }
 
     // 4. Calculate expected closing and difference
-    const summary = calculateDailyCashSummary(closingDate, dayMovements, openingCash);
+    const summary = calculateDailyCashSummary(targetDate, dayMovements, openingCash);
     const expectedClosingCash = summary.expectedClosingCash;
     const difference = actualCountedCash - expectedClosingCash;
 
     const now = new Date().toISOString();
-    const id = existing ? existing.id : `closing_${closingDate}`;
+    const id = existing ? existing.id : `closing_${targetDate}`;
 
     // 5. Build categorized breakdown
     const breakdown = {
@@ -133,6 +149,8 @@ export async function recordDailyClosingAtomic(
           breakdown.debtCollectionCash += amt;
           break;
         case 'INCOME_IN':
+        case 'SUPPLIER_REPAYMENT_IN':
+        case 'PURCHASE_RETURN_RECOVERY_IN':
           breakdown.otherIncomeCash += amt;
           break;
         case 'SUPPLIER_PAYOUT':
@@ -145,16 +163,22 @@ export async function recordDailyClosingAtomic(
           breakdown.purchaseCashPayout += amt;
           break;
         case 'EXPENSE_PAYOUT':
+        case 'SALES_RETURN_REFUND_OUT':
           breakdown.expensesCash += amt;
           break;
         case 'SALE_CANCELLED_CASH_REVERSAL':
         case 'TRANSACTION_CANCELLED_CASH_REVERSAL':
         case 'PURCHASE_CANCELLED_CASH_REVERSAL':
+        case 'SALES_RETURN_CANCELLED_CASH_REVERSAL':
+        case 'PURCHASE_RETURN_CANCELLED_CASH_REVERSAL':
           breakdown.reversalsNet += (m.signedAmount || 0);
           break;
         case 'DIRECT_CASH_IN':
         case 'DIRECT_CASH_OUT':
+        case 'MANUAL_CASH_ADJUSTMENT':
           breakdown.directCashNet += (m.signedAmount || 0);
+          break;
+        case 'OPENING_FLOAT':
           break;
       }
     });
@@ -227,12 +251,12 @@ export async function correctDailyClosingAtomic(
       throw new Error(`ရက်စွဲ ${closingDate} အတွက် စာရင်းပိတ်မှတ်တမ်း ရှာမတွေ့ပါ`);
     }
 
+    const targetDate = closingDate.trim().slice(0, 10);
     const dayMovements = await targetDb.cashMovements
-      .where('transactionDate')
-      .equals(closingDate)
+      .filter((m) => (m.transactionDate || '').trim().slice(0, 10) === targetDate)
       .toArray();
 
-    const summary = calculateDailyCashSummary(closingDate, dayMovements, existing.openingCash);
+    const summary = calculateDailyCashSummary(targetDate, dayMovements, existing.openingCash);
     const expectedClosingCash = summary.expectedClosingCash;
     const oldActual = existing.actualCountedCash;
     const newDifference = newActualCountedCash - expectedClosingCash;

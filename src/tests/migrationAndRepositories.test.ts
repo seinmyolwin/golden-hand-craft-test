@@ -597,6 +597,54 @@ describe('Database Integrity & Atomic Business Operations', () => {
     expect(cancelledPur?.cancellationReason).toBe('အရည်အသွေးမပြည့်မီ၍ ပြန်အပ်သည်');
   });
 
+  // 9b. P0.1 — Merchant upsert-create on savePurchaseAtomic
+  it('9b. Atomically creates new merchant record when savePurchaseAtomic is called with non-existent merchantId', async () => {
+    const newMerchantId = 'merch-auto-create-1';
+    // Ensure merchant does NOT exist prior to purchase
+    const beforeMerch = await testDb.merchants.get(newMerchantId);
+    expect(beforeMerch).toBeUndefined();
+
+    const purchase: MerchantPurchaseRecord = {
+      id: 'pur-auto-1',
+      purchaseNo: 'PUR-AUTO-001',
+      merchantId: newMerchantId,
+      merchantName: 'ဝါးကုန်သည် ဦးမောင်မောင်',
+      merchantTown: 'ညောင်ဦး',
+      sellerPhone: '09-777888999',
+      date: '2026-09-12',
+      time: '11:00',
+      items: [
+        {
+          productId: 'mat-raw-bamboo',
+          productName: 'ဝါးပိုးဝါး (ဝါးလုံး)',
+          quantity: 50,
+          unit: 'လုံး',
+          unitPrice: 3000,
+          subtotal: 150000,
+        },
+      ],
+      totalAmount: 150000,
+      paidAmount: 50000,
+      remainingPayableBalance: 100000,
+      paymentMethod: 'CASH',
+      createdAt: '2026-09-12',
+    };
+
+    // savePurchaseAtomic must succeed without throwing EntityNotFoundError
+    const saved = await purchaseRepo.savePurchaseAtomic(purchase);
+    expect(saved.status).toBe('COMPLETED');
+    expect(saved.merchantId).toBe(newMerchantId);
+
+    // Verify merchant record was upsert-created directly in merchants table
+    const createdMerchant = await testDb.merchants.get(newMerchantId);
+    expect(createdMerchant).toBeDefined();
+    expect(createdMerchant?.name).toBe('ဝါးကုန်သည် ဦးမောင်မောင်');
+    expect(createdMerchant?.town).toBe('ညောင်ဦး');
+    expect(createdMerchant?.phone).toBe('09-777888999');
+    expect(createdMerchant?.payableBalance).toBe(100000);
+    expect(createdMerchant?.totalPurchasedFromMerchant).toBe(150000);
+  });
+
   // 10. Stock adjustment
   it('10. Atomically records stock adjustment, updates product stock, and logs audit', async () => {
     const product: Product = {
