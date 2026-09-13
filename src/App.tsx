@@ -110,7 +110,7 @@ import { ReturnRefundModal } from './components/ReturnRefundModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { recordAuditEvent, getAuditTrail, cleanupAuditLogsByRetentionPolicy } from './services/auditTrailService';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
-import { executeGoLive, checkIsBusinessLive, cleanupDemoDataForGoLive, authorizeDemoDataReload } from './services/businessInitializationService';
+import { executeGoLive, checkIsBusinessLive, cleanupDemoDataForGoLive, authorizeDemoDataReload, OpeningPosition } from './services/businessInitializationService';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { executeSyncMerge } from './services/syncMergeService';
 import { db } from './db/database';
@@ -1370,61 +1370,124 @@ export default function App() {
 
   // Zero Settings (Real Shop Launch / Go-Live)
   const handleConfirmZeroReset = useCallback(
-    async (options?: { pin?: string; doubleConfirmed: boolean }) => {
+    async (options?: {
+      pin?: string;
+      doubleConfirmed: boolean;
+      shopName?: string;
+      ownerName?: string;
+      phone?: string;
+      address?: string;
+      tagline?: string;
+      accountingStartDate?: string;
+      customProducts?: Product[];
+      customSuppliers?: Supplier[];
+      customMerchants?: Merchant[];
+      openingPosition?: OpeningPosition;
+    }) => {
       try {
         const goLiveResult = await executeGoLive({
           pin: options?.pin,
           doubleConfirmed: options?.doubleConfirmed ?? true,
           appLockSettings,
           shopSettings,
+          businessName: options?.shopName,
+          ownerName: options?.ownerName,
+          phone: options?.phone,
+          address: options?.address,
+          tagline: options?.tagline,
+          customProducts: options?.customProducts,
+          customSuppliers: options?.customSuppliers,
+          customMerchants: options?.customMerchants,
+          openingPosition: options?.openingPosition,
         });
 
         localStorage.setItem('ledger_zero_settings_activated', 'true');
-        setProducts(goLiveResult.cleanedProducts);
-        setSuppliers(goLiveResult.cleanedSuppliers);
-        setMerchants(goLiveResult.cleanedMerchants);
-        setTransactions([]);
-        setSales([]);
-        setOrders([]);
-        setPeerTrades([]);
-        setStockAdjustments([]);
-        setDeletedItems([]);
-        setMerchantPurchases([]);
 
-        const updatedShop = {
+        // Fetch fresh state from repos so that opening cash transactions, weaver balances, and receivables are immediately reflected
+        const [
+          latestProducts,
+          latestSuppliers,
+          latestMerchants,
+          latestTransactions,
+          latestSales,
+          latestPurchases,
+          latestOrders,
+          latestAdjustments,
+          latestPeerTrades,
+          latestShopRecord,
+        ] = await Promise.all([
+          productRepo.getAll(),
+          supplierRepo.getAll(),
+          merchantRepo.getAll(),
+          transactionRepo.getAll(),
+          saleRepo.getAll(),
+          purchaseRepo.getAll(),
+          orderRepo.getAll(),
+          stockAdjustmentRepo.getAll(),
+          peerTradeRepo.getAll(),
+          db.settings.get('shopSettings'),
+        ]);
+
+        const finalProducts = latestProducts && latestProducts.length > 0 ? latestProducts : goLiveResult.cleanedProducts;
+        const finalSuppliers = latestSuppliers && latestSuppliers.length > 0 ? latestSuppliers : goLiveResult.cleanedSuppliers;
+        const finalMerchants = latestMerchants && latestMerchants.length > 0 ? latestMerchants : goLiveResult.cleanedMerchants;
+        const finalTransactions = latestTransactions || [];
+        const finalSales = latestSales || [];
+        const finalPurchases = latestPurchases || [];
+        const finalOrders = latestOrders || [];
+        const finalAdjustments = latestAdjustments || [];
+        const finalPeerTrades = latestPeerTrades || [];
+
+        setProducts(finalProducts);
+        setSuppliers(finalSuppliers);
+        setMerchants(finalMerchants);
+        setTransactions(finalTransactions);
+        setSales(finalSales);
+        setMerchantPurchases(finalPurchases);
+        setOrders(finalOrders);
+        setStockAdjustments(finalAdjustments);
+        setPeerTrades(finalPeerTrades);
+        setDeletedItems([]);
+
+        const updatedShop: ShopSettings = latestShopRecord?.value || {
           ...shopSettings,
+          shopName: options?.shopName || shopSettings.shopName || 'ရွှေလက်ရာ',
+          ownerName: options?.ownerName ?? shopSettings.ownerName ?? '',
+          phone: options?.phone ?? shopSettings.phone ?? '',
+          address: options?.address ?? shopSettings.address ?? '',
+          tagline: options?.tagline ?? shopSettings.tagline ?? '',
           isLiveConfirmed: true,
           hideSampleDataButtons: true,
         };
         setShopSettings(updatedShop);
 
-        saveProducts(goLiveResult.cleanedProducts);
-        saveSuppliers(goLiveResult.cleanedSuppliers);
-        saveMerchants(goLiveResult.cleanedMerchants);
-        saveTransactions([]);
-        saveSales([]);
-        saveOrders([]);
-        savePeerTrades([]);
-        saveStoredStockAdjustments([]);
-        saveStoredMerchantPurchases([]);
+        saveProducts(finalProducts);
+        saveSuppliers(finalSuppliers);
+        saveMerchants(finalMerchants);
+        saveTransactions(finalTransactions);
+        saveSales(finalSales);
+        saveOrders(finalOrders);
+        savePeerTrades(finalPeerTrades);
+        saveStoredStockAdjustments(finalAdjustments);
+        saveStoredMerchantPurchases(finalPurchases);
         saveDeletedItems([]);
         saveShopSettings(updatedShop);
 
         setIsZeroResetModalOpen(false);
 
         try {
-          const latestLogs = await getAuditTrail();
+          const latestLogs = await getAuditTrail({ limit: 200 });
           setAuditLogs(latestLogs.slice(0, 200));
         } catch (err) {
           console.error('Audit log error:', err);
         }
-        alert('Go-Live စတင်ခြင်း အောင်မြင်ပါသည်။ နမူနာဒေတာများ ဖျက်သိမ်းပြီး ဆိုင်ရှင်ဒေတာချည်းဖြင့် စာရင်းအသစ် စတင်ပါပြီ။');
+        alert('ဆိုင်စာရင်းသစ် စတင်အသုံးပြုခြင်း (Go-Live) အောင်မြင်ပါသည်။ စနစ်ကို လက်တွေ့စတင်အသုံးပြုနေပါပြီ။');
       } catch (err: any) {
         console.error('Go-Live activation failed:', err);
         alert(`Go-Live စတင်ခြင်း မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
       }
     },
-    [products, suppliers, merchants, shopSettings, appLockSettings]
+    [shopSettings, appLockSettings]
   );
 
   // Merchant Raw Material Purchases Handlers
@@ -1970,12 +2033,15 @@ export default function App() {
     );
   }
 
+  const isBusinessLive = Boolean(shopSettings?.isLiveConfirmed) || (typeof localStorage !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true');
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col selection:bg-emerald-500 selection:text-white">
         {/* Global Header */}
         <Header
           shopSettings={shopSettings}
+          isLive={isBusinessLive}
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onOpenNewEntry={() => handleOpenNewEntry()}
@@ -2175,6 +2241,7 @@ export default function App() {
 
           {normalizedTab === 'backup' && (
             <SettingsBackupTab
+              isLive={isBusinessLive}
               products={products}
               suppliers={suppliers}
               transactions={transactions}
@@ -2376,6 +2443,10 @@ export default function App() {
           onLoadDemoData={handleLoadDemoData}
           appLockSettings={appLockSettings}
           onUpdateAppLockSettings={handleUpdateAppLock}
+          currentProducts={products}
+          currentSuppliers={suppliers}
+          currentMerchants={merchants}
+          shopSettings={shopSettings}
         />
 
         <DemoReloadConfirmModal

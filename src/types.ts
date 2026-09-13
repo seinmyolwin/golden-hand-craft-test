@@ -467,6 +467,7 @@ export type InitializationState =
 
 export interface OpeningCashPosition {
   cashAmount: number; // MMK in hand
+  bankAmount?: number; // MMK in bank
   notes?: string;
 }
 
@@ -479,6 +480,7 @@ export interface OpeningReceivablePosition {
 }
 
 export interface OpeningPayablePosition {
+  counterpartId?: string;
   supplierId?: string;
   supplierName?: string;
   merchantId?: string;

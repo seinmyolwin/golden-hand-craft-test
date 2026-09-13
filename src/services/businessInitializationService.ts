@@ -20,6 +20,17 @@ import {
   Supplier,
   Merchant,
 } from '../types';
+
+export type {
+  OpeningPosition,
+  OpeningCashPosition,
+  OpeningReceivablePosition,
+  OpeningPayablePosition,
+  OpeningAdvancePosition,
+  OpeningRawMaterialPosition,
+  OpeningFinishedGoodsPosition,
+  OpeningIssuedMaterialPosition,
+};
 import { generateStableId } from '../utils/idGenerator';
 import { getTodayDateString } from '../utils/storage';
 
@@ -442,6 +453,8 @@ export async function checkIsBusinessLive(targetDb = db): Promise<boolean> {
  */
 export async function cleanupDemoDataForGoLive(options?: {
   customProducts?: Product[];
+  customSuppliers?: Supplier[];
+  customMerchants?: Merchant[];
   targetDb?: typeof db;
 }): Promise<{
   cleanedProducts: Product[];
@@ -453,8 +466,8 @@ export async function cleanupDemoDataForGoLive(options?: {
 
   const demoProductIds = new Set(DEFAULT_PRODUCTS.map((p) => p.id));
   const currentProducts = options?.customProducts || (await targetDb.products.toArray());
-  const currentSuppliers = await targetDb.suppliers.toArray();
-  const currentMerchants = await targetDb.merchants.toArray();
+  const currentSuppliers = options?.customSuppliers || (await targetDb.suppliers.toArray());
+  const currentMerchants = options?.customMerchants || (await targetDb.merchants.toArray());
 
   // Keep only owner-created products (products with custom IDs or explicitly created by owner)
   // or products that have custom names / opening balances.
@@ -577,11 +590,15 @@ export interface ExecuteGoLiveOptions {
   address?: string;
   tagline?: string;
   targetDb?: typeof db;
+  customProducts?: Product[];
+  customSuppliers?: Supplier[];
+  customMerchants?: Merchant[];
+  openingPosition?: OpeningPosition;
 }
 
 /**
  * Validates Owner PIN + double-confirmation, persists "Go-Live" state in db.settings,
- * and purges all demo/sample data automatically.
+ * applies opening positions, and purges all demo/sample data automatically.
  */
 export async function executeGoLive(options: ExecuteGoLiveOptions): Promise<{
   businessInitialization: BusinessInitializationRecord;
@@ -624,6 +641,7 @@ export async function executeGoLive(options: ExecuteGoLiveOptions): Promise<{
     phone: options.phone || currentInit.phone || options.shopSettings?.phone || '',
     address: options.address || currentInit.address || options.shopSettings?.address || '',
     tagline: options.tagline || currentInit.tagline || options.shopSettings?.tagline || '',
+    openingPosition: options.openingPosition || currentInit.openingPosition || createEmptyOpeningPosition(),
     state: 'ACTIVE',
     accountingStartDate: currentInit.accountingStartDate || today,
     activationTimestamp: nowIso,
@@ -634,48 +652,160 @@ export async function executeGoLive(options: ExecuteGoLiveOptions): Promise<{
 
   // 4. Purge demo data and retain owner-created data
   const { cleanedProducts, cleanedSuppliers, cleanedMerchants } = await cleanupDemoDataForGoLive({
+    customProducts: options.customProducts,
+    customSuppliers: options.customSuppliers,
+    customMerchants: options.customMerchants,
     targetDb,
   });
 
-  // 5. Persist Go-Live states to Dexie db.settings
-  await targetDb.transaction('rw', targetDb.settings, async () => {
-    // A. Business Initialization record
-    await targetDb.settings.put({
-      key: 'businessInitialization',
-      value: activeRecord,
-      updatedAt: nowIso,
-    });
+  // 5. Persist Go-Live states and Opening Position to Dexie
+  await targetDb.transaction(
+    'rw',
+    [
+      targetDb.settings,
+      targetDb.products,
+      targetDb.suppliers,
+      targetDb.merchants,
+      targetDb.stockMovements,
+      targetDb.cashMovements,
+    ],
+    async () => {
+      // A. Business Initialization record
+      await targetDb.settings.put({
+        key: 'businessInitialization',
+        value: activeRecord,
+        updatedAt: nowIso,
+      });
 
-    // B. Explicit Go-Live status record
-    await targetDb.settings.put({
-      key: 'goLive',
-      value: {
-        isLive: true,
-        activatedAt: nowIso,
-        activatedBy: 'OWNER',
-        operationId: activeRecord.operationId,
-      },
-      updatedAt: nowIso,
-    });
+      // B. Explicit Go-Live status record
+      await targetDb.settings.put({
+        key: 'goLive',
+        value: {
+          isLive: true,
+          activatedAt: nowIso,
+          activatedBy: 'OWNER',
+          operationId: activeRecord.operationId,
+        },
+        updatedAt: nowIso,
+      });
 
-    // C. Shop Settings record
-    const existingShopSettingsRecord = await targetDb.settings.get('shopSettings');
-    const existingShopSettings = (existingShopSettingsRecord?.value as ShopSettings) || options.shopSettings || { shopName: 'ရွှေလက်ရာ' };
-    await targetDb.settings.put({
-      key: 'shopSettings',
-      value: {
-        ...existingShopSettings,
-        shopName: activeRecord.businessName,
-        ownerName: activeRecord.ownerName || existingShopSettings.ownerName || '',
-        phone: activeRecord.phone || existingShopSettings.phone || '',
-        address: activeRecord.address || existingShopSettings.address || '',
-        tagline: activeRecord.tagline || existingShopSettings.tagline || '',
-        isLiveConfirmed: true,
-        hideSampleDataButtons: true,
-      },
-      updatedAt: nowIso,
-    });
-  });
+      // C. Shop Settings record
+      const existingShopSettingsRecord = await targetDb.settings.get('shopSettings');
+      const existingShopSettings = (existingShopSettingsRecord?.value as ShopSettings) || options.shopSettings || { shopName: 'ရွှေလက်ရာ' };
+      await targetDb.settings.put({
+        key: 'shopSettings',
+        value: {
+          ...existingShopSettings,
+          shopName: activeRecord.businessName,
+          ownerName: activeRecord.ownerName || existingShopSettings.ownerName || '',
+          phone: activeRecord.phone || existingShopSettings.phone || '',
+          address: activeRecord.address || existingShopSettings.address || '',
+          tagline: activeRecord.tagline || existingShopSettings.tagline || '',
+          isLiveConfirmed: true,
+          hideSampleDataButtons: true,
+        },
+        updatedAt: nowIso,
+      });
+
+      // D. Apply Opening Cash Float if provided
+      if (activeRecord.openingPosition?.cash?.cashAmount && activeRecord.openingPosition.cash.cashAmount > 0) {
+        await targetDb.cashMovements.add({
+          id: generateStableId('cm_open'),
+          type: 'OPENING_FLOAT',
+          direction: 'IN',
+          amount: activeRecord.openingPosition.cash.cashAmount,
+          signedAmount: activeRecord.openingPosition.cash.cashAmount,
+          referenceType: 'OPENING',
+          referenceId: 'opening_cash_float',
+          referenceVoucherNo: 'OPENING-CASH',
+          transactionDate: activeRecord.accountingStartDate || today,
+          transactionTime: '00:00:00',
+          status: 'COMPLETED',
+          description: activeRecord.openingPosition.cash.notes || 'အဖွင့် လက်ဝယ်ငွေသား စာရင်း',
+          idempotencyKey: generateStableId('ik_cm_open'),
+          schemaVersion: 1,
+          createdAt: nowIso,
+        });
+      }
+
+      // E. Apply Opening Finished Goods to stockMovements
+      if (activeRecord.openingPosition?.finishedGoods && activeRecord.openingPosition.finishedGoods.length > 0) {
+        for (const item of activeRecord.openingPosition.finishedGoods) {
+          if (!item.productId) continue;
+          const p = await targetDb.products.get(item.productId);
+          if (p) {
+            await targetDb.products.update(item.productId, {
+              openingStock: item.quantity,
+              currentStock: item.quantity,
+            });
+
+            await targetDb.stockMovements.add({
+              id: generateStableId('sm_open'),
+              productId: p.id,
+              productName: p.name,
+              unit: p.unit,
+              movementType: 'OPENING_BALANCE',
+              direction: 'IN',
+              quantity: item.quantity,
+              signedQuantity: item.quantity,
+              unitPrice: item.unitPrice || p.defaultPrice || 0,
+              totalValue: item.quantity * (item.unitPrice || p.defaultPrice || 0),
+              referenceType: 'OPENING',
+              referenceId: `opening_${p.id}`,
+              referenceVoucherNo: 'OPENING-STOCK',
+              transactionDate: activeRecord.accountingStartDate || today,
+              transactionTime: '00:00:00',
+              status: 'COMPLETED',
+              notes: item.notes || 'အဖွင့် ကုန်ပစ္စည်း လက်ကျန် စာရင်း',
+              idempotencyKey: generateStableId(`ik_sm_${p.id}`),
+              schemaVersion: 1,
+              createdAt: nowIso,
+            });
+          }
+        }
+      }
+
+      // F. Apply Opening Receivables to merchants
+      if (activeRecord.openingPosition?.receivables && activeRecord.openingPosition.receivables.length > 0) {
+        for (const r of activeRecord.openingPosition.receivables) {
+          if (!r.merchantId) continue;
+          const m = await targetDb.merchants.get(r.merchantId);
+          if (m) {
+            await targetDb.merchants.update(r.merchantId, {
+              currentReceivableBalance: r.amount,
+            });
+          }
+        }
+      }
+
+      // G. Apply Opening Advances & Payables to suppliers
+      if (activeRecord.openingPosition?.advances && activeRecord.openingPosition.advances.length > 0) {
+        for (const adv of activeRecord.openingPosition.advances) {
+          if (!adv.counterpartId) continue;
+          const s = await targetDb.suppliers.get(adv.counterpartId);
+          if (s) {
+            await targetDb.suppliers.update(adv.counterpartId, {
+              currentAdvanceBalance: adv.amount,
+              totalAdvancesGiven: adv.amount,
+            });
+          }
+        }
+      }
+
+      if (activeRecord.openingPosition?.payables && activeRecord.openingPosition.payables.length > 0) {
+        for (const p of activeRecord.openingPosition.payables) {
+          const supId = p.supplierId || p.counterpartId;
+          if (!supId) continue;
+          const s = await targetDb.suppliers.get(supId);
+          if (s) {
+            await targetDb.suppliers.update(supId, {
+              payableBalance: p.amount,
+            });
+          }
+        }
+      }
+    }
+  );
 
   // 6. Record Audit Event
   await recordAuditEvent(

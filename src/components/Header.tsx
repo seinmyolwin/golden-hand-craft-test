@@ -69,6 +69,7 @@ interface HeaderProps {
   isOnline?: boolean;
   hasPendingUpdate?: boolean;
   onOpenUpdateModal?: () => void;
+  isLive?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -110,6 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
   isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true,
   hasPendingUpdate = false,
   onOpenUpdateModal,
+  isLive = false,
 }) => {
   const [showMobileTools, setShowMobileTools] = useState(false);
 
@@ -574,13 +576,13 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Start App / Zero Settings Button */}
-            {onOpenZeroSettings && (
+            {/* Start App / Zero Settings Button - Only shown in Demo/Unconfirmed mode */}
+            {!isLive && onOpenZeroSettings && (
               <button
                 id="header-zero-start-btn"
                 type="button"
                 onClick={onOpenZeroSettings}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-black bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 shadow-xs border border-amber-300 cursor-pointer transition-all"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-black bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 shadow-xs border border-amber-300 cursor-pointer transition-all animate-pulse"
                 title="အက်ပ်ကို လက်တွေ့ စတင်အသုံးပြုမည် (လက်ကျန်အားလုံး 0 သုည သတ်မှတ်ချက်)"
                 aria-label="စတင်အသုံးပြုမည်"
               >

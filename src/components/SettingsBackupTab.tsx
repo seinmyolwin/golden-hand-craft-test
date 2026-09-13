@@ -161,6 +161,7 @@ interface SettingsBackupTabProps {
   onCheckForUpdates?: () => void;
   isCheckingUpdates?: boolean;
   onSaveSettings?: (settings: ShopSettings) => void;
+  isLive?: boolean;
 }
 
 export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
@@ -201,6 +202,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   onCheckForUpdates,
   isCheckingUpdates = false,
   onSaveSettings,
+  isLive = false,
 }) => {
   const isOwner = currentSession ? currentSession.role === 'OWNER' : true;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -729,12 +731,12 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
-          {onOpenZeroSettings && isOwner && (
+          {!isLive && onOpenZeroSettings && isOwner && (
             <button
               id="settings-zero-start-btn"
               type="button"
               onClick={onOpenZeroSettings}
-              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition-all border border-amber-300"
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition-all border border-amber-300 animate-pulse"
             >
               <Sparkles className="w-4 h-4 fill-slate-950 text-slate-950" />
               <span>စတင်အသုံးပြုမည် (Zero)</span>
@@ -2335,6 +2337,11 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <div className="p-2.5 bg-amber-100/60 border border-amber-300 rounded-xl text-center text-xs text-amber-900 font-bold flex items-center justify-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-amber-700" />
                   <span>ဆိုင်ရှင်သာ စတင်အသုံးပြုခွင့်ရှိပါသည်</span>
+                </div>
+              ) : isLive ? (
+                <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-xl text-center text-xs text-emerald-900 font-bold flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>ဆိုင်စာရင်းသစ် စတင်ပြီးပါပြီ (Live Mode အသုံးပြုနေသည်)</span>
                 </div>
               ) : (
                 <button
