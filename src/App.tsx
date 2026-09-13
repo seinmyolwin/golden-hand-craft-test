@@ -166,6 +166,26 @@ export default function App() {
     }
   }, [activeTab]);
 
+  // Header Collapsible State (Accessible on every tab with arrow toggle, persisted across sessions)
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shwe_let_yar_header_collapsed') === 'true';
+    }
+    return false;
+  });
+
+  const handleToggleHeaderCollapse = useCallback(() => {
+    setIsHeaderCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('shwe_let_yar_header_collapsed', String(next));
+      } catch (e) {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   // Core Data States (Dexie IndexedDB Single Source of Truth)
   const [isDbLoaded, setIsDbLoaded] = useState<boolean>(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -2068,6 +2088,8 @@ export default function App() {
           onOpenUserSwitch={() => setIsUserSwitchModalOpen(true)}
           hasPendingUpdate={hasPendingUpdate}
           onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
+          isCollapsed={isHeaderCollapsed}
+          onToggleCollapse={handleToggleHeaderCollapse}
         />
 
         {/* Main Content Area - Dynamic Tab Routing */}

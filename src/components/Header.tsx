@@ -70,6 +70,8 @@ interface HeaderProps {
   hasPendingUpdate?: boolean;
   onOpenUpdateModal?: () => void;
   isLive?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -112,8 +114,34 @@ export const Header: React.FC<HeaderProps> = ({
   hasPendingUpdate = false,
   onOpenUpdateModal,
   isLive = false,
+  isCollapsed,
+  onToggleCollapse,
 }) => {
   const [showMobileTools, setShowMobileTools] = useState(false);
+  const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shwe_let_yar_header_collapsed') === 'true';
+    }
+    return false;
+  });
+
+  const isActuallyCollapsed = isCollapsed !== undefined ? isCollapsed : internalCollapsed;
+
+  const handleToggleCollapse = () => {
+    if (onToggleCollapse) {
+      onToggleCollapse();
+    } else {
+      setInternalCollapsed((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem('shwe_let_yar_header_collapsed', String(next));
+        } catch (e) {
+          // ignore
+        }
+        return next;
+      });
+    }
+  };
 
   const handleOpenEntry = onOpenNewEntry || onOpenNewSupplierCollection;
   const handleOpenSale = onOpenNewSale || onOpenNewMerchantSale;
@@ -129,6 +157,101 @@ export const Header: React.FC<HeaderProps> = ({
   const tagline = shopSettings?.tagline?.trim() || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း';
 
   const hasSecondaryAlerts = hasPendingUpdate || deletedHistoryCount > 0 || lowStockCount > 0 || pendingOrdersCount > 0;
+
+  // =========================================================================
+  // MINI COLLAPSED BAR: Ultra-compact header with prominent Arrow button
+  // =========================================================================
+  if (isActuallyCollapsed) {
+    return (
+      <header
+        id="global-header-collapsed"
+        className="sticky top-0 z-30 bg-emerald-900/95 backdrop-blur-md text-white shadow-md border-b border-emerald-700/80 select-none transition-all animate-in slide-in-from-top-2 duration-200"
+      >
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 py-1 flex items-center justify-between gap-2">
+          {/* Left: Branding & Date */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+            <Logo
+              size="xs"
+              className="w-7 h-7 rounded-lg border border-amber-400/70 shadow-xs cursor-pointer hover:scale-105 transition-transform shrink-0 bg-slate-950/40"
+              onClick={handleEditProfile}
+              alt={shopName}
+            />
+            <button
+              type="button"
+              onClick={handleEditProfile}
+              className="font-black text-xs sm:text-sm text-white hover:text-amber-200 transition-colors truncate text-left max-w-[130px] sm:max-w-[220px]"
+              title="ဆိုင်အချက်အလက် ပြင်ဆင်ရန်"
+            >
+              {shopName}
+            </button>
+            <span className="text-emerald-400 text-xs hidden sm:inline">•</span>
+            <span className="text-emerald-200 text-xs font-bold hidden sm:inline">{selectedDate}</span>
+          </div>
+
+          {/* Center: Prominent Arrow Button to Expand (မျှာလေး နှိပ်ပြီး Header ဖော်မည်) */}
+          <button
+            id="header-expand-arrow-btn"
+            type="button"
+            onClick={handleToggleCollapse}
+            className="flex items-center gap-1.5 px-3 py-1 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-md border border-amber-300 cursor-pointer transition-all hover:scale-105 animate-pulse"
+            title="Header အပြည့်အစုံ ပြန်ဖော်မည် (မျှာလေးကို နှိပ်ပါ)"
+            aria-label="Header ပြန်ဖော်မည်"
+          >
+            <ChevronDown className="w-4 h-4 stroke-[3] text-slate-950 animate-bounce" />
+            <span className="whitespace-nowrap font-black">Header ဖော်မည်</span>
+          </button>
+
+          {/* Right: Quick actions so cashier/shop operations are seamlessly available */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {handleOpenEntry && (
+              <button
+                type="button"
+                onClick={handleOpenEntry}
+                className="flex items-center gap-0.5 px-2 py-1 bg-white hover:bg-emerald-50 active:scale-95 text-emerald-800 font-black text-[11px] rounded-lg shadow-2xs border border-emerald-200 cursor-pointer transition-all"
+                title="ကုန်သိမ်းအသစ် ရေးသွင်းမည်"
+              >
+                <ArrowDownLeft className="w-3 h-3 stroke-[3] text-emerald-700" />
+                <span className="hidden sm:inline">ကုန်သိမ်း</span>
+                {todayInboundCount > 0 && (
+                  <span className="bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded-full text-[9px] font-black">
+                    {todayInboundCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {handleOpenSale && (
+              <button
+                type="button"
+                onClick={handleOpenSale}
+                className="flex items-center gap-0.5 px-2 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-black text-[11px] rounded-lg shadow-2xs border border-blue-400/50 cursor-pointer transition-all"
+                title="အရောင်းအသစ် ရေးသွင်းမည်"
+              >
+                <ArrowUpRight className="w-3 h-3 stroke-[3]" />
+                <span className="hidden sm:inline">အရောင်း</span>
+                {todaySalesCount > 0 && (
+                  <span className="bg-blue-900 text-blue-100 px-1 py-0.2 rounded-full text-[9px] font-black">
+                    {todaySalesCount}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {lowStockCount > 0 && onOpenLowStockAlert && (
+              <button
+                type="button"
+                onClick={onOpenLowStockAlert}
+                className="px-1.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] rounded-lg border border-amber-300 shadow-2xs animate-pulse"
+                title={`ကုန်ပစ္စည်း (${lowStockCount}) မျိုး လိုအပ်`}
+              >
+                လို ({lowStockCount})
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-30 bg-emerald-800 text-white shadow-md border-b border-emerald-900 select-none">
@@ -591,7 +714,35 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="whitespace-nowrap sm:hidden">စတင်မည်</span>
               </button>
             )}
+
+            {/* Quick Collapse Header Arrow Button (မျှာလေး နှိပ်ပြီး Header ဝှက်မည်) */}
+            <button
+              id="header-collapse-quick-btn"
+              type="button"
+              onClick={handleToggleCollapse}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-950/90 hover:bg-emerald-900 active:scale-95 text-emerald-100 border border-emerald-500/50 cursor-pointer shadow-2xs transition-all shrink-0 hover:text-amber-200"
+              title="Header ဝှက်မည် (Click arrow to hide header)"
+              aria-label="Header ဝှက်မည်"
+            >
+              <ChevronUp className="w-4 h-4 text-amber-300 stroke-[2.5]" />
+              <span className="whitespace-nowrap font-bold hidden sm:inline">Header ဝှက်မည်</span>
+            </button>
           </div>
+        </div>
+
+        {/* Bottom Center Arrow Collapse Handle (မျှာလေး) */}
+        <div className="flex justify-center -mb-2 pt-0.5">
+          <button
+            id="header-collapse-handle-btn"
+            type="button"
+            onClick={handleToggleCollapse}
+            className="group flex items-center gap-1.5 px-4 py-0.5 bg-emerald-900 hover:bg-emerald-950 active:scale-95 text-emerald-200 hover:text-amber-300 rounded-full border border-emerald-700/80 shadow-xs text-[11px] font-bold cursor-pointer transition-all hover:px-5"
+            title="Header မျက်နှာပြင် ဝှက်မည် (Click arrow to hide header)"
+            aria-label="Header ဝှက်မည်"
+          >
+            <ChevronUp className="w-3.5 h-3.5 text-amber-300 group-hover:-translate-y-0.5 transition-transform" />
+            <span>Header ဝှက်မည်</span>
+          </button>
         </div>
       </div>
     </header>
