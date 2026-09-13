@@ -63,6 +63,7 @@ import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { DailyPickupTab } from './components/DailyPickupTab';
 import { MerchantSalesTab } from './components/MerchantSalesTab';
+import { RetailSalesTab } from './components/RetailSalesTab';
 import { MerchantOrdersTab } from './components/MerchantOrdersTab';
 import { MerchantPurchasesTab } from './components/MerchantPurchasesTab';
 import { PeerTradingTab } from './components/PeerTradingTab';
@@ -98,15 +99,18 @@ import { LocalSyncModal } from './components/LocalSyncModal';
 import { ZapyaTransferModal } from './components/ZapyaTransferModal';
 import { UserGuideModal } from './components/UserGuideModal';
 import { ZeroSettingsConfirmModal } from './components/ZeroSettingsConfirmModal';
+import { DemoReloadConfirmModal } from './components/DemoReloadConfirmModal';
 import { LowStockAlertModal } from './components/LowStockAlertModal';
 import { ExcelImportModal, ExcelImportTarget } from './components/ExcelImportModal';
 import { UpdateNotificationModal } from './components/UpdateNotificationModal';
 import { CashLedgerModal } from './components/CashLedgerModal';
 import { ReturnRefundModal } from './components/ReturnRefundModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
-import { recordAuditEvent, getAuditTrail } from './services/auditTrailService';
+import { recordAuditEvent, getAuditTrail, cleanupAuditLogsByRetentionPolicy } from './services/auditTrailService';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
+import { executeGoLive, checkIsBusinessLive, cleanupDemoDataForGoLive, authorizeDemoDataReload } from './services/businessInitializationService';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { executeSyncMerge } from './services/syncMergeService';
 import { db } from './db/database';
 import { runOfflineStorageMigration, validateProducts, validateSuppliers, validateMerchants } from './db/migration';
 import { migrateLegacyAppLockSettings } from './services/cryptoSecurity';
@@ -243,6 +247,65 @@ export default function App() {
     };
   }, []);
 
+  // Exit Confirm Modal State for Back-Button Navigation
+  const [isExitConfirmModalOpen, setIsExitConfirmModalOpen] = useState<boolean>(false);
+  const lastBackPressRef = useRef<number>(0);
+  const screenStackRef = useRef<string[]>(['daily']);
+
+  // Auto-cleanup Audit Log Retention background job
+  useEffect(() => {
+    if (isDbLoaded && shopSettings?.auditRetentionPeriod) {
+      cleanupAuditLogsByRetentionPolicy(shopSettings.auditRetentionPeriod)
+        .then((result) => {
+          if (result.purgedCount > 0) {
+            console.log(
+              `[Auto-Cleanup Audit Job] Purged ${result.purgedCount} audit logs older than retention period (${shopSettings.auditRetentionPeriod})`
+            );
+          }
+        })
+        .catch((err) => console.error('Auto-cleanup audit logs error:', err));
+    }
+  }, [isDbLoaded, shopSettings?.auditRetentionPeriod]);
+
+  // Back-button Navigation & History Stack Listener
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Push state when tab changes
+    if (screenStackRef.current[screenStackRef.current.length - 1] !== activeTab) {
+      screenStackRef.current.push(activeTab);
+      window.history.pushState({ tab: activeTab }, '', `#${activeTab}`);
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      const now = Date.now();
+
+      // If screen stack has past views, pop to previous screen
+      if (screenStackRef.current.length > 1) {
+        screenStackRef.current.pop();
+        const prevTab = screenStackRef.current[screenStackRef.current.length - 1] as TabType;
+        if (prevTab) {
+          setActiveTab(prevTab);
+        }
+        return;
+      }
+
+      // Root screen reached: check for back x2 within 3 seconds
+      if (lastBackPressRef.current && now - lastBackPressRef.current < 3000) {
+        setIsExitConfirmModalOpen(true);
+      } else {
+        lastBackPressRef.current = now;
+        window.history.pushState({ root: true }, '', `#${activeTab}`);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [activeTab]);
+
   // User Session & Role State
   const [currentSession, setCurrentSession] = useState<UserSession | null>(null);
   const [isResolvingSession, setIsResolvingSession] = useState<boolean>(true);
@@ -304,6 +367,7 @@ export default function App() {
   const [isAppLockSettingsOpen, setIsAppLockSettingsOpen] = useState<boolean>(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [isZeroResetModalOpen, setIsZeroResetModalOpen] = useState<boolean>(false);
+  const [isDemoReloadGuardModalOpen, setIsDemoReloadGuardModalOpen] = useState<boolean>(false);
   const [isLowStockAlertModalOpen, setIsLowStockAlertModalOpen] = useState<boolean>(false);
   const [isCashLedgerModalOpen, setIsCashLedgerModalOpen] = useState<boolean>(false);
   const [isAuditHistoryModalOpen, setIsAuditHistoryModalOpen] = useState<boolean>(false);
@@ -1302,46 +1366,64 @@ export default function App() {
     alert('စာရင်းများနှင့် ကိန်းဂဏန်းများအားလုံးကို ၀ (သုည) အဖြစ် အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ။ စာရင်းစစ်မှတ်တမ်း (Audit Trail) နှင့် ဆိုင်အချက်အလက်များကို ဆက်လက်ထိန်းသိမ်းထားပါသည်။');
   }, [products, suppliers, merchants, shopSettings]);
 
-  // Zero Settings (Real Shop Launch)
-  const handleConfirmZeroReset = useCallback(async () => {
-    localStorage.setItem('ledger_zero_settings_activated', 'true');
-    const zeroData = getCleanZeroData(products, suppliers, merchants);
-    setProducts(zeroData.products);
-    setSuppliers(zeroData.suppliers);
-    setMerchants(zeroData.merchants);
-    setTransactions([]);
-    setSales([]);
-    setOrders([]);
-    setPeerTrades([]);
-    setStockAdjustments([]);
-    setDeletedItems([]);
-    setMerchantPurchases([]);
+  // Zero Settings (Real Shop Launch / Go-Live)
+  const handleConfirmZeroReset = useCallback(
+    async (options?: { pin?: string; doubleConfirmed: boolean }) => {
+      try {
+        const goLiveResult = await executeGoLive({
+          pin: options?.pin,
+          doubleConfirmed: options?.doubleConfirmed ?? true,
+          appLockSettings,
+          shopSettings,
+        });
 
-    saveProducts(zeroData.products);
-    saveSuppliers(zeroData.suppliers);
-    saveMerchants(zeroData.merchants);
-    saveTransactions([]);
-    saveSales([]);
-    saveOrders([]);
-    savePeerTrades([]);
-    saveStoredStockAdjustments([]);
-    saveStoredMerchantPurchases([]);
-    saveDeletedItems([]);
-    saveShopSettings(shopSettings);
+        localStorage.setItem('ledger_zero_settings_activated', 'true');
+        setProducts(goLiveResult.cleanedProducts);
+        setSuppliers(goLiveResult.cleanedSuppliers);
+        setMerchants(goLiveResult.cleanedMerchants);
+        setTransactions([]);
+        setSales([]);
+        setOrders([]);
+        setPeerTrades([]);
+        setStockAdjustments([]);
+        setDeletedItems([]);
+        setMerchantPurchases([]);
 
-    setIsZeroResetModalOpen(false);
-    try {
-      const entry = await recordAuditEvent({
-        action: 'အက်ပ်ကို လက်တွေ့ စတင်အသုံးပြုခြင်း (Zero Settings)',
-        details: 'All balances and transactions zeroed',
-        entityType: 'SYSTEM',
-      });
-      setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
-    } catch (err) {
-      console.error('Audit log error:', err);
-    }
-    alert('ဆိုင်စာရင်း အသစ်စတင်ခြင်း အောင်မြင်ပါသည်။ စာရင်းအားလုံးကို သုည (၀) သတ်မှတ်ပြီးဖြစ်၍ လက်တွေ့စတင်သုံးနိုင်ပါပြီ။');
-  }, [products, suppliers, merchants, shopSettings]);
+        const updatedShop = {
+          ...shopSettings,
+          isLiveConfirmed: true,
+          hideSampleDataButtons: true,
+        };
+        setShopSettings(updatedShop);
+
+        saveProducts(goLiveResult.cleanedProducts);
+        saveSuppliers(goLiveResult.cleanedSuppliers);
+        saveMerchants(goLiveResult.cleanedMerchants);
+        saveTransactions([]);
+        saveSales([]);
+        saveOrders([]);
+        savePeerTrades([]);
+        saveStoredStockAdjustments([]);
+        saveStoredMerchantPurchases([]);
+        saveDeletedItems([]);
+        saveShopSettings(updatedShop);
+
+        setIsZeroResetModalOpen(false);
+
+        try {
+          const latestLogs = await getAuditTrail();
+          setAuditLogs(latestLogs.slice(0, 200));
+        } catch (err) {
+          console.error('Audit log error:', err);
+        }
+        alert('Go-Live စတင်ခြင်း အောင်မြင်ပါသည်။ နမူနာဒေတာများ ဖျက်သိမ်းပြီး ဆိုင်ရှင်ဒေတာချည်းဖြင့် စာရင်းအသစ် စတင်ပါပြီ။');
+      } catch (err: any) {
+        console.error('Go-Live activation failed:', err);
+        alert(`Go-Live စတင်ခြင်း မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      }
+    },
+    [products, suppliers, merchants, shopSettings, appLockSettings]
+  );
 
   // Merchant Raw Material Purchases Handlers
   const handleSaveMerchantPurchase = useCallback(async (record: MerchantPurchaseRecord) => {
@@ -1359,61 +1441,135 @@ export default function App() {
     }
   }, []);
 
-  const handleDeleteMerchantPurchase = useCallback(async (id: string) => {
-    const target = merchantPurchases.find((p) => p.id === id);
-    if (!target) return;
+  const handleDeleteMerchantPurchase = useCallback(
+    async (id: string) => {
+      const target = merchantPurchases.find((p) => p.id === id);
+      if (!target) return;
+
+      try {
+        const cancelled = await purchaseRepo.cancelPurchaseAtomic(id, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
+        setMerchantPurchases((prev) => prev.map((p) => (p.id === id ? cancelled : p)));
+        const refreshedMerchants = await merchantRepo.getAll();
+        if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
+        if (cancelled.auditEntry) {
+          setAuditLogs((prev) => [cancelled.auditEntry!, ...prev.slice(0, 199)]);
+        }
+      } catch (err: any) {
+        console.error('Failed to cancel merchant purchase atomically:', err);
+        alert(`ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      }
+    },
+    [merchantPurchases]
+  );
+
+  // Full Demo Data Loader Executor
+  const handleExecuteDemoDataReload = useCallback(async (options?: { pin?: string; doubleConfirmed?: boolean }) => {
+    try {
+      const isLive = await checkIsBusinessLive(db) || Boolean(shopSettings?.isLiveConfirmed);
+      if (isLive) {
+        await authorizeDemoDataReload({
+          pin: options?.pin,
+          doubleConfirmed: options?.doubleConfirmed ?? false,
+          appLockSettings,
+          targetDb: db,
+        });
+      }
+    } catch (authErr: any) {
+      alert(authErr.message || 'နမူနာဒေတာ ပြန်လည်သွင်းယူခွင့် ငြင်းပယ်ခံရပါသည်');
+      return;
+    }
+
+    localStorage.removeItem('ledger_zero_settings_activated');
+    const demo = getFullDemoData();
+    setProducts(demo.products);
+    setSuppliers(demo.suppliers);
+    setMerchants(demo.merchants);
+    setTransactions(demo.transactions);
+    setSales(demo.sales);
+    setOrders(demo.orders);
+    setPeerTrades(demo.peerTrades);
+    setStockAdjustments(demo.stockAdjustments);
+
+    const updatedShop = {
+      ...shopSettings,
+      isLiveConfirmed: false,
+      hideSampleDataButtons: false,
+    };
+    setShopSettings(updatedShop);
+
+    saveProducts(demo.products);
+    saveSuppliers(demo.suppliers);
+    saveMerchants(demo.merchants);
+    saveTransactions(demo.transactions);
+    saveSales(demo.sales);
+    saveOrders(demo.orders);
+    savePeerTrades(demo.peerTrades);
+    saveStoredStockAdjustments(demo.stockAdjustments);
+    saveShopSettings(updatedShop);
+
+    // Update Dexie database tables
+    try {
+      await db.transaction('rw', [db.products, db.suppliers, db.merchants, db.transactions, db.sales, db.orders, db.peerTrades, db.stockAdjustments, db.settings], async () => {
+        await db.products.clear();
+        await db.products.bulkAdd(demo.products);
+        await db.suppliers.clear();
+        await db.suppliers.bulkAdd(demo.suppliers);
+        await db.merchants.clear();
+        await db.merchants.bulkAdd(demo.merchants);
+        await db.transactions.clear();
+        await db.transactions.bulkAdd(demo.transactions);
+        await db.sales.clear();
+        await db.sales.bulkAdd(demo.sales);
+        await db.orders.clear();
+        await db.orders.bulkAdd(demo.orders);
+        await db.peerTrades.clear();
+        await db.peerTrades.bulkAdd(demo.peerTrades);
+        await db.stockAdjustments.clear();
+        await db.stockAdjustments.bulkAdd(demo.stockAdjustments);
+        await db.settings.put({ key: 'goLive', value: { isLive: false }, updatedAt: new Date().toISOString() });
+        await db.settings.put({ key: 'businessInitialization', value: { state: 'DEMO' }, updatedAt: new Date().toISOString() });
+      });
+    } catch (dbErr) {
+      console.error('Dexie demo reload sync error:', dbErr);
+    }
+
+    setIsZeroResetModalOpen(false);
+    setIsDemoReloadGuardModalOpen(false);
 
     try {
-      const cancelled = await purchaseRepo.cancelPurchaseAtomic(id, 'သုံးစွဲသူမှ ဖျက်ပစ်သည်');
-      setMerchantPurchases((prev) => prev.map((p) => (p.id === id ? cancelled : p)));
-      const refreshedMerchants = await merchantRepo.getAll();
-      if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
-      if (cancelled.auditEntry) {
-        setAuditLogs((prev) => [cancelled.auditEntry!, ...prev.slice(0, 199)]);
-      }
-    } catch (err: any) {
-      console.error('Failed to cancel merchant purchase atomically:', err);
-      alert(`ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      const entry = await recordAuditEvent({
+        action: 'နမူနာဒေတာများ အစုံအလင် သွင်းယူခြင်း',
+        details: 'Full demo data populated',
+        entityType: 'SYSTEM',
+      });
+      setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
+    } catch (err) {
+      console.error('Audit log error:', err);
     }
-  }, [merchantPurchases]);
+    alert('နမူနာဒေတာများ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ စနစ်ကို အစမ်းလေ့လာနိုင်ပါပြီ။');
+  }, [shopSettings, appLockSettings]);
 
-  // Full Demo Data Loader
+  // Demo Data Loader entry point: Guarded if Go-Live is active
   const handleLoadDemoData = useCallback(async () => {
-    if (confirm('စနစ်အစမ်းသုံးကြည့်နိုင်ရန် ကုန်သိမ်း၊ အရောင်း၊ ဝါး/ကြိမ်ကုန်ကြမ်း၊ အော်ဒါ နမူနာဒေတာများကို ထည့်သွင်းလိုပါသလား?')) {
-      localStorage.removeItem('ledger_zero_settings_activated');
-      const demo = getFullDemoData();
-      setProducts(demo.products);
-      setSuppliers(demo.suppliers);
-      setMerchants(demo.merchants);
-      setTransactions(demo.transactions);
-      setSales(demo.sales);
-      setOrders(demo.orders);
-      setPeerTrades(demo.peerTrades);
-      setStockAdjustments(demo.stockAdjustments);
+    const isLive = Boolean(
+      shopSettings?.isLiveConfirmed ||
+        localStorage.getItem('ledger_zero_settings_activated') === 'true'
+    );
 
-      saveProducts(demo.products);
-      saveSuppliers(demo.suppliers);
-      saveMerchants(demo.merchants);
-      saveTransactions(demo.transactions);
-      saveSales(demo.sales);
-      saveOrders(demo.orders);
-      savePeerTrades(demo.peerTrades);
-      saveStoredStockAdjustments(demo.stockAdjustments);
-
-      setIsZeroResetModalOpen(false);
-      try {
-        const entry = await recordAuditEvent({
-          action: 'နမူနာဒေတာများ အစုံအလင် သွင်းယူခြင်း',
-          details: 'Full demo data populated',
-          entityType: 'SYSTEM',
-        });
-        setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
-      } catch (err) {
-        console.error('Audit log error:', err);
-      }
-      alert('နမူနာဒေတာများ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ စနစ်ကို အစမ်းလေ့လာနိုင်ပါပြီ။');
+    if (isLive) {
+      // If Go-Live is active, strictly require Owner PIN + double-confirm modal
+      setIsDemoReloadGuardModalOpen(true);
+      return;
     }
-  }, []);
+
+    if (
+      confirm(
+        'စနစ်အစမ်းသုံးကြည့်နိုင်ရန် ကုန်သိမ်း၊ အရောင်း၊ ဝါး/ကြိမ်ကုန်ကြမ်း၊ အော်ဒါ နမူနာဒေတာများကို ထည့်သွင်းလိုပါသလား?'
+      )
+    ) {
+      await handleExecuteDemoDataReload();
+    }
+  }, [shopSettings, handleExecuteDemoDataReload]);
 
   // Import Backup & Local Sync with Smart Merge support
   const handleImportBackupData = useCallback(async (backup: any, mode: 'MERGE' | 'OVERWRITE' = 'MERGE') => {
@@ -1422,68 +1578,44 @@ export default function App() {
       return;
     }
 
-    if (mode === 'MERGE') {
-      const localData = {
-        suppliers,
-        merchants,
-        products,
-        transactions,
-        sales,
-        merchantPurchases,
-        orders,
-        peerTrades,
-        shopSettings,
-      };
-      const result = mergeDatabaseSnapshots(localData, backup);
-      if (result.success && result.mergedData) {
-        setSuppliers(result.mergedData.suppliers);
-        setMerchants(result.mergedData.merchants);
-        setProducts(result.mergedData.products);
-        setTransactions(result.mergedData.transactions);
-        setSales(result.mergedData.sales);
-        if (result.mergedData.merchantPurchases) {
-          setMerchantPurchases(result.mergedData.merchantPurchases);
-        }
-        setOrders(result.mergedData.orders);
-        try {
-          const entry = await recordAuditEvent({
-            action: 'စာရင်းများ ပေါင်းစည်းခြင်း (Smart Merge)',
-            details: result.message,
-            entityType: 'SYSTEM',
-          });
-          setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
-        } catch (err) {
-          console.error('Audit log error:', err);
-        }
-        alert(result.message);
-        return;
+    const localData = {
+      suppliers,
+      merchants,
+      products,
+      transactions,
+      sales,
+      merchantPurchases,
+      orders,
+      peerTrades,
+      stockAdjustments,
+      shopSettings,
+    };
+
+    const result = await executeSyncMerge(localData, backup, { mode });
+    if (result.success && result.mergedData) {
+      if (result.mergedData.suppliers) setSuppliers(result.mergedData.suppliers);
+      if (result.mergedData.merchants) setMerchants(result.mergedData.merchants);
+      if (result.mergedData.products) setProducts(result.mergedData.products);
+      if (result.mergedData.transactions) setTransactions(result.mergedData.transactions);
+      if (result.mergedData.sales) setSales(result.mergedData.sales);
+      if (result.mergedData.merchantPurchases) setMerchantPurchases(result.mergedData.merchantPurchases);
+      if (result.mergedData.orders) setOrders(result.mergedData.orders);
+      if (result.mergedData.peerTrades) setPeerTrades(result.mergedData.peerTrades);
+      if (result.mergedData.stockAdjustments) saveStoredStockAdjustments(result.mergedData.stockAdjustments);
+      if (result.mergedData.shopSettings) setShopSettings(result.mergedData.shopSettings);
+      if (result.mergedData.appLockSettings) setAppLockSettings(result.mergedData.appLockSettings);
+
+      try {
+        const latestLogs = await getAuditTrail();
+        setAuditLogs(latestLogs.slice(0, 200));
+      } catch (err) {
+        console.error('Audit log refresh error:', err);
       }
+      return;
     }
 
-    // OVERWRITE fallback or explicit overwrite
-    if (backup.suppliers) setSuppliers(backup.suppliers);
-    if (backup.merchants) setMerchants(backup.merchants);
-    if (backup.products) setProducts(backup.products);
-    if (backup.transactions) setTransactions(backup.transactions);
-    if (backup.sales) setSales(backup.sales);
-    if (backup.merchantPurchases) setMerchantPurchases(backup.merchantPurchases);
-    if (backup.orders) setOrders(backup.orders);
-    if (backup.peerTrades) setPeerTrades(backup.peerTrades);
-    if (backup.shopSettings) setShopSettings(backup.shopSettings);
-    if (backup.appLockSettings) setAppLockSettings(backup.appLockSettings);
-
-    try {
-      const entry = await recordAuditEvent({
-        action: 'မိတ္တူဖိုင်မှ စာရင်းပြန်သွင်းခြင်း',
-        details: 'Backup imported successfully',
-        entityType: 'SYSTEM',
-      });
-      setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
-    } catch (err) {
-      console.error('Audit log error:', err);
-    }
-    alert('အချက်အလက်များ အောင်မြင်စွာ ပြန်လည်သွင်းယူပြီးပါပြီ');
-  }, [suppliers, merchants, products, transactions, sales, merchantPurchases, orders, peerTrades, shopSettings]);
+    alert('အချက်အလက်များ ထည့်သွင်းရာတွင် ချို့ယွင်းချက် ရှိနေပါသည်');
+  }, [suppliers, merchants, products, transactions, sales, merchantPurchases, orders, peerTrades, stockAdjustments, shopSettings]);
 
   // Excel Bulk Import Handlers
   const handleOpenExcelImport = useCallback((target: ExcelImportTarget = 'PRODUCTS') => {
@@ -1920,6 +2052,23 @@ export default function App() {
             />
           )}
 
+          {normalizedTab === 'retail' && (
+            <RetailSalesTab
+              products={products}
+              merchants={merchants}
+              sales={sales}
+              currentSession={currentSession}
+              shopSettings={shopSettings}
+              onSaleCompleted={(sale) => {
+                setSales((prev) => [sale, ...prev.filter((s) => s.id !== sale.id)]);
+                productRepo.getAll().then((prods) => {
+                  if (prods.length > 0) setProducts(prods);
+                });
+              }}
+              onOpenVoucher={handleViewSaleVoucher}
+            />
+          )}
+
           {normalizedTab === 'sales' && (
             <MerchantSalesTab
               sales={sales}
@@ -2199,6 +2348,7 @@ export default function App() {
         <ZapyaTransferModal
           isOpen={isZapyaModalOpen}
           onClose={() => setIsZapyaModalOpen(false)}
+          onImportData={handleImportBackupData}
         />
 
         <AppLockSettingsModal
@@ -2222,6 +2372,15 @@ export default function App() {
           onClose={() => setIsZeroResetModalOpen(false)}
           onConfirmZeroReset={handleConfirmZeroReset}
           onLoadDemoData={handleLoadDemoData}
+          appLockSettings={appLockSettings}
+          onUpdateAppLockSettings={handleUpdateAppLock}
+        />
+
+        <DemoReloadConfirmModal
+          isOpen={isDemoReloadGuardModalOpen}
+          onClose={() => setIsDemoReloadGuardModalOpen(false)}
+          onConfirmReload={handleExecuteDemoDataReload}
+          appLockSettings={appLockSettings}
         />
 
         <LowStockAlertModal
@@ -2305,6 +2464,48 @@ export default function App() {
             handleLockApp();
           }}
         />
+
+        {/* Exit Confirm Dialog Modal for Back Navigation */}
+        {isExitConfirmModalOpen && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white text-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-5 border border-slate-200 animate-in fade-in zoom-in-95 duration-150 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">အက်ပ်မှ ထွက်လိုပါသလား?</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    ရွှေလက်ရာ အပလီကေးရှင်းမှ ထွက်ခွာပါတော့မည်။
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsExitConfirmModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer transition-colors"
+                >
+                  မထွက်သေးပါ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsExitConfirmModalOpen(false);
+                    if (typeof window !== 'undefined') {
+                      window.close();
+                      window.location.href = 'about:blank';
+                    }
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl cursor-pointer shadow-sm transition-colors"
+                >
+                  အက်ပ်မှ ထွက်မည်
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showExitToast && (
           <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-slate-950/90 text-white rounded-xl shadow-2xl text-xs font-bold animate-in fade-in slide-in-from-bottom-3 duration-200 flex items-center gap-2 border border-slate-700 pointer-events-none">

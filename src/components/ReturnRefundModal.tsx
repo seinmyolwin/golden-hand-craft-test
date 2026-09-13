@@ -31,6 +31,7 @@ import {
   Calendar,
   User,
 } from 'lucide-react';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface ReturnRefundModalProps {
   isOpen: boolean;
@@ -613,13 +614,9 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                                 {maxReturnable} {item.unit}
                               </td>
                               <td className="p-2.5 text-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={maxReturnable}
+                                <NumericInput
                                   value={item.returnQty || ''}
-                                  onChange={(e) => {
-                                    const val = Math.max(0, parseInt(e.target.value) || 0);
+                                  onChangeValue={(val) => {
                                     const updated = [...saleReturnItems];
                                     updated[idx].returnQty = Math.min(val, maxReturnable);
                                     setSaleReturnItems(updated);
@@ -651,9 +648,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                     </label>
                     <div className="relative">
                       <DollarSign className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                      <input
-                        type="number"
-                        min="0"
+                      <NumericInput
                         value={saleCashRefund}
                         onChange={(e) => setSaleCashRefund(e.target.value)}
                         placeholder="0"
@@ -673,7 +668,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                       type="text"
                       value={saleReturnReason}
                       onChange={(e) => setSaleReturnReason(e.target.value)}
-                      placeholder="ဥပမာ - ပစ္စည်း ထိခိုက်ပျက်စီးခြင်း / အဆင်မပြေခြင်း"
+                      placeholder={getNotePlaceholder('SALES_RETURN')}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -797,13 +792,9 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                                 {maxReturnable} {item.unit}
                               </td>
                               <td className="p-2.5 text-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={maxReturnable}
+                                <NumericInput
                                   value={item.returnQty || ''}
-                                  onChange={(e) => {
-                                    const val = Math.max(0, parseInt(e.target.value) || 0);
+                                  onChangeValue={(val) => {
                                     const updated = [...purchaseReturnItems];
                                     updated[idx].returnQty = Math.min(val, maxReturnable);
                                     setPurchaseReturnItems(updated);
@@ -835,9 +826,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                     </label>
                     <div className="relative">
                       <DollarSign className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                      <input
-                        type="number"
-                        min="0"
+                      <NumericInput
                         value={purchaseCashRecovered}
                         onChange={(e) => setPurchaseCashRecovered(e.target.value)}
                         placeholder="0"
@@ -857,7 +846,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                       type="text"
                       value={purchaseReturnReason}
                       onChange={(e) => setPurchaseReturnReason(e.target.value)}
-                      placeholder="ဥပမာ - အရည်အသွေး မမီခြင်း / အမျိုးအစား မှားယွင်းခြင်း"
+                      placeholder={getNotePlaceholder('PURCHASE_RETURN')}
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>

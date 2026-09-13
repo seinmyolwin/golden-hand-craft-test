@@ -1,6 +1,8 @@
 import { db } from '../db/database';
 import { recordAuditEvent } from './auditTrailService';
 import { enforcePermission } from './authorizationService';
+import { verifyOwnerPin } from './cryptoSecurity';
+import { DEFAULT_PRODUCTS } from '../data/defaultData';
 import {
   BusinessInitializationRecord,
   InitializationState,
@@ -13,6 +15,10 @@ import {
   OpeningFinishedGoodsPosition,
   OpeningIssuedMaterialPosition,
   ShopSettings,
+  AppLockSettings,
+  Product,
+  Supplier,
+  Merchant,
 } from '../types';
 import { generateStableId } from '../utils/idGenerator';
 import { getTodayDateString } from '../utils/storage';
@@ -405,6 +411,336 @@ export async function confirmAndActivateBusiness(
   );
 
   return activeRecord;
+}
+
+/**
+ * Checks whether the business has been activated / Go-Live is completed.
+ */
+export async function checkIsBusinessLive(targetDb = db): Promise<boolean> {
+  try {
+    const initRecord = await targetDb.settings.get('businessInitialization');
+    if (initRecord && (initRecord.value as BusinessInitializationRecord)?.state === 'ACTIVE') {
+      return true;
+    }
+    const goLiveRecord = await targetDb.settings.get('goLive');
+    if (goLiveRecord && (goLiveRecord.value as any)?.isLive === true) {
+      return true;
+    }
+    const shopSettingsRecord = await targetDb.settings.get('shopSettings');
+    if (shopSettingsRecord && (shopSettingsRecord.value as ShopSettings)?.isLiveConfirmed === true) {
+      return true;
+    }
+  } catch (e) {
+    console.error('Error checking Go-Live status:', e);
+  }
+  return false;
+}
+
+/**
+ * Automatically purges all demo/sample transactions, demo categories, and demo products,
+ * keeping ONLY owner-created products, categories, and opening balances.
+ */
+export async function cleanupDemoDataForGoLive(options?: {
+  customProducts?: Product[];
+  targetDb?: typeof db;
+}): Promise<{
+  cleanedProducts: Product[];
+  cleanedSuppliers: Supplier[];
+  cleanedMerchants: Merchant[];
+}> {
+  const targetDb = options?.targetDb || db;
+  const nowIso = new Date().toISOString();
+
+  const demoProductIds = new Set(DEFAULT_PRODUCTS.map((p) => p.id));
+  const currentProducts = options?.customProducts || (await targetDb.products.toArray());
+  const currentSuppliers = await targetDb.suppliers.toArray();
+  const currentMerchants = await targetDb.merchants.toArray();
+
+  // Keep only owner-created products (products with custom IDs or explicitly created by owner)
+  // or products that have custom names / opening balances.
+  const ownerProducts: Product[] = currentProducts.filter(
+    (p) => !demoProductIds.has(p.id) || (p as any).isUserCreated === true
+  );
+
+  // If the owner has opening position products, preserve them
+  const initRecord = await targetDb.settings.get('businessInitialization');
+  const openingPosition = (initRecord?.value as BusinessInitializationRecord)?.openingPosition;
+  if (openingPosition?.finishedGoods && openingPosition.finishedGoods.length > 0) {
+    const openingProductIds = new Set(openingPosition.finishedGoods.map((fg) => fg.productId));
+    currentProducts.forEach((p) => {
+      if (openingProductIds.has(p.id) && !ownerProducts.some((op) => op.id === p.id)) {
+        ownerProducts.push(p);
+      }
+    });
+  }
+
+  // Ensure owner products have clean zeroed stock if not specified in opening position
+  const cleanedProducts: Product[] = ownerProducts.map((p) => ({
+    ...p,
+    openingStock: p.openingStock ?? 0,
+    currentStock: p.currentStock ?? p.openingStock ?? 0,
+    minStockAlert: p.minStockAlert || 10,
+    active: true,
+  }));
+
+  // Clean suppliers and merchants of demo transactions/balances
+  const demoSupplierIds = new Set(['s-1', 's-2', 's-3', 's-4', 's-5']);
+  const demoMerchantIds = new Set(['m-1', 'm-2', 'm-3', 'm-4', 'm-5']);
+
+  const ownerSuppliers: Supplier[] = currentSuppliers.filter(
+    (s) => !demoSupplierIds.has(s.id) || (s as any).isUserCreated === true
+  );
+  const cleanedSuppliers: Supplier[] = ownerSuppliers.map((s) => ({
+    ...s,
+    initialAdvance: s.initialAdvance ?? 0,
+    currentAdvanceBalance: s.currentAdvanceBalance ?? 0,
+    totalGoodsValueDelivered: 0,
+    totalAdvanceGiven: 0,
+    totalMaterialCreditGiven: 0,
+    totalRepaymentReceived: 0,
+  }));
+
+  const ownerMerchants: Merchant[] = currentMerchants.filter(
+    (m) => !demoMerchantIds.has(m.id) || (m as any).isUserCreated === true
+  );
+  const cleanedMerchants: Merchant[] = ownerMerchants.map((m) => ({
+    ...m,
+    currentReceivableBalance: m.currentReceivableBalance ?? 0,
+    payableBalance: 0,
+    totalPurchasesValue: 0,
+    totalPaidAmount: 0,
+    totalPurchasedFromMerchant: 0,
+  }));
+
+  // Clean all demo transactions in database tables
+  await targetDb.transaction(
+    'rw',
+    [
+      targetDb.products,
+      targetDb.suppliers,
+      targetDb.merchants,
+      targetDb.transactions,
+      targetDb.sales,
+      targetDb.orders,
+      targetDb.peerTrades,
+      targetDb.stockAdjustments,
+      targetDb.merchantPurchases,
+      targetDb.dailyClosings,
+      targetDb.softDeletedItems,
+    ],
+    async () => {
+      // Clear all demo activity ledgers
+      await targetDb.transactions.clear();
+      await targetDb.sales.clear();
+      await targetDb.orders.clear();
+      await targetDb.peerTrades.clear();
+      await targetDb.stockAdjustments.clear();
+      await targetDb.merchantPurchases.clear();
+      await targetDb.dailyClosings.clear();
+      await targetDb.softDeletedItems.clear();
+
+      // Replace products with cleaned owner products
+      await targetDb.products.clear();
+      if (cleanedProducts.length > 0) {
+        await targetDb.products.bulkAdd(cleanedProducts);
+      }
+
+      // Replace suppliers with cleaned owner suppliers
+      await targetDb.suppliers.clear();
+      if (cleanedSuppliers.length > 0) {
+        await targetDb.suppliers.bulkAdd(cleanedSuppliers);
+      }
+
+      // Replace merchants with cleaned owner merchants
+      await targetDb.merchants.clear();
+      if (cleanedMerchants.length > 0) {
+        await targetDb.merchants.bulkAdd(cleanedMerchants);
+      }
+    }
+  );
+
+  return {
+    cleanedProducts,
+    cleanedSuppliers,
+    cleanedMerchants,
+  };
+}
+
+export interface ExecuteGoLiveOptions {
+  pin?: string;
+  doubleConfirmed: boolean;
+  appLockSettings?: AppLockSettings | null;
+  shopSettings?: ShopSettings;
+  businessName?: string;
+  ownerName?: string;
+  phone?: string;
+  address?: string;
+  tagline?: string;
+  targetDb?: typeof db;
+}
+
+/**
+ * Validates Owner PIN + double-confirmation, persists "Go-Live" state in db.settings,
+ * and purges all demo/sample data automatically.
+ */
+export async function executeGoLive(options: ExecuteGoLiveOptions): Promise<{
+  businessInitialization: BusinessInitializationRecord;
+  cleanedProducts: Product[];
+  cleanedSuppliers: Supplier[];
+  cleanedMerchants: Merchant[];
+}> {
+  const targetDb = options.targetDb || db;
+  const nowIso = new Date().toISOString();
+  const today = getTodayDateString();
+
+  // 1. Enforce Double-Confirmation
+  if (!options.doubleConfirmed) {
+    throw new Error('လက်တွေ့စတင်အသုံးပြုရန် သဘောတူညီချက် (Double-confirm) ကို အမှန်ခြစ်ပေးရန် လိုအပ်ပါသည်');
+  }
+
+  // 2. Enforce Owner PIN verification if Owner PIN is configured
+  const hasConfiguredPin = Boolean(
+    options.appLockSettings?.pinHash ||
+      options.appLockSettings?.passcode ||
+      options.appLockSettings?.pin
+  );
+
+  if (hasConfiguredPin) {
+    if (!options.pin || !options.pin.trim()) {
+      throw new Error('ဆိုင်ရှင် PIN စကားဝှက် ရိုက်ထည့်ပေးရန် လိုအပ်ပါသည်');
+    }
+    const isPinValid = await verifyOwnerPin(options.pin, options.appLockSettings);
+    if (!isPinValid) {
+      throw new Error('ဆိုင်ရှင် PIN စကားဝှက် မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ');
+    }
+  }
+
+  // 3. Retrieve or create business initialization record
+  const currentInit = await getBusinessInitialization();
+  const activeRecord: BusinessInitializationRecord = {
+    ...currentInit,
+    businessName: options.businessName || currentInit.businessName || options.shopSettings?.shopName || 'ရွှေလက်ရာ',
+    ownerName: options.ownerName || currentInit.ownerName || options.shopSettings?.ownerName || '',
+    phone: options.phone || currentInit.phone || options.shopSettings?.phone || '',
+    address: options.address || currentInit.address || options.shopSettings?.address || '',
+    tagline: options.tagline || currentInit.tagline || options.shopSettings?.tagline || '',
+    state: 'ACTIVE',
+    accountingStartDate: currentInit.accountingStartDate || today,
+    activationTimestamp: nowIso,
+    activationDate: today,
+    operationId: generateStableId('golive_op'),
+    updatedAt: nowIso,
+  };
+
+  // 4. Purge demo data and retain owner-created data
+  const { cleanedProducts, cleanedSuppliers, cleanedMerchants } = await cleanupDemoDataForGoLive({
+    targetDb,
+  });
+
+  // 5. Persist Go-Live states to Dexie db.settings
+  await targetDb.transaction('rw', targetDb.settings, async () => {
+    // A. Business Initialization record
+    await targetDb.settings.put({
+      key: 'businessInitialization',
+      value: activeRecord,
+      updatedAt: nowIso,
+    });
+
+    // B. Explicit Go-Live status record
+    await targetDb.settings.put({
+      key: 'goLive',
+      value: {
+        isLive: true,
+        activatedAt: nowIso,
+        activatedBy: 'OWNER',
+        operationId: activeRecord.operationId,
+      },
+      updatedAt: nowIso,
+    });
+
+    // C. Shop Settings record
+    const existingShopSettingsRecord = await targetDb.settings.get('shopSettings');
+    const existingShopSettings = (existingShopSettingsRecord?.value as ShopSettings) || options.shopSettings || { shopName: 'ရွှေလက်ရာ' };
+    await targetDb.settings.put({
+      key: 'shopSettings',
+      value: {
+        ...existingShopSettings,
+        shopName: activeRecord.businessName,
+        ownerName: activeRecord.ownerName || existingShopSettings.ownerName || '',
+        phone: activeRecord.phone || existingShopSettings.phone || '',
+        address: activeRecord.address || existingShopSettings.address || '',
+        tagline: activeRecord.tagline || existingShopSettings.tagline || '',
+        isLiveConfirmed: true,
+        hideSampleDataButtons: true,
+      },
+      updatedAt: nowIso,
+    });
+  });
+
+  // 6. Record Audit Event
+  await recordAuditEvent(
+    {
+      action: 'GO_LIVE_ACTIVATED',
+      actionType: 'SYSTEM_ACTION',
+      referenceType: 'BUSINESS_INITIALIZATION',
+      referenceId: activeRecord.id,
+      details: `အက်ပ်ကို လက်တွေ့ စတင်အသုံးပြုခြင်း (Go-Live) အောင်မြင်ပါသည်။ နမူနာဒေတာများ ဖျက်သိမ်းပြီး ဆိုင်ရှင်ဒေတာ ${cleanedProducts.length} မျိုးဖြင့် စတင်ပါသည်။`,
+      timestamp: nowIso,
+    },
+    targetDb
+  );
+
+  return {
+    businessInitialization: activeRecord,
+    cleanedProducts,
+    cleanedSuppliers,
+    cleanedMerchants,
+  };
+}
+
+/**
+ * Authorizes loading demo data after Go-Live:
+ * Strictly blocks execution without Owner PIN verification + explicit double-confirmation.
+ */
+export async function authorizeDemoDataReload(options: {
+  pin?: string;
+  doubleConfirmed: boolean;
+  appLockSettings?: AppLockSettings | null;
+  targetDb?: typeof db;
+}): Promise<boolean> {
+  const targetDb = options.targetDb || db;
+  const isLive = await checkIsBusinessLive(targetDb);
+
+  // If business is not live yet, standard demo loading is permissible
+  if (!isLive) {
+    return true;
+  }
+
+  // If business is LIVE, require double confirmation
+  if (!options.doubleConfirmed) {
+    throw new Error(
+      'ဒေတာအားလုံး ပျက်စီးနိုင်သည်ကို သဘောတူညီကြောင်း (Double-confirm) အမှန်ခြစ်ပေးရန် လိုအပ်ပါသည်'
+    );
+  }
+
+  // Require Owner PIN if PIN is configured
+  const hasConfiguredPin = Boolean(
+    options.appLockSettings?.pinHash ||
+      options.appLockSettings?.passcode ||
+      options.appLockSettings?.pin
+  );
+
+  if (hasConfiguredPin) {
+    if (!options.pin || !options.pin.trim()) {
+      throw new Error('လက်တွေ့သုံး စနစ်တွင် နမူနာဒေတာ ပြန်ထည့်ရန် ဆိုင်ရှင် PIN ရိုက်ထည့်ရန် လိုအပ်ပါသည်');
+    }
+    const isPinValid = await verifyOwnerPin(options.pin, options.appLockSettings);
+    if (!isPinValid) {
+      throw new Error('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ နမူနာဒေတာ ထည့်သွင်းခွင့် ပိတ်ပင်ထားပါသည်');
+    }
+  }
+
+  return true;
 }
 
 /**

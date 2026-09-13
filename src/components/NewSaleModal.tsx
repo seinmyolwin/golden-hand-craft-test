@@ -26,6 +26,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { MerchantMasterModal } from './master/MerchantMasterModal';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface NewSaleModalProps {
   isOpen: boolean;
@@ -420,16 +421,12 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       )}
                     </div>
                     <div className="sm:col-span-3">
-                      <input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         placeholder="အရေအတွက်"
                         value={item.quantity === 0 ? '' : item.quantity}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = parseBilingualNumber(e.target.value);
+                        onChangeValue={(val) => {
                           const updated = [...items];
-                          updated[idx].quantity = isNaN(val) ? 0 : Math.max(0, val);
+                          updated[idx].quantity = Math.max(0, val);
                           setItems(updated);
                         }}
                         className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold"
@@ -437,16 +434,12 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <input
-                        type="text"
-                        inputMode="numeric"
+                      <NumericInput
                         placeholder="ရောင်းစျေး"
                         value={item.unitPrice === 0 ? '' : item.unitPrice}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const val = parseBilingualNumber(e.target.value);
+                        onChangeValue={(val) => {
                           const updated = [...items];
-                          updated[idx].unitPrice = isNaN(val) ? 0 : Math.max(0, val);
+                          updated[idx].unitPrice = Math.max(0, val);
                           setItems(updated);
                         }}
                         className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-blue-900"
@@ -482,15 +475,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">
                   လက်ငင်း/လွှဲပေးငွေ (ကျပ်)
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <NumericInput
+                  placeholder="0"
                   value={cashPaidByMerchant === 0 ? '' : cashPaidByMerchant}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => {
-                    const val = parseBilingualNumber(e.target.value);
-                    setCashPaidByMerchant(isNaN(val) ? 0 : Math.min(grandTotal, Math.max(0, val)));
-                  }}
+                  onChangeValue={(val) => setCashPaidByMerchant(Math.min(grandTotal, Math.max(0, val)))}
                   className="w-full px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-emerald-800"
                 />
               </div>
@@ -569,7 +557,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             <label className="block text-slate-700 font-semibold mb-1">အခြား မှတ်ချက်</label>
             <input
               type="text"
-              placeholder="ဥပမာ - အထုပ်သေချာကြပ်ထုပ်ထားသည်"
+              placeholder={getNotePlaceholder('SALE_VOUCHER')}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"

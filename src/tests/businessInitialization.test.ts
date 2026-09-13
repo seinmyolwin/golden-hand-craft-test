@@ -26,9 +26,14 @@ import {
   validateBusinessInitialization,
   confirmAndActivateBusiness,
   guardActiveBusinessOperation,
+  checkIsBusinessLive,
+  cleanupDemoDataForGoLive,
+  executeGoLive,
+  authorizeDemoDataReload,
 } from '../services/businessInitializationService';
+import { derivePinCredentials } from '../services/cryptoSecurity';
 import { createCompleteBackup, validateBackupFile, executeSafeRestore } from '../services/backupService';
-import { BusinessInitializationRecord, Product, Supplier, Merchant } from '../types';
+import { BusinessInitializationRecord, Product, Supplier, Merchant, AppLockSettings } from '../types';
 
 describe('Phase 18A: Business Initialization & Opening Position Foundation', () => {
   beforeEach(async () => {
@@ -655,5 +660,158 @@ describe('Phase 18A: Business Initialization & Opening Position Foundation', () 
 
     const init = await getBusinessInitialization();
     expect(init.state).toBe('ACTIVE');
+  });
+
+  it('29. executeGoLiveRequiresDoubleConfirmAndOwnerPin: Persists ACTIVE and goLive state upon valid PIN and double-confirmation', async () => {
+    const creds = await derivePinCredentials('9876');
+    const lockSettings: AppLockSettings = {
+      enabled: true,
+      isPinInitialized: true,
+      pinSalt: creds.salt,
+      pinHash: creds.hash,
+    };
+
+    // Attempt without double-confirm must fail
+    await expect(
+      executeGoLive({
+        doubleConfirmed: false,
+        pin: '9876',
+        appLockSettings: lockSettings,
+      })
+    ).rejects.toThrow('သဘောတူညီချက်');
+
+    // Attempt with wrong PIN must fail
+    await expect(
+      executeGoLive({
+        doubleConfirmed: true,
+        pin: '1111',
+        appLockSettings: lockSettings,
+      })
+    ).rejects.toThrow('မှားယွင်းနေပါ');
+
+    // Attempt with valid PIN + double-confirm succeeds
+    const result = await executeGoLive({
+      doubleConfirmed: true,
+      pin: '9876',
+      appLockSettings: lockSettings,
+      businessName: 'ရွှေလက်ရာ စံပြဆိုင်',
+    });
+
+    expect(result.businessInitialization.state).toBe('ACTIVE');
+    expect(result.businessInitialization.businessName).toBe('ရွှေလက်ရာ စံပြဆိုင်');
+
+    const isLive = await checkIsBusinessLive();
+    expect(isLive).toBe(true);
+
+    const goLiveRecord = await db.settings.get('goLive');
+    expect((goLiveRecord?.value as any)?.isLive).toBe(true);
+
+    const shopSettingsRecord = await db.settings.get('shopSettings');
+    expect((shopSettingsRecord?.value as any)?.isLiveConfirmed).toBe(true);
+    expect((shopSettingsRecord?.value as any)?.hideSampleDataButtons).toBe(true);
+  });
+
+  it('30. cleanupDemoDataForGoLive: Automatically cleans demo transactions, demo products, demo categories and keeps owner products', async () => {
+    // Populate some demo products and transactions
+    await db.products.bulkAdd([
+      { id: 'p-1', name: 'ဝါးခမောက် (Demo)', defaultPrice: 2500, unit: 'လုံး', category: 'ခမောက်', active: true },
+      { id: 'p-2', name: 'ဝါးခြင်း (Demo)', defaultPrice: 3500, unit: 'လုံး', category: 'ခြင်း', active: true },
+      { id: 'owner_prod_1', name: 'ပုဂံလက်ရာ ယွန်းဗျပ် (Owner)', defaultPrice: 45000, unit: 'ချပ်', category: 'ယွန်းထည်', active: true },
+    ]);
+
+    await db.transactions.bulkAdd([
+      {
+        id: 'tx_demo_1',
+        voucherNo: 'V-001',
+        supplierId: 's-1',
+        supplierName: 'ကိုစိန် (Demo)',
+        productId: 'p-1',
+        productName: 'ဝါးခမောက်',
+        quantity: 100,
+        unitPrice: 2500,
+        totalCost: 250000,
+        netPayable: 250000,
+        paidAmount: 250000,
+        remainingAdvance: 0,
+        paymentStatus: 'PAID',
+        date: '2026-09-10',
+        timestamp: '2026-09-10T10:00:00Z',
+      } as any,
+    ]);
+
+    await db.sales.bulkAdd([
+      {
+        id: 'sale_demo_1',
+        voucherNo: 'SV-001',
+        merchantId: 'm-1',
+        merchantName: 'ရွှေမန္တလေး (Demo)',
+        totalAmount: 300000,
+        taxAmount: 0,
+        discountAmount: 0,
+        finalTotal: 300000,
+        paidAmount: 300000,
+        remainingReceivable: 0,
+        paymentStatus: 'PAID',
+        date: '2026-09-10',
+        items: [],
+      } as any,
+    ]);
+
+    const cleanup = await cleanupDemoDataForGoLive();
+
+    // Transactions and sales must be completely cleared
+    const txCount = await db.transactions.count();
+    const salesCount = await db.sales.count();
+    expect(txCount).toBe(0);
+    expect(salesCount).toBe(0);
+
+    // Only owner products remain
+    const remainingProducts = await db.products.toArray();
+    expect(remainingProducts.length).toBe(1);
+    expect(remainingProducts[0].id).toBe('owner_prod_1');
+    expect(remainingProducts[0].name).toBe('ပုဂံလက်ရာ ယွန်းဗျပ် (Owner)');
+  });
+
+  it('31. authorizeDemoDataReloadGuardsGoLiveState: Blocks demo reloading when Go-Live is active unless Owner PIN and double-confirm are provided', async () => {
+    const creds = await derivePinCredentials('4321');
+    const lockSettings: AppLockSettings = {
+      enabled: true,
+      isPinInitialized: true,
+      pinSalt: creds.salt,
+      pinHash: creds.hash,
+    };
+
+    // Activate Go-Live
+    await executeGoLive({
+      doubleConfirmed: true,
+      pin: '4321',
+      appLockSettings: lockSettings,
+    });
+
+    // Attempting reload without double confirm fails
+    await expect(
+      authorizeDemoDataReload({
+        doubleConfirmed: false,
+        pin: '4321',
+        appLockSettings: lockSettings,
+      })
+    ).rejects.toThrow('ဒေတာအားလုံး ပျက်စီးနိုင်သည်ကို သဘောတူညီကြောင်း');
+
+    // Attempting reload with wrong PIN fails
+    await expect(
+      authorizeDemoDataReload({
+        doubleConfirmed: true,
+        pin: '9999',
+        appLockSettings: lockSettings,
+      })
+    ).rejects.toThrow('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်');
+
+    // Valid PIN + double confirm passes
+    const auth = await authorizeDemoDataReload({
+      doubleConfirmed: true,
+      pin: '4321',
+      appLockSettings: lockSettings,
+    });
+    expect(auth).toBe(true);
   });
 });

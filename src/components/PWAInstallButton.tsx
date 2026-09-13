@@ -73,9 +73,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
           onClick={handleInstallClick}
           disabled={isInstalling}
           title="Install App as Offline PWA"
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-100/90 hover:bg-emerald-200 border border-emerald-300 rounded-lg transition-colors shadow-sm active:scale-95 ${className}`}
+          className={`inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-bold text-emerald-950 bg-emerald-300 hover:bg-emerald-200 border border-emerald-400 rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer whitespace-nowrap shrink-0 ${className}`}
         >
-          <Download className="w-3.5 h-3.5 text-emerald-700" />
+          <Download className="w-3.5 h-3.5 text-emerald-950 stroke-[2.5]" />
           <span>{isInstalling ? 'သွင်းနေပါသည်...' : 'အက်ပ်သွင်းယူရန်'}</span>
         </button>
       )}

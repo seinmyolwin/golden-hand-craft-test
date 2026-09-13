@@ -446,6 +446,7 @@ export interface ShopSettings {
   receiptFooterNote?: string;
   rawMaterialPresets?: RawMaterialPreset[];
   staffAllowedTabs?: ActiveTab[];
+  auditRetentionPeriod?: '10_DAYS' | '3_MONTHS' | '4_MONTHS' | '5_MONTHS' | '1_YEAR' | 'FOREVER';
 }
 
 // ============================================================================
@@ -825,7 +826,7 @@ export interface SyncPacket {
   };
 }
 
-export type ActiveTab = 'daily' | 'inventory' | 'sales' | 'purchases' | 'orders' | 'peers' | 'merchants' | 'suppliers' | 'history' | 'reports' | 'backup' | 'products';
+export type ActiveTab = 'daily' | 'inventory' | 'sales' | 'purchases' | 'orders' | 'peers' | 'merchants' | 'suppliers' | 'history' | 'reports' | 'backup' | 'products' | 'retail';
 
 export type TabType =
   | 'daily'
@@ -840,6 +841,7 @@ export type TabType =
   | 'reports'
   | 'backup'
   | 'products'
+  | 'retail'
   | 'PICKUP'
   | 'MERCHANT_SALES'
   | 'PURCHASES'
@@ -850,7 +852,8 @@ export type TabType =
   | 'MERCHANTS'
   | 'PRODUCTS'
   | 'HISTORY'
-  | 'REPORTS';
+  | 'REPORTS'
+  | 'RETAIL';
 
 export type SoftDeletedEntityType =
   | 'PRODUCT'
@@ -914,6 +917,15 @@ export interface AuditLogEntry {
 
 export type PeerTradeStatus = 'OPEN' | 'PENDING' | 'REPAID' | 'RETRIEVED' | 'SETTLED' | string;
 
+export interface PeerTradeItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  agreedUnitPrice: number;
+  subtotal: number;
+}
+
 export interface PeerTradeRecord {
   id: string;
   voucherNo?: string;
@@ -925,11 +937,12 @@ export interface PeerTradeRecord {
   peerLocation?: string;
   merchantId?: string;
   merchantName?: string;
-  productId: string;
-  productName: string;
-  quantity: number;
-  unit: string;
+  productId?: string;
+  productName?: string;
+  quantity?: number;
+  unit?: string;
   agreedUnitPrice?: number;
+  items?: PeerTradeItem[];
   totalTradeValue?: number;
   status: PeerTradeStatus;
   notes?: string;

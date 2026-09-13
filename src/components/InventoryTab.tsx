@@ -23,6 +23,7 @@ import {
 } from '../services/stockLedgerService';
 import { ProductStockLedgerModal } from './ProductStockLedgerModal';
 import { ProductMasterModal } from './master/ProductMasterModal';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 import {
   Layers,
   Package,
@@ -930,17 +931,10 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
               </div>
               <div>
                 <label className="block text-slate-700 font-bold mb-1">အရေအတွက် ({selectedProductForAdjust.unit}) *</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="any"
+                <NumericInput
                   placeholder="အရေအတွက် - 10"
                   value={adjustQty === 0 ? '' : adjustQty}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setAdjustQty(isNaN(val) ? 0 : Math.max(0, val));
-                  }}
+                  onChangeValue={(val) => setAdjustQty(Math.max(0, val))}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -949,7 +943,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">အကြောင်းပြချက်</label>
                 <input
                   type="text"
-                  placeholder="ဥပမာ - ကုန်ပစ္စည်း ပျက်စီးသွားသဖြင့် စာရင်းမှထုတ်ခြင်း"
+                  placeholder={getNotePlaceholder('STOCK_ADJUSTMENT')}
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"

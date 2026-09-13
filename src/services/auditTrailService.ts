@@ -290,3 +290,54 @@ export async function getAuditHistoryForVoucher(voucherNoOrId: string): Promise<
   matched.sort((a, b) => new Date(a.timestamp || a.createdAt || 0).getTime() - new Date(b.timestamp || b.createdAt || 0).getTime());
   return matched;
 }
+
+/**
+ * Maps retention period key to days:
+ * 10_DAYS -> 10 days
+ * 3_MONTHS -> 90 days
+ * 4_MONTHS -> 120 days
+ * 5_MONTHS -> 150 days
+ * 1_YEAR -> 365 days
+ */
+export function getRetentionDays(retentionPeriod?: string): number | null {
+  switch (retentionPeriod) {
+    case '10_DAYS':
+      return 10;
+    case '3_MONTHS':
+      return 90;
+    case '4_MONTHS':
+      return 120;
+    case '5_MONTHS':
+      return 150;
+    case '1_YEAR':
+      return 365;
+    case 'FOREVER':
+    default:
+      return null;
+  }
+}
+
+/**
+ * Cleanup audit logs according to retention policy
+ */
+export async function cleanupAuditLogsByRetentionPolicy(retentionPeriod?: string): Promise<{ purgedCount: number; cutoffDate?: string }> {
+  const days = getRetentionDays(retentionPeriod);
+  if (!days) return { purgedCount: 0 };
+
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoffIso = new Date(cutoffMs).toISOString();
+
+  const allLogs = await db.auditLogs.toArray();
+  const logsToDelete = allLogs.filter((entry) => {
+    const entryTime = new Date(entry.timestamp || entry.createdAt || 0).getTime();
+    return entryTime > 0 && entryTime < cutoffMs;
+  });
+
+  if (logsToDelete.length > 0) {
+    const idsToDelete = logsToDelete.map((l) => l.id);
+    await db.auditLogs.bulkDelete(idsToDelete);
+  }
+
+  return { purgedCount: logsToDelete.length, cutoffDate: cutoffIso.split('T')[0] };
+}
+

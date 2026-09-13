@@ -39,20 +39,20 @@ export const OfflineIndicator: React.FC<{ className?: string; showDetails?: bool
     <div className={`inline-flex items-center gap-2 ${className}`}>
       {/* Offline/Online Status Pill */}
       {!isOnline ? (
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-full shadow-xs animate-pulse">
-          <WifiOff className="w-3.5 h-3.5 text-amber-700" />
-          <span>အော့ဖ်လိုင်းမုဒ် (Offline Active)</span>
+        <div className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-bold text-amber-200 bg-amber-950/90 border border-amber-400/60 rounded-xl shadow-2xs animate-pulse">
+          <WifiOff className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span className="whitespace-nowrap">အော့ဖ်လိုင်းမုဒ် (Offline Active)</span>
         </div>
       ) : (
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full">
-          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-          <span>100% Offline Ready</span>
+        <div className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-bold text-emerald-100 bg-emerald-950/80 border border-emerald-400/50 rounded-xl shadow-2xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+          <span className="whitespace-nowrap">100% Offline Ready</span>
         </div>
       )}
 
       {/* Storage quota info when showDetails is true */}
       {showDetails && storageUsage && (
-        <div className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+        <div className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-300 bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-700">
           <HardDrive className="w-3 h-3 text-slate-400" />
           <span>စက်တွင်းသိုလှောင်မှု: {storageUsage.usedMb} MB</span>
         </div>

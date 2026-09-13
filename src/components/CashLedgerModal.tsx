@@ -43,6 +43,7 @@ import {
   TrendingDown,
   ShieldCheck,
 } from 'lucide-react';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface CashLedgerModalProps {
   isOpen: boolean;
@@ -582,9 +583,7 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         လက်တွေ့ရေတွက်ရရှိသော ငွေပမာဏ (ကျပ်):
                       </label>
-                      <input
-                        type="number"
-                        min="0"
+                      <NumericInput
                         value={actualCashInput}
                         onChange={(e) => setActualCashInput(e.target.value)}
                         className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-base font-bold"
@@ -635,7 +634,7 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
                         type="text"
                         value={closingNotes}
                         onChange={(e) => setClosingNotes(e.target.value)}
-                        placeholder="နေ့ချုပ်ဆိုင်ရာ မှတ်ချက် (ရှိပါက)..."
+                        placeholder={getNotePlaceholder('DAILY_CLOSING')}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
                       />
                     </div>

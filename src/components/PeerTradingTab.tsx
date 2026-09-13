@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { PeerTradeRecord, Product, Merchant } from '../types';
+import { PeerTradeRecord, PeerTradeItem, Product, Merchant } from '../types';
 import {
   formatMMK,
   formatNumberOnly,
@@ -55,10 +55,52 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
   const [selectedMerchantId, setSelectedMerchantId] = useState<string>('');
   const [peerShopName, setPeerShopName] = useState<string>('');
   const [peerLocation, setPeerLocation] = useState<string>('ပုဂံမြို့ဟောင်း');
-  const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
-  const [quantity, setQuantity] = useState<number>(10);
-  const [agreedUnitPrice, setAgreedUnitPrice] = useState<number>(0);
   const [notes, setNotes] = useState<string>('');
+
+  // Form Line Items State (Multi-item Barter/Loan)
+  const [lineItems, setLineItems] = useState<{ id: string; productId: string; quantity: number; agreedUnitPrice: number }[]>([
+    {
+      id: '1',
+      productId: products[0]?.id || '',
+      quantity: 10,
+      agreedUnitPrice: products[0]?.defaultWholesalePrice || products[0]?.defaultPrice || 0,
+    },
+  ]);
+
+  const handleAddLineItem = () => {
+    const firstProd = products[0];
+    setLineItems((prev) => [
+      ...prev,
+      {
+        id: generateStableId('li'),
+        productId: firstProd?.id || '',
+        quantity: 1,
+        agreedUnitPrice: firstProd?.defaultWholesalePrice || firstProd?.defaultPrice || 0,
+      },
+    ]);
+  };
+
+  const handleRemoveLineItem = (id: string) => {
+    if (lineItems.length <= 1) {
+      alert('အနည်းဆုံး ကုန်ပစ္စည်း ၁ မျိုး ပါဝင်ရပါမည်');
+      return;
+    }
+    setLineItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleLineItemChange = (id: string, field: 'productId' | 'quantity' | 'agreedUnitPrice', value: any) => {
+    setLineItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        if (field === 'productId') {
+          const prod = products.find((p) => p.id === value);
+          const defaultPrice = prod ? (prod.defaultWholesalePrice || prod.defaultPrice || 0) : item.agreedUnitPrice;
+          return { ...item, productId: value, agreedUnitPrice: defaultPrice };
+        }
+        return { ...item, [field]: value };
+      })
+    );
+  };
 
   const filteredTrades = useMemo(() => {
     return (peerTrades || []).filter((t) => {
@@ -115,14 +157,28 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
       return;
     }
 
-    const prod = products.find((p) => p.id === selectedProductId) || products[0];
-    if (!prod) {
-      alert('ကုန်ပစ္စည်း ရွေးချယ်ပေးပါ');
+    if (!lineItems || lineItems.length === 0) {
+      alert('အနည်းဆုံး ကုန်ပစ္စည်း ၁ မျိုး ထည့်သွင်းပေးပါ');
       return;
     }
 
+    const tradeItems: PeerTradeItem[] = lineItems.map((li) => {
+      const p = products.find((prod) => prod.id === li.productId) || products[0];
+      const q = Number(li.quantity) || 1;
+      const price = Number(li.agreedUnitPrice) || 0;
+      return {
+        productId: p?.id || 'unknown',
+        productName: p?.name || 'အမည်မသိကုန်ပစ္စည်း',
+        quantity: q,
+        unit: p?.unit || 'ခု',
+        agreedUnitPrice: price,
+        subtotal: q * price,
+      };
+    });
+
+    const totalVal = tradeItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const firstItem = tradeItems[0];
     const selectedMerchant = merchants.find((m) => m.id === selectedMerchantId);
-    const totalVal = (quantity || 0) * (agreedUnitPrice || 0);
 
     const newTrade: PeerTradeRecord = {
       id: generateStableId('pt'),
@@ -133,11 +189,12 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
       peerLocation: peerLocation.trim() || 'ပုဂံ',
       merchantId: selectedMerchantId || undefined,
       merchantName: selectedMerchant ? selectedMerchant.name : undefined,
-      productId: prod.id,
-      productName: prod.name,
-      quantity: quantity || 1,
-      unit: prod.unit || 'ထည်',
-      agreedUnitPrice: agreedUnitPrice || 0,
+      productId: firstItem?.productId || '',
+      productName: tradeItems.length > 1 ? `${firstItem?.productName} (+${tradeItems.length - 1} မျိုး)` : (firstItem?.productName || ''),
+      quantity: firstItem?.quantity || 1,
+      unit: firstItem?.unit || 'ခု',
+      agreedUnitPrice: firstItem?.agreedUnitPrice || 0,
+      items: tradeItems,
       totalTradeValue: totalVal,
       status: 'OPEN',
       notes: notes.trim(),
@@ -147,8 +204,14 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
     setIsModalOpen(false);
     setSelectedMerchantId('');
     setPeerShopName('');
-    setQuantity(10);
-    setAgreedUnitPrice(0);
+    setLineItems([
+      {
+        id: '1',
+        productId: products[0]?.id || '',
+        quantity: 10,
+        agreedUnitPrice: products[0]?.defaultWholesalePrice || products[0]?.defaultPrice || 0,
+      },
+    ]);
     setNotes('');
   };
 
@@ -611,30 +674,63 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
                 </div>
               </div>
 
-              {/* Product Info */}
-              <div className="p-3 bg-teal-50/60 rounded-xl border border-teal-100">
-                <div className="text-teal-900 font-bold mb-2 flex items-center gap-1.5 text-xs">
-                  <Package className="w-4 h-4 text-teal-700" />
-                  <span>ကုန်ပစ္စည်းအချက်အလက်</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <div className="text-slate-500 text-[11px]">ပစ္စည်းအမည်</div>
-                    <div className="font-bold text-slate-900">{selectedTradeForDetail.productName}</div>
+              {/* Product Info / Items Breakdown */}
+              <div className="p-3 bg-teal-50/60 rounded-xl border border-teal-100 space-y-2">
+                <div className="text-teal-900 font-bold flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-teal-700" />
+                    <span>ကုန်ပစ္စည်းအချက်အလက် ({selectedTradeForDetail.items?.length || 1} မျိုး)</span>
                   </div>
-                  <div>
-                    <div className="text-slate-500 text-[11px]">အရေအတွက်</div>
-                    <div className="font-bold text-teal-800 text-sm">
-                      {selectedTradeForDetail.quantity} {selectedTradeForDetail.unit}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-500 text-[11px]">စုစုပေါင်းတန်ဖိုး</div>
-                    <div className="font-extrabold text-slate-900 text-sm">
-                      {formatMMK(selectedTradeForDetail.totalTradeValue)}
-                    </div>
+                  <div className="font-extrabold text-teal-900 text-sm">
+                    စုစုပေါင်း: {formatMMK(selectedTradeForDetail.totalTradeValue)}
                   </div>
                 </div>
+
+                {selectedTradeForDetail.items && selectedTradeForDetail.items.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-teal-200 bg-white">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-teal-100/70 text-teal-950 font-bold border-b border-teal-200">
+                        <tr>
+                          <th className="p-2">ကုန်ပစ္စည်း</th>
+                          <th className="p-2 text-center">အရေအတွက်</th>
+                          <th className="p-2 text-right">နှုန်း</th>
+                          <th className="p-2 text-right">စုစုပေါင်း</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-teal-100">
+                        {selectedTradeForDetail.items.map((it, idx) => (
+                          <tr key={idx} className="hover:bg-teal-50/40">
+                            <td className="p-2 font-bold text-slate-800">{it.productName}</td>
+                            <td className="p-2 text-center font-semibold text-slate-700">
+                              {it.quantity} {it.unit}
+                            </td>
+                            <td className="p-2 text-right text-slate-600">{formatMMK(it.agreedUnitPrice)}</td>
+                            <td className="p-2 text-right font-extrabold text-teal-800">{formatMMK(it.subtotal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-slate-500 text-[11px]">ပစ္စည်းအမည်</div>
+                      <div className="font-bold text-slate-900">{selectedTradeForDetail.productName}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500 text-[11px]">အရေအတွက်</div>
+                      <div className="font-bold text-teal-800 text-sm">
+                        {selectedTradeForDetail.quantity} {selectedTradeForDetail.unit}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500 text-[11px]">စုစုပေါင်းတန်ဖိုး</div>
+                      <div className="font-extrabold text-slate-900 text-sm">
+                        {formatMMK(selectedTradeForDetail.totalTradeValue)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Settlement Information */}
@@ -818,49 +914,99 @@ export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-700 font-bold mb-1">ကုန်ပစ္စည်း ရွေးချယ်ပါ</label>
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => {
-                    setSelectedProductId(e.target.value);
-                    const p = products.find((prod) => prod.id === e.target.value);
-                    if (p) setAgreedUnitPrice(p.defaultWholesalePrice || p.defaultPrice || 0);
-                  }}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.unit})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">အရေအတွက်</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={quantity === 0 ? '' : quantity}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    required
-                  />
+              {/* Multi-item Barter/Loan Line Items Form */}
+              <div className="space-y-2 border-t border-b border-slate-200 py-3 my-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-800 font-bold text-xs flex items-center gap-1">
+                    <Package className="w-4 h-4 text-teal-600" />
+                    <span>ကုန်ပစ္စည်းများ စာရင်း (Multi-item Line Items) *</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddLineItem}
+                    className="px-2.5 py-1 bg-teal-100 hover:bg-teal-200 text-teal-900 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>ပစ္စည်း ထပ်ထည့်မည်</span>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1">သတ်မှတ်တန်ဖိုးနှုန်း (ကျပ်)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={agreedUnitPrice === 0 ? '' : agreedUnitPrice}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setAgreedUnitPrice(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    required
-                  />
+
+                <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                  {lineItems.map((li, idx) => {
+                    const selProd = products.find((p) => p.id === li.productId);
+                    const lineSubtotal = (Number(li.quantity) || 0) * (Number(li.agreedUnitPrice) || 0);
+                    return (
+                      <div key={li.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-700 text-[11px]">#{idx + 1} ကုန်ပစ္စည်း</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLineItem(li.id)}
+                            className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer"
+                            title="ပစ္စည်း ပယ်ဖျက်မည်"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <select
+                            value={li.productId}
+                            onChange={(e) => handleLineItemChange(li.id, 'productId', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-slate-500 font-bold">အရေအတွက် ({selProd?.unit || 'ခု'})</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={li.quantity === 0 ? '' : li.quantity}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleLineItemChange(li.id, 'quantity', parseInt(e.target.value, 10) || 0)}
+                              className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-center focus:outline-none"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-500 font-bold">သတ်မှတ်တန်ဖိုးနှုန်း</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={li.agreedUnitPrice === 0 ? '' : li.agreedUnitPrice}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleLineItemChange(li.id, 'agreedUnitPrice', parseInt(e.target.value, 10) || 0)}
+                              className="w-full px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-right focus:outline-none"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-500 font-bold">ကျသင့်ငွေ</label>
+                            <div className="py-1 px-2 bg-slate-200/70 border border-slate-300 rounded-lg text-xs font-extrabold text-slate-900 text-right">
+                              {formatMMK(lineSubtotal)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-2.5 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between font-extrabold text-xs text-teal-950">
+                  <span>စုစုပေါင်း ကုန်ဖလှယ်/ချေးငှား တန်ဖိုး:</span>
+                  <span className="text-sm text-teal-900">
+                    {formatMMK(
+                      lineItems.reduce((acc, item) => acc + (Number(item.quantity) || 0) * (Number(item.agreedUnitPrice) || 0), 0)
+                    )}
+                  </span>
                 </div>
               </div>
 

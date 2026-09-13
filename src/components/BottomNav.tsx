@@ -12,11 +12,13 @@ import {
   ShoppingBag,
   ArrowRightLeft,
   Boxes,
+  Zap,
 } from 'lucide-react';
 
 export const DEFAULT_STAFF_ALLOWED_TABS: ActiveTab[] = [
   'daily',
   'inventory',
+  'retail',
   'orders',
   'sales',
   'purchases',
@@ -73,9 +75,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       badgeColor: 'bg-indigo-600',
     },
     {
+      id: 'retail' as ActiveTab,
+      label: 'လက်လီအရောင်း',
+      sublabel: 'Retail POS',
+      icon: Zap,
+    },
+    {
       id: 'sales' as ActiveTab,
-      label: 'အရောင်း',
-      sublabel: 'Sales',
+      label: 'လက်ကားအရောင်း',
+      sublabel: 'Wholesale',
       icon: Truck,
       badge: todaySalesCount > 0 ? todaySalesCount : undefined,
       badgeColor: 'bg-blue-600',

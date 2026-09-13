@@ -235,6 +235,29 @@ export async function verifyAppLockPin(enteredPin: string, settings: AppLockSett
 }
 
 /**
+ * Verify an entered Owner PIN against configured credentials in AppLockSettings
+ * without requiring the global lockscreen toggle to be active.
+ */
+export async function verifyOwnerPin(
+  enteredPin: string,
+  settings?: AppLockSettings | null
+): Promise<boolean> {
+  if (!enteredPin || !enteredPin.trim()) return false;
+  if (!settings) return false;
+
+  let activeSettings = settings;
+  if (!activeSettings.pinHash && (activeSettings.passcode || activeSettings.pin)) {
+    activeSettings = await migrateLegacyAppLockSettings(activeSettings);
+  }
+
+  if (activeSettings.pinSalt && activeSettings.pinHash) {
+    return verifySecretHash(enteredPin.trim(), activeSettings.pinSalt, activeSettings.pinHash);
+  }
+
+  return false;
+}
+
+/**
  * Verify an entered recovery key against AppLockSettings using PBKDF2 salted hash verifiers only.
  * Plaintext recovery key verification fallback is strictly disabled.
  */

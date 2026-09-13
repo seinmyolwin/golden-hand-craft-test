@@ -28,6 +28,7 @@ import {
 import { PhotoAttachmentField } from './PhotoAttachmentField';
 import { SupplierMasterModal } from './master/SupplierMasterModal';
 import { ProductMasterModal } from './master/ProductMasterModal';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface NewEntryModalProps {
   isOpen: boolean;
@@ -322,16 +323,12 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
                     </select>
                   </div>
                   <div className="sm:col-span-3">
-                    <input
-                      type="text"
-                      inputMode="numeric"
+                    <NumericInput
                       placeholder="အရေအတွက်"
                       value={item.quantity === 0 ? '' : item.quantity}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = parseBilingualNumber(e.target.value);
+                      onChangeValue={(val) => {
                         const updated = [...items];
-                        updated[idx].quantity = isNaN(val) ? 0 : Math.max(0, val);
+                        updated[idx].quantity = Math.max(0, val);
                         setItems(updated);
                       }}
                       className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold"
@@ -362,16 +359,10 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
             <span className="font-bold text-amber-900 block">အကြိုငွေ အသစ်ထုတ်ပေးငွေ (ရှိလျှင်)</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <input
-                  type="text"
-                  inputMode="numeric"
+                <NumericInput
                   placeholder="ငွေပမာဏ - 0"
                   value={newAdvanceTaken === 0 ? '' : newAdvanceTaken}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => {
-                    const val = parseBilingualNumber(e.target.value);
-                    setNewAdvanceTaken(isNaN(val) ? 0 : Math.max(0, val));
-                  }}
+                  onChangeValue={(val) => setNewAdvanceTaken(Math.max(0, val))}
                   className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-amber-900"
                 />
               </div>
@@ -423,7 +414,7 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
             <label className="block text-slate-700 font-semibold mb-1">မှတ်ချက်</label>
             <input
               type="text"
-              placeholder="ဥပမာ - နောက်အပတ်တွင် ပန်းကန်ထပ်အပ်မည်"
+              placeholder={getNotePlaceholder('INBOUND_VOUCHER')}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"

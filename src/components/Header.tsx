@@ -145,13 +145,13 @@ export const Header: React.FC<HeaderProps> = ({
                 alt={shopName}
               />
 
-              <div className="min-w-0 flex-1 space-y-0.5">
-                {/* Shop Title, Owner Pill & Status */}
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <div className="min-w-0 flex-1 space-y-1">
+                {/* Shop Title, Network Status & Owner Name */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={handleEditProfile}
-                    className="text-sm sm:text-base md:text-lg font-black text-white hover:text-amber-200 transition-colors flex items-center gap-1 cursor-pointer text-left tracking-tight group truncate max-w-[140px] min-[400px]:max-w-[200px] sm:max-w-none"
+                    className="text-base sm:text-lg md:text-xl font-black text-white hover:text-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer text-left tracking-tight group truncate max-w-[160px] min-[400px]:max-w-[220px] sm:max-w-none"
                     title="ဆိုင်ရှင်နှင့် ဆိုင်အချက်အလက် ပြင်ဆင်ရန် နှိပ်ပါ"
                     aria-label="ဆိုင်အချက်အလက် ပြင်ဆင်ရန်"
                   >
@@ -159,47 +159,33 @@ export const Header: React.FC<HeaderProps> = ({
                     <Edit3 className="w-3.5 h-3.5 text-emerald-300 opacity-80 group-hover:opacity-100 shrink-0" />
                   </button>
 
-                  {/* Active User / Role Pill & Switch Button */}
-                  {currentSession && (
-                    <button
-                      id="header-user-role-badge-btn"
-                      type="button"
-                      onClick={onOpenUserSwitch}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border shadow-xs cursor-pointer transition-all hover:scale-105 ${
-                        currentSession.role === 'OWNER'
-                          ? 'bg-amber-950/90 text-amber-300 border-amber-400/50 hover:bg-amber-900/90'
-                          : 'bg-slate-950/90 text-emerald-300 border-emerald-400/50 hover:bg-slate-900'
-                      }`}
-                      title="အသုံးပြုသူ အကောင့်ပြောင်းရန် နှိပ်ပါ"
-                    >
-                      {currentSession.role === 'OWNER' ? (
-                        <Shield className="w-3 h-3 text-amber-300 shrink-0" />
-                      ) : (
-                        <User className="w-3 h-3 text-emerald-300 shrink-0" />
-                      )}
-                      <span className="truncate max-w-[120px] sm:max-w-none">
-                        {currentSession.role === 'OWNER' ? 'ဆိုင်ရှင် (Owner)' : 'ဝန်ထမ်း (Staff)'}
-                      </span>
-                      <span className="text-[9px] opacity-75 underline">ပြောင်းမည်</span>
-                    </button>
-                  )}
-
                   {/* Online / Offline Status Badge */}
                   {isOnline ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-200 border border-emerald-400/30 shrink-0 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/70 text-emerald-200 border border-emerald-400/40 shrink-0 whitespace-nowrap">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       <span>Online</span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-200 border border-rose-400/40 shrink-0 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/90 text-rose-200 border border-rose-400/50 shrink-0 whitespace-nowrap">
                       <WifiOff className="w-3 h-3 text-rose-300" />
                       <span>Offline</span>
                     </span>
                   )}
+
+                  {/* Dedicated Owner Name Field */}
+                  {ownerName && (
+                    <div className="h-8 inline-flex items-center gap-1.5 px-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-100 text-xs shadow-2xs shrink-0">
+                      <User className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="text-emerald-200/90 font-medium text-xs">ဆိုင်ရှင်:</span>
+                      <strong className="text-white font-bold tracking-wide truncate max-w-[130px] sm:max-w-[200px]">
+                        {ownerName}
+                      </strong>
+                    </div>
+                  )}
                 </div>
 
                 {/* Contact Address, Phone Number & Tagline */}
-                <div className="hidden sm:flex items-center gap-2 text-[11px] text-emerald-100/90 flex-wrap">
+                <div className="hidden sm:flex items-center gap-2 text-[11px] text-emerald-100/90 flex-wrap pt-0.5">
                   {address && (
                     <span className="inline-flex items-center gap-1 truncate max-w-[160px] md:max-w-none">
                       <MapPin className="w-3 h-3 text-amber-300 shrink-0" />
@@ -228,13 +214,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Mobile Secondary Controls Toggle Button */}
-            <div className="flex items-center gap-1.5 md:hidden shrink-0">
-              {/* Quick Notification Bell for Pending Orders on Mobile */}
+            <div className="flex items-center gap-3 md:hidden shrink-0">
+              {/* Quick Notification Bell for Pending Orders on Mobile (Touch target at least 44x44px) */}
               <button
                 id="header-mobile-orders-bell-btn"
                 type="button"
                 onClick={onOpenOrderNotification || onNavigateToOrders}
-                className={`relative p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`relative w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   pendingOrdersCount > 0
                     ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-md ring-2 ring-amber-300/80 animate-pulse'
                     : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/40'
@@ -242,9 +228,9 @@ export const Header: React.FC<HeaderProps> = ({
                 title={pendingOrdersCount > 0 ? `အော်ဒါအသစ် (${pendingOrdersCount}) စောင်` : 'အော်ဒါမှတ်တမ်း'}
                 aria-label="အော်ဒါမှတ်တမ်း"
               >
-                <Bell className="w-4 h-4 stroke-[2.5]" />
+                <Bell className="w-5 h-5 stroke-[2.5]" />
                 {pendingOrdersCount > 0 && (
-                  <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-red-600 text-white text-[9px] font-black rounded-full border border-white">
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-red-600 text-white text-[9px] font-black rounded-full border border-white">
                     {pendingOrdersCount}
                   </span>
                 )}
@@ -253,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setShowMobileTools(!showMobileTools)}
-                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-all ${
+                className={`flex items-center gap-1 px-2.5 py-2 min-h-[44px] rounded-xl text-xs font-bold border cursor-pointer transition-all ${
                   showMobileTools
                     ? 'bg-amber-400 text-slate-950 border-amber-300'
                     : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border-emerald-500/50'
@@ -274,167 +260,205 @@ export const Header: React.FC<HeaderProps> = ({
           {/* System Control Badges & Auxiliary Tools */}
           {/* Always visible on md (tablet/desktop); collapsible on mobile (< 768px) */}
           <div
-            className={`w-full md:w-auto ${
+            className={`w-full ${
               showMobileTools ? 'flex' : 'hidden md:flex'
-            } flex-wrap items-center gap-1.5 pt-1.5 md:pt-0 border-t border-emerald-700/40 md:border-t-0`}
+            } flex-col gap-1.5 sm:gap-2 pt-1.5 md:pt-0 border-t border-emerald-700/40 md:border-t-0`}
           >
-            {/* Offline Status Indicator */}
-            <OfflineIndicator className="text-white" />
+            {/* ROW 1 (Top Row) */}
+            <div className="w-full flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+              {/* Offline Status Indicator */}
+              <OfflineIndicator className="text-white shrink-0" />
 
-            {/* In-App PWA Install Button */}
-            <PWAInstallButton />
+              {/* In-App PWA Install Button */}
+              <PWAInstallButton className="shrink-0" />
 
-            {/* Version Update Button */}
-            {onOpenUpdateModal && (
-              <button
-                id="header-update-btn"
-                type="button"
-                onClick={onOpenUpdateModal}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold border shadow-xs cursor-pointer transition-all ${
-                  hasPendingUpdate
-                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-300 animate-bounce shadow-md font-extrabold'
-                    : 'bg-emerald-900/80 hover:bg-emerald-850 text-emerald-100 border-emerald-500/50'
-                }`}
-                title="ဗားရှင်းအသစ် စစ်ဆေးခြင်း / အဆင့်မြှင့်တင်ခြင်း"
-                aria-label="ဗားရှင်းအသစ် စစ်ဆေးခြင်း"
-              >
-                <Sparkles className={`w-3 h-3 ${hasPendingUpdate ? 'text-amber-950 fill-amber-950' : 'text-amber-300'}`} />
-                <span className="whitespace-nowrap">
-                  {hasPendingUpdate ? 'Update ရပါပြီ' : `v${CURRENT_APP_VERSION}`}
-                </span>
-              </button>
-            )}
+              {/* Version Update Button */}
+              {onOpenUpdateModal && (
+                <button
+                  id="header-update-btn"
+                  type="button"
+                  onClick={onOpenUpdateModal}
+                  className={`h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold border shadow-2xs cursor-pointer transition-all shrink-0 ${
+                    hasPendingUpdate
+                      ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-300 animate-bounce shadow-md font-extrabold'
+                      : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border-emerald-400/50'
+                  }`}
+                  title="ဗားရှင်းအသစ် စစ်ဆေးခြင်း / အဆင့်မြှင့်တင်ခြင်း"
+                  aria-label="ဗားရှင်းအသစ် စစ်ဆေးခြင်း"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 shrink-0 ${hasPendingUpdate ? 'text-amber-950 fill-amber-950' : 'text-amber-300'}`} />
+                  <span className="whitespace-nowrap">
+                    {hasPendingUpdate ? 'Update ရပါပြီ' : `v${CURRENT_APP_VERSION}`}
+                  </span>
+                </button>
+              )}
 
-            {/* User Guide Button */}
-            {onOpenUserGuide && (
-              <button
-                id="header-guide-btn"
-                type="button"
-                onClick={onOpenUserGuide}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-900/80 hover:bg-emerald-850 text-emerald-100 border border-emerald-500/50 shadow-xs cursor-pointer transition-all"
-                title="အက်ပ်အသုံးပြုနည်း လမ်းညွှန် ဖတ်ရှုမည်"
-                aria-label="အက်ပ်အသုံးပြုနည်း လမ်းညွှန်"
-              >
-                <BookOpen className="w-3 h-3 text-emerald-300" />
-                <span className="whitespace-nowrap">လမ်းညွှန်</span>
-              </button>
-            )}
+              {/* User Guide Button */}
+              {onOpenUserGuide && (
+                <button
+                  id="header-guide-btn"
+                  type="button"
+                  onClick={onOpenUserGuide}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border border-emerald-400/50 shadow-2xs cursor-pointer transition-all shrink-0"
+                  title="အက်ပ်အသုံးပြုနည်း လမ်းညွှန် ဖတ်ရှုမည်"
+                  aria-label="အက်ပ်အသုံးပြုနည်း လမ်းညွှန်"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <span className="whitespace-nowrap">လမ်းညွှန်</span>
+                </button>
+              )}
 
-            {/* Smart Insights Button */}
-            {onOpenInsights && (
-              <button
-                id="header-insights-btn"
-                type="button"
-                onClick={onOpenInsights}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-teal-900/80 hover:bg-teal-800 text-teal-100 border border-teal-500/50 shadow-xs cursor-pointer transition-all"
-                title="စမတ်သုံးသပ်ချက် - ရောင်းအားအကောင်းဆုံးနှင့် ကုန်ပစ္စည်းပေးသွင်းသူကြိုငွေ စောင့်ကြည့်မှု"
-                aria-label="စမတ်သုံးသပ်ချက်"
-              >
-                <TrendingUp className="w-3 h-3 text-teal-300" />
-                <span className="whitespace-nowrap">သုံးသပ်ချက်</span>
-              </button>
-            )}
+              {/* Smart Insights Button */}
+              {onOpenInsights && (
+                <button
+                  id="header-insights-btn"
+                  type="button"
+                  onClick={onOpenInsights}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-teal-950/80 hover:bg-teal-900 text-teal-100 border border-teal-400/50 shadow-2xs cursor-pointer transition-all shrink-0"
+                  title="စမတ်သုံးသပ်ချက် - ရောင်းအားအကောင်းဆုံးနှင့် ကုန်ပစ္စည်းပေးသွင်းသူကြိုငွေ စောင့်ကြည့်မှု"
+                  aria-label="စမတ်သုံးသပ်ချက်"
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-teal-300 shrink-0" />
+                  <span className="whitespace-nowrap">သုံးသပ်ချက်</span>
+                </button>
+              )}
 
-            {/* QR Sync Button */}
-            {onOpenQRSync && (
-              <button
-                id="header-qr-sync-btn"
-                type="button"
-                onClick={onOpenQRSync}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-900/80 hover:bg-emerald-850 text-emerald-100 border border-emerald-500/50 shadow-xs cursor-pointer transition-all"
-                title="QR Code ဖြင့် အင်တာနက်မလိုဘဲ ဘောင်ချာ စာရင်းသွင်း/ထုတ်ယူမည်"
-                aria-label="QR Code Sync"
-              >
-                <QrCode className="w-3 h-3 text-emerald-300" />
-                <span className="whitespace-nowrap">QR Sync</span>
-              </button>
-            )}
+              {/* Audit Trail Button */}
+              {onOpenAuditLogs && (
+                <button
+                  id="header-audit-logs-btn"
+                  type="button"
+                  onClick={onOpenAuditLogs}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-slate-950/80 hover:bg-slate-900 text-slate-200 border border-slate-700 cursor-pointer shadow-2xs transition-all shrink-0"
+                  title="လုပ်ငန်းဆောင်ရွက်မှု Audit မှတ်တမ်းအပြည့်အစုံ ကြည့်မည်"
+                  aria-label="Audit Trail မှတ်တမ်း"
+                >
+                  <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="whitespace-nowrap">Audit Trail</span>
+                </button>
+              )}
+            </div>
 
-            {/* WiFi / Hotspot Sync Button */}
-            {handleSync && (
-              <button
-                id="header-sync-btn"
-                type="button"
-                onClick={handleSync}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-900/80 hover:bg-emerald-850 text-emerald-100 border border-emerald-500/50 cursor-pointer shadow-xs transition-all"
-                title="WiFi / Hotspot ဒေတာ Sync"
-                aria-label="WiFi / Hotspot Sync"
-              >
-                <Radio className="w-3 h-3 text-emerald-300 animate-pulse" />
-                <span className="whitespace-nowrap">Sync</span>
-              </button>
-            )}
+            {/* ROW 2 (Bottom Row) */}
+            <div className="w-full flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+              {/* QR Sync Button */}
+              {onOpenQRSync && (
+                <button
+                  id="header-qr-sync-btn"
+                  type="button"
+                  onClick={onOpenQRSync}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border border-emerald-400/50 shadow-2xs cursor-pointer transition-all shrink-0"
+                  title="QR Code ဖြင့် အင်တာနက်မလိုဘဲ ဘောင်ချာ စာရင်းသွင်း/ထုတ်ယူမည်"
+                  aria-label="QR Code Sync"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <span className="whitespace-nowrap">QR Sync</span>
+                </button>
+              )}
 
-            {/* Zapya Transfer Button */}
-            {handleZapya && (
-              <button
-                id="header-zapya-btn"
-                type="button"
-                onClick={handleZapya}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-purple-900/80 hover:bg-purple-800 text-purple-100 border border-purple-500/50 cursor-pointer shadow-xs transition-all"
-                title="Zapya / Bluetooth ဖြင့် App တစ်ခုလုံးပို့မည်"
-                aria-label="Zapya Transfer"
-              >
-                <Share2 className="w-3 h-3 text-purple-200" />
-                <span className="whitespace-nowrap">Zapya</span>
-              </button>
-            )}
+              {/* WiFi / Hotspot Sync Button */}
+              {handleSync && (
+                <button
+                  id="header-sync-btn"
+                  type="button"
+                  onClick={handleSync}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border border-emerald-400/50 cursor-pointer shadow-2xs transition-all shrink-0"
+                  title="WiFi / Hotspot ဒေတာ Sync"
+                  aria-label="WiFi / Hotspot Sync"
+                >
+                  <Radio className="w-3.5 h-3.5 text-emerald-300 animate-pulse shrink-0" />
+                  <span className="whitespace-nowrap">Sync</span>
+                </button>
+              )}
 
-            {/* Lock App / Security Settings Button */}
-            {(onLockApp || onOpenAppLockSettings) && (
-              <button
-                id="header-lock-app-btn"
-                type="button"
-                onClick={onLockApp || onOpenAppLockSettings}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700 cursor-pointer shadow-xs transition-all"
-                title="လုံခြုံရေး App မျက်နှာပြင် Lock ချမည် / စကားဝှက် ဆက်တင်"
-                aria-label="လုံခြုံရေး App Lock"
-              >
-                <Lock className="w-3 h-3 text-amber-300" />
-                <span>{appLockEnabled ? 'Locked' : 'Lock'}</span>
-              </button>
-            )}
+              {/* Zapya Transfer Button */}
+              {handleZapya && (
+                <button
+                  id="header-zapya-btn"
+                  type="button"
+                  onClick={handleZapya}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-purple-950/80 hover:bg-purple-900 text-purple-100 border border-purple-400/50 cursor-pointer shadow-2xs transition-all shrink-0"
+                  title="Zapya / Bluetooth ဖြင့် App တစ်ခုလုံးပို့မည်"
+                  aria-label="Zapya Transfer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                  <span className="whitespace-nowrap">Zapya</span>
+                </button>
+              )}
 
-            {/* Audit Trail Button */}
-            {onOpenAuditLogs && (
-              <button
-                id="header-audit-logs-btn"
-                type="button"
-                onClick={onOpenAuditLogs}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-slate-700 cursor-pointer shadow-xs transition-all"
-                title="လုပ်ငန်းဆောင်ရွက်မှု Audit မှတ်တမ်းအပြည့်အစုံ ကြည့်မည်"
-                aria-label="Audit Trail မှတ်တမ်း"
-              >
-                <Shield className="w-3 h-3 text-emerald-400" />
-                <span className="whitespace-nowrap">Audit Trail</span>
-              </button>
-            )}
+              {/* User Role Switch Button */}
+              {currentSession && onOpenUserSwitch && (
+                <button
+                  id="header-user-role-badge-btn"
+                  type="button"
+                  onClick={onOpenUserSwitch}
+                  className={`h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold border shadow-2xs cursor-pointer transition-all shrink-0 ${
+                    currentSession.role === 'OWNER'
+                      ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-300 shadow-amber-900/40'
+                      : 'bg-teal-950/80 hover:bg-teal-900 text-teal-100 border-teal-400/50'
+                  }`}
+                  title="အသုံးပြုသူ အကောင့် / ရာထူးပြောင်းရန် နှိပ်ပါ"
+                  aria-label="အသုံးပြုသူ ရာထူးပြောင်းရန်"
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 ${
+                    currentSession.role === 'OWNER' ? 'bg-slate-950 text-amber-300' : 'bg-teal-400 text-slate-950'
+                  }`}>
+                    {currentSession.role === 'OWNER' ? (
+                      <Shield className="w-2.5 h-2.5" />
+                    ) : (
+                      <User className="w-2.5 h-2.5" />
+                    )}
+                  </div>
+                  <span className="whitespace-nowrap">
+                    {currentSession.role === 'OWNER' ? 'ဆိုင်ရှင် (Owner)' : 'ဝန်ထမ်း (Staff)'}
+                  </span>
+                  <span className="text-[10px] font-semibold opacity-90 underline decoration-dotted whitespace-nowrap">
+                    ပြောင်းမည်
+                  </span>
+                </button>
+              )}
 
-            {/* Quick Recycle Bin / Deleted Records Button */}
-            {handleOpenTrash && (
-              <button
-                id="header-deleted-history-btn"
-                type="button"
-                onClick={handleOpenTrash}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border shadow-xs ${
-                  deletedHistoryCount > 0
-                    ? 'bg-rose-700 hover:bg-rose-600 text-white border-rose-400/50 animate-pulse'
-                    : 'bg-emerald-900/80 hover:bg-emerald-850 text-emerald-100 border-emerald-500/50'
-                }`}
-                title={`ဖျက်ထားသောမှတ်တမ်းများ (Recycle Bin) ကြည့်မည် - ${deletedHistoryCount} ခု`}
-                aria-label="ဖျက်ထားသောမှတ်တမ်းများ"
-              >
-                <Trash2 className="w-3 h-3 text-rose-200" />
-                <span className="whitespace-nowrap">အမှိုက်ပုံး</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                  deletedHistoryCount > 0 ? 'bg-white text-rose-700' : 'bg-emerald-950 text-emerald-200'
-                }`}>
-                  {deletedHistoryCount}
-                </span>
-              </button>
-            )}
-          </div>
+              {/* Lock App / Security Settings Button */}
+              {(onLockApp || onOpenAppLockSettings) && (
+                <button
+                  id="header-lock-app-btn"
+                  type="button"
+                  onClick={onLockApp || onOpenAppLockSettings}
+                  className="h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-slate-950/80 hover:bg-slate-900 text-slate-200 border border-slate-700 cursor-pointer shadow-2xs transition-all shrink-0"
+                  title="လုံခြုံရေး App မျက်နှာပြင် Lock ချမည် / စကားဝှက် ဆက်တင်"
+                  aria-label="လုံခြုံရေး App Lock"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="whitespace-nowrap">{appLockEnabled ? 'Locked' : 'Lock'}</span>
+                </button>
+              )}
+
+              {/* Quick Recycle Bin / Deleted Records Button */}
+              {handleOpenTrash && (
+                <button
+                  id="header-deleted-history-btn"
+                  type="button"
+                  onClick={handleOpenTrash}
+                  className={`h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border shadow-2xs shrink-0 ${
+                    deletedHistoryCount > 0
+                      ? 'bg-rose-700 hover:bg-rose-600 text-white border-rose-400/50 animate-pulse'
+                      : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-100 border-emerald-400/50'
+                  }`}
+                  title={`ဖျက်ထားသောမှတ်တမ်းများ (Recycle Bin) ကြည့်မည် - ${deletedHistoryCount} ခု`}
+                  aria-label="ဖျက်ထားသောမှတ်တမ်းများ"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                  <span className="whitespace-nowrap">အမှိုက်ပုံး</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    deletedHistoryCount > 0 ? 'bg-white text-rose-700' : 'bg-emerald-900 text-emerald-200'
+                  }`}>
+                    {deletedHistoryCount}
+                  </span>
+                </button>
+              )}
+            </div>
         </div>
+      </div>
 
         {/* ========================================================================= */}
         {/* ROW 2: DATE SELECTOR & PRIMARY POS OPERATIONS (Ultra Compact & Responsive) */}
@@ -530,7 +554,7 @@ export const Header: React.FC<HeaderProps> = ({
               id="header-orders-notification-bell-btn"
               type="button"
               onClick={onOpenOrderNotification || onNavigateToOrders}
-              className={`hidden md:flex relative p-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`hidden md:flex relative w-11 h-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 pendingOrdersCount > 0
                   ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-md ring-2 ring-amber-300/80 animate-pulse'
                   : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/40'
@@ -542,9 +566,9 @@ export const Header: React.FC<HeaderProps> = ({
               }
               aria-label="အော်ဒါမှတ်တမ်း"
             >
-              <Bell className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Bell className="w-5 h-5 stroke-[2.5]" />
               {pendingOrdersCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 bg-red-600 text-white text-[9px] font-black rounded-full shadow-xs border border-white">
+                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-red-600 text-white text-[9px] font-black rounded-full shadow-xs border border-white">
                   {pendingOrdersCount}
                 </span>
               )}

@@ -10,6 +10,7 @@ import {
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { SupplierMasterModal } from './master/SupplierMasterModal';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 import {
   Users,
   Search,
@@ -900,14 +901,10 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                 <div className="grid grid-cols-2 gap-2 p-3 bg-amber-50/70 border border-amber-200 rounded-xl">
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">ကြိုယူငွေ ပမာဏ (ကျပ်) *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="500"
+                    <NumericInput
                       value={rawQuantity === 0 ? '' : rawQuantity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setRawQuantity(isNaN(val) ? 0 : Math.max(0, val));
+                      onChangeValue={(val) => {
+                        setRawQuantity(val);
                         setRawUnitPrice(1);
                         setRawUnit('ကျပ်');
                       }}
@@ -930,14 +927,9 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">အရေအတွက်</label>
-                    <input
-                      type="number"
-                      min="1"
+                    <NumericInput
                       value={rawQuantity === 0 ? '' : rawQuantity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setRawQuantity(isNaN(val) ? 0 : Math.max(0, val));
-                      }}
+                      onChangeValue={(val) => setRawQuantity(val)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                       required
                     />
@@ -954,14 +946,9 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                   </div>
                   <div>
                     <label className="block text-slate-700 font-bold mb-1">နှုန်း (ကျပ်)</label>
-                    <input
-                      type="number"
-                      min="1"
+                    <NumericInput
                       value={rawUnitPrice === 0 ? '' : rawUnitPrice}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setRawUnitPrice(isNaN(val) ? 0 : Math.max(0, val));
-                      }}
+                      onChangeValue={(val) => setRawUnitPrice(val)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold"
                       required
                     />
@@ -986,7 +973,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">မှတ်ချက်</label>
                 <input
                   type="text"
-                  placeholder="ဥပမာ - ဝါးနှီးစိတ်ရန်အတွက် ထုတ်ယူ"
+                  placeholder={getNotePlaceholder(rawCategory === 'CASH_ADVANCE' ? 'CASH_ADVANCE' : 'RAW_MATERIAL_ISSUE')}
                   value={rawNotes}
                   onChange={(e) => setRawNotes(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg"

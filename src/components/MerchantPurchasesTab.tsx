@@ -29,6 +29,7 @@ import {
   Layers,
   RotateCcw,
 } from 'lucide-react';
+import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface MerchantPurchasesTabProps {
   purchases: MerchantPurchaseRecord[];
@@ -289,23 +290,23 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {onOpenReturnRefundModal && (
             <button
               type="button"
               onClick={() => onOpenReturnRefundModal()}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-amber-900/80 hover:bg-amber-900 active:scale-95 text-amber-200 border border-amber-500/40 rounded-xl font-bold text-xs shadow-md cursor-pointer transition-all shrink-0"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-amber-900/80 hover:bg-amber-900 active:scale-95 text-amber-200 border border-amber-500/40 rounded-xl font-bold text-xs shadow-md cursor-pointer transition-all whitespace-nowrap min-h-[44px]"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4 shrink-0" />
               <span>ပစ္စည်းပြန်အပ်/ငွေပြန်ရ</span>
             </button>
           )}
           <button
             type="button"
             onClick={handleOpenNewModal}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-amber-950 rounded-xl font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all shrink-0"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-amber-950 rounded-xl font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all whitespace-nowrap min-h-[44px]"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 shrink-0" />
             <span>+ ကုန်ကြမ်းဝယ်ယူမှု အသစ်သွင်းမည်</span>
           </button>
         </div>
@@ -740,10 +741,9 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="text-[10px] text-slate-500 font-medium">ဦးရေ/အရေအတွက်</label>
-                        <input
-                          type="text"
+                        <NumericInput
                           required
-                          placeholder="အရေအတွက် (အင်္ဂလိပ် သို့ မြန်မာဂဏန်း)"
+                          placeholder="အရေအတွက်"
                           value={it.quantity}
                           onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
                           className="w-full px-2 py-1 bg-slate-50 border border-slate-300 rounded text-xs font-mono font-bold focus:bg-white"
@@ -761,10 +761,9 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                       </div>
                       <div>
                         <label className="text-[10px] text-slate-500 font-medium">နှုန်းထား (ကျပ်)</label>
-                        <input
-                          type="text"
+                        <NumericInput
                           required
-                          placeholder="နှုန်းထား (ဂဏန်း)"
+                          placeholder="နှုန်းထား"
                           value={it.unitPrice}
                           onChange={(e) => handleItemChange(idx, 'unitPrice', e.target.value)}
                           className="w-full px-2 py-1 bg-slate-50 border border-slate-300 rounded text-xs font-mono font-bold focus:bg-white text-right"
@@ -791,8 +790,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                     <label className="block text-slate-700 font-bold mb-1">
                       လက်ငင်း ပေးချေငွေ (ကျပ်)
                     </label>
-                    <input
-                      type="text"
+                    <NumericInput
                       placeholder="ပေးချေငွေ ထည့်ပါ (၀ သို့ အပြည့်)"
                       value={paidAmountStr}
                       onChange={(e) => setPaidAmountStr(e.target.value)}
@@ -850,7 +848,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                 <label className="block text-slate-700 font-bold mb-1">မှတ်ချက်</label>
                 <input
                   type="text"
-                  placeholder="ကုန်ကြမ်းအရည်အသွေး၊ ပို့ဆောင်သည့်ကားနံပါတ်၊ အခြားမှတ်ချက်များ..."
+                  placeholder={getNotePlaceholder('RAW_MATERIAL_PURCHASE')}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500"

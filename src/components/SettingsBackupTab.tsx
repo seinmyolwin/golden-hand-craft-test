@@ -58,6 +58,7 @@ import {
   createAutoRecoverySnapshot,
   getRecoverySnapshots,
 } from '../services/backupService';
+import { cleanupAuditLogsByRetentionPolicy } from '../services/auditTrailService';
 import { BackupImportPreviewModal } from './BackupImportPreviewModal';
 import { AutoRecoverySnapshotsModal } from './AutoRecoverySnapshotsModal';
 import { DatabaseHealthModal } from './DatabaseHealthModal';
@@ -206,6 +207,38 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const [editingPin, setEditingPin] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [snapshotReason, setSnapshotReason] = useState('');
+  const [retentionPeriod, setRetentionPeriod] = useState<string>(
+    shopSettings?.auditRetentionPeriod || 'FOREVER'
+  );
+  const [isCleaningAudit, setIsCleaningAudit] = useState<boolean>(false);
+
+  const handleRetentionChange = async (newPeriod: string) => {
+    if (!isOwner) {
+      alert('စာရင်းစစ် မှတ်တမ်း ထိန်းသိမ်းချိန် သတ်မှတ်ခြင်းကို ဆိုင်ရှင် (OWNER) သာ လုပ်ဆောင်နိုင်ပါသည်');
+      return;
+    }
+    setRetentionPeriod(newPeriod);
+    const updatedSettings: ShopSettings = {
+      ...(shopSettings || DEFAULT_SHOP_SETTINGS),
+      auditRetentionPeriod: newPeriod as any,
+    };
+    if (onSaveSettings) {
+      onSaveSettings(updatedSettings);
+    }
+    setIsCleaningAudit(true);
+    try {
+      const result = await cleanupAuditLogsByRetentionPolicy(newPeriod);
+      if (result.purgedCount > 0) {
+        alert(`သတ်မှတ်ထားသော သက်တမ်း (${newPeriod}) ထက်ကျော်လွန်သည့် စာရင်းစစ် မှတ်တမ်းအဟောင်း ${result.purgedCount} ခုကို အလိုအလျောက် ရှင်းထုတ်ပြီးပါပြီ။`);
+      } else {
+        alert('သန့်ရှင်းရန် မှတ်တမ်းအဟောင်း မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းမပြည့်သေးပါ။');
+      }
+    } catch (err) {
+      console.error('Audit retention cleanup error:', err);
+    } finally {
+      setIsCleaningAudit(false);
+    }
+  };
 
   // Backup & Safe Recovery System States
   const [isImportPreviewOpen, setIsImportPreviewOpen] = useState<boolean>(false);
@@ -1538,6 +1571,57 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
             <div className="text-[11px] text-slate-500 font-medium">Safety Guarantee</div>
             <div className="font-bold text-blue-700 mt-0.5">Non-Destructive</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Audit-log Retention Policy Card (Phase 21 Requirement 3) */}
+      <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-300">
+              <Clock className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                  စာရင်းစစ် မှတ်တမ်း ထိန်းသိမ်းချိန် သတ်မှတ်ချက် (Audit-Log Retention Policy)
+                </h3>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                  Owner Only
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                သတ်မှတ်ထားသော သက်တမ်းထက် ကျော်လွန်သည့် စာရင်းစစ်မှတ်တမ်းများကို အလိုအလျောက် သန့်ရှင်းရေး ပြုလုပ်ပေးပါမည်
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              disabled={!isOwner || isCleaningAudit}
+              value={retentionPeriod}
+              onChange={(e) => handleRetentionChange(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-amber-300 rounded-xl font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              <option value="10_DAYS">၁၀ ရက် (10 Days)</option>
+              <option value="3_MONTHS">၃ လ (3 Months)</option>
+              <option value="4_MONTHS">၄ လ (4 Months)</option>
+              <option value="5_MONTHS">၅ လ (5 Months)</option>
+              <option value="1_YEAR">၁ နှစ် (1 Year)</option>
+              <option value="FOREVER">အစဉ်အမြဲ ထိန်းသိမ်းမည် (Keep Forever)</option>
+            </select>
+
+            <button
+              type="button"
+              disabled={!isOwner || isCleaningAudit}
+              onClick={() => handleRetentionChange(retentionPeriod)}
+              className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+              title="ယခု အလိုအလျောက် သန့်ရှင်းရေး လုပ်ဆောင်မည်"
+            >
+              <Trash2 className={`w-3.5 h-3.5 ${isCleaningAudit ? 'animate-spin' : ''}`} />
+              <span>{isCleaningAudit ? 'သန့်ရှင်းနေသည်...' : 'သန့်ရှင်းမည်'}</span>
+            </button>
           </div>
         </div>
       </div>
