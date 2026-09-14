@@ -164,6 +164,9 @@ interface SettingsBackupTabProps {
   isCheckingUpdates?: boolean;
   onSaveSettings?: (settings: ShopSettings) => void;
   isLive?: boolean;
+  onOpenRevertLiveStatus?: () => void;
+  rawMaterialPresets?: RawMaterialPreset[];
+  onUpdateRawMaterialPresets?: (presets: RawMaterialPreset[]) => void;
 }
 
 export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
@@ -205,6 +208,9 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   isCheckingUpdates = false,
   onSaveSettings,
   isLive = false,
+  onOpenRevertLiveStatus,
+  rawMaterialPresets: propRawMaterialPresets,
+  onUpdateRawMaterialPresets,
 }) => {
   const isOwner = currentSession ? currentSession.role === 'OWNER' : true;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -296,9 +302,17 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const [prodMinStock, setProdMinStock] = useState<number>(10);
 
   // Raw Material Presets State
-  const [rawMaterialPresets, setRawMaterialPresets] = useState<RawMaterialPreset[]>(() =>
+  const [internalRawMaterialPresets, setInternalRawMaterialPresets] = useState<RawMaterialPreset[]>(() =>
     getStoredRawMaterialPresets()
   );
+
+  const rawMaterialPresets = propRawMaterialPresets !== undefined ? propRawMaterialPresets : internalRawMaterialPresets;
+  const setRawMaterialPresets = (newPresets: RawMaterialPreset[]) => {
+    setInternalRawMaterialPresets(newPresets);
+    if (onUpdateRawMaterialPresets) {
+      onUpdateRawMaterialPresets(newPresets);
+    }
+  };
   const [isAddPresetOpen, setIsAddPresetOpen] = useState<boolean>(false);
   const [presetCategory, setPresetCategory] = useState<string>('BAMBOO');
   const [presetName, setPresetName] = useState<string>('');
@@ -2392,30 +2406,40 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   <Lock className="w-3.5 h-3.5 text-slate-400" />
                   <span>ဆိုင်ရှင်သာ ပြောင်းလဲနိုင်ပါသည်</span>
                 </div>
-              ) : shopSettings?.isLiveConfirmed || shopSettings?.hideSampleDataButtons ? (
+              ) : shopSettings?.isLiveConfirmed || shopSettings?.hideSampleDataButtons || isLive ? (
                 <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-2 text-center">
                   <div className="flex items-center justify-center gap-1.5 text-emerald-800 font-bold text-xs">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>လက်တွေ့ဆိုင်သုံးရန် အတည်ပြုထားပါသည်</span>
+                    <span>လက်တွေ့ဆိုင်သုံးရန် အတည်ပြုထားပါသည် (Live Mode 🟢)</span>
                   </div>
                   <p className="text-[10px] text-slate-500 leading-tight">
                     အချက်အလက်များ မရောထွေးစေရန် နမူနာဒေတာ ခလုတ်များကို အလိုအလျောက် ပိတ်ထားပါသည်
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onSaveSettings) {
-                        onSaveSettings({
-                          ...shopSettings,
-                          hideSampleDataButtons: false,
-                          isLiveConfirmed: false,
-                        });
-                      }
-                    }}
-                    className="text-[10px] text-slate-500 hover:text-emerald-700 underline cursor-pointer"
-                  >
-                    နမူနာဒေတာ ပြန်ဖွင့်လိုပါက နှိပ်ပါ
-                  </button>
+                  {onOpenRevertLiveStatus ? (
+                    <button
+                      type="button"
+                      onClick={onOpenRevertLiveStatus}
+                      className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                    >
+                      ပြင်ဆင်ရန် Live Status ယာယီဖြုတ်မည်
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSaveSettings) {
+                          onSaveSettings({
+                            ...shopSettings,
+                            hideSampleDataButtons: false,
+                            isLiveConfirmed: false,
+                          });
+                        }
+                      }}
+                      className="text-[10px] text-slate-500 hover:text-emerald-700 underline cursor-pointer"
+                    >
+                      နမူနာဒေတာ ပြန်ဖွင့်လိုပါက နှိပ်ပါ
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -2466,9 +2490,21 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   <span>ဆိုင်ရှင်သာ စတင်အသုံးပြုခွင့်ရှိပါသည်</span>
                 </div>
               ) : isLive ? (
-                <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-xl text-center text-xs text-emerald-900 font-bold flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>ဆိုင်စာရင်းသစ် စတင်ပြီးပါပြီ (Live Mode အသုံးပြုနေသည်)</span>
+                <div className="space-y-2">
+                  <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-xl text-center text-xs text-emerald-900 font-bold flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>ဆိုင်စာရင်းသစ် စတင်ပြီးပါပြီ (Live Mode 🟢)</span>
+                  </div>
+                  {onOpenRevertLiveStatus && (
+                    <button
+                      type="button"
+                      onClick={onOpenRevertLiveStatus}
+                      className="w-full py-2 px-3 bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Live Status ယာယီဖြုတ်/ပြင်ဆင်မည် (စကားဝှက်ဖြင့်)</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button

@@ -70,6 +70,7 @@ interface HeaderProps {
   hasPendingUpdate?: boolean;
   onOpenUpdateModal?: () => void;
   isLive?: boolean;
+  onOpenRevertLiveStatus?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -114,6 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
   hasPendingUpdate = false,
   onOpenUpdateModal,
   isLive = false,
+  onOpenRevertLiveStatus,
   isCollapsed,
   onToggleCollapse,
 }) => {
@@ -203,6 +205,18 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right: Quick actions so cashier/shop operations are seamlessly available */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            {isLive && onOpenRevertLiveStatus && (
+              <button
+                type="button"
+                onClick={onOpenRevertLiveStatus}
+                className="flex items-center gap-1 px-2 py-1 bg-emerald-950 text-emerald-200 border border-emerald-400/60 rounded-lg text-[10px] font-black cursor-pointer hover:bg-emerald-900"
+                title="တိုက်ရိုက်အသုံးပြုနေသည် (Live Status) - နှိပ်၍ ပြင်ဆင်ရန်/ဖြုတ်ရန်"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>LIVE 🟢</span>
+              </button>
+            )}
+
             {handleOpenEntry && (
               <button
                 type="button"
@@ -699,13 +713,28 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* Start App / Zero Settings Button - Only shown in Demo/Unconfirmed mode */}
-            {!isLive && onOpenZeroSettings && (
+            {/* Start App / Zero Settings Button or Live Status Indicator */}
+            {isLive ? (
+              <button
+                id="header-live-status-btn"
+                type="button"
+                onClick={onOpenRevertLiveStatus}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black bg-emerald-950/90 hover:bg-emerald-900 active:scale-95 text-emerald-100 border border-emerald-400/70 shadow-xs cursor-pointer transition-all"
+                title="တိုက်ရိုက်အသုံးပြုနေသည် (Live Status) - နှိပ်၍ ဆက်တင်ပြင်ဆင်ရန် သို့မဟုတ် Live Status ယာယီဖြုတ်ရန်"
+                aria-label="တိုက်ရိုက်အသုံးပြုနေသည်"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+                <span className="whitespace-nowrap font-bold text-[11px] sm:text-xs">LIVE STATUS 🟢</span>
+              </button>
+            ) : onOpenZeroSettings ? (
               <button
                 id="header-zero-start-btn"
                 type="button"
                 onClick={onOpenZeroSettings}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-black bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 shadow-xs border border-amber-300 cursor-pointer transition-all animate-pulse"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 shadow-xs border border-amber-300 cursor-pointer transition-all animate-pulse"
                 title="အက်ပ်ကို လက်တွေ့ စတင်အသုံးပြုမည် (လက်ကျန်အားလုံး 0 သုည သတ်မှတ်ချက်)"
                 aria-label="စတင်အသုံးပြုမည်"
               >
@@ -713,7 +742,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="whitespace-nowrap hidden sm:inline">စတင်အသုံးပြုမည်</span>
                 <span className="whitespace-nowrap sm:hidden">စတင်မည်</span>
               </button>
-            )}
+            ) : null}
 
             {/* Quick Collapse Header Arrow Button (မျှာလေး နှိပ်ပြီး Header ဝှက်မည်) */}
             <button

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   X,
   Sparkles,
@@ -162,6 +162,29 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
   const [confirmSetupPin, setConfirmSetupPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Step calculations unconditionally defined at top-level
+  const totalAdvancesSum = useMemo(() => advances.reduce((s, a) => s + a.amount, 0), [advances]);
+  const totalRawMaterialsValue = useMemo(() => rawMaterials.reduce((s, r) => s + r.totalValue, 0), [rawMaterials]);
+  const totalReceivablesSum = useMemo(() => receivables.reduce((s, r) => s + r.amount, 0), [receivables]);
+  const totalPayablesSum = useMemo(() => payables.reduce((s, p) => s + p.amount, 0), [payables]);
+  const totalProductsStockCount = useMemo(() => products.reduce((s, p) => s + (p.openingStock || 0), 0), [products]);
+
+  // Sync settings whenever modal is opened
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStep(1);
+      setErrorMsg('');
+      setIsSubmitting(false);
+      if (shopSettings) {
+        setShopName(shopSettings.shopName || 'ရွှေလက်ရာ');
+        setOwnerName(shopSettings.ownerName || '');
+        setShopPhone(shopSettings.phone || '');
+        setShopAddress(shopSettings.address || '');
+        setShopTagline(shopSettings.tagline || 'မြန်မာ့ရိုးရာလက်မှု ကုန်ချောများ');
+      }
+    }
+  }, [isOpen, shopSettings]);
 
   if (!isOpen) return null;
 
@@ -588,13 +611,6 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
     }
   };
 
-  // Step calculations
-  const totalAdvancesSum = useMemo(() => advances.reduce((s, a) => s + a.amount, 0), [advances]);
-  const totalRawMaterialsValue = useMemo(() => rawMaterials.reduce((s, r) => s + r.totalValue, 0), [rawMaterials]);
-  const totalReceivablesSum = useMemo(() => receivables.reduce((s, r) => s + r.amount, 0), [receivables]);
-  const totalPayablesSum = useMemo(() => payables.reduce((s, p) => s + p.amount, 0), [payables]);
-  const totalProductsStockCount = useMemo(() => products.reduce((s, p) => s + (p.openingStock || 0), 0), [products]);
-
   // Handle Step Confirmation & Next
   const handleNextStep = () => {
     setErrorMsg('');
@@ -636,20 +652,21 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
     try {
       let finalPin = ownerPin.trim();
 
-      // If PIN not configured, initialize new Owner PIN
+      // If PIN not configured, initialize new Owner PIN (6 digits, default 123456)
       if (!hasConfiguredPin) {
-        if (!newSetupPin || newSetupPin.length < 4) {
-          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၄ လုံး (ဂဏန်းများ) ဖြစ်ရပါမည်');
+        const pinToSet = newSetupPin || '123456';
+        if (pinToSet.length < 6) {
+          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၆ လုံး (ဥပမာ - 123456) ဖြစ်ရပါမည်');
           setIsSubmitting(false);
           return;
         }
-        if (newSetupPin !== confirmSetupPin) {
+        if (newSetupPin && newSetupPin !== confirmSetupPin) {
           setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
           setIsSubmitting(false);
           return;
         }
 
-        const pinCreds = await derivePinCredentials(newSetupPin);
+        const pinCreds = await derivePinCredentials(pinToSet);
         const recKey = generateSecureRecoveryKey();
         const recCreds = await deriveRecoveryCredentials(recKey);
 
@@ -671,17 +688,17 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
         if (onUpdateAppLockSettings) {
           onUpdateAppLockSettings(updatedSettings);
         }
-        finalPin = newSetupPin;
+        finalPin = pinToSet;
       } else {
         if (!finalPin) {
-          setErrorMsg('ဆိုင်ရှင် PIN ရိုက်ထည့်ပေးပါ');
+          setErrorMsg('ဆိုင်ရှင် PIN (၆ လုံး ဥပမာ - 123456) ရိုက်ထည့်ပေးပါ');
           setIsSubmitting(false);
           return;
         }
 
         const isValid = await verifyOwnerPin(finalPin, appLockSettings);
         if (!isValid) {
-          setErrorMsg('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ');
+          setErrorMsg('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ (မူလစကားဝှက်မှာ 123456 ဖြစ်ပါသည်)');
           setIsSubmitting(false);
           return;
         }
@@ -1932,14 +1949,15 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                 {hasConfiguredPin ? (
                   <div className="space-y-1.5">
                     <label className="block text-[11px] text-slate-300 font-semibold">
-                      ဆိုင်ရှင် PIN (Owner PIN) ရိုက်ထည့်ပါ *
+                      ဆိုင်ရှင် PIN (၆ လုံး စကားဝှက်) ရိုက်ထည့်ပါ *
                     </label>
                     <div className="relative">
                       <input
                         id="golive-owner-pin-input"
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
-                        placeholder="PIN ဂဏန်း ရိုက်ထည့်ပါ"
+                        maxLength={6}
+                        placeholder="ဥပမာ - 123456"
                         value={ownerPin}
                         onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-sm tracking-widest focus:outline-none focus:border-amber-400"
@@ -1953,18 +1971,22 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                         {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    <p className="text-[10px] text-slate-400">
+                      စကားဝှက်မပြောင်းရသေးပါက ပုံသေ <strong>123456</strong> ကို ရိုက်ထည့်ပါ။
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <div>
                       <label className="block text-[11px] text-slate-300 font-semibold mb-1">
-                        ဆိုင်ရှင် PIN အသစ် (အနည်းဆုံး ၄ လုံး) *
+                        ဆိုင်ရှင် PIN အသစ် (၆ လုံး သတ်မှတ်ပါ) *
                       </label>
                       <input
                         id="golive-new-pin-input"
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
-                        placeholder="ဥပမာ - 1234"
+                        maxLength={6}
+                        placeholder="ဥပမာ - 123456"
                         value={newSetupPin}
                         onChange={(e) => setNewSetupPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"
@@ -1973,13 +1995,14 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-300 font-semibold mb-1">
-                        PIN အသစ် ထပ်မံအတည်ပြုပါ *
+                        PIN အသစ် ထပ်မံအတည်ပြုပါ (၆ လုံး) *
                       </label>
                       <input
                         id="golive-confirm-pin-input"
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
-                        placeholder="PIN အသစ် ပြန်ရိုက်ပါ"
+                        maxLength={6}
+                        placeholder="ဥပမာ - 123456"
                         value={confirmSetupPin}
                         onChange={(e) => setConfirmSetupPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"

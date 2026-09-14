@@ -53,6 +53,7 @@ import {
   getStoredMerchantPurchases,
   saveStoredMerchantPurchases,
   getStoredRawMaterialPresets,
+  saveStoredRawMaterialPresets,
   mergeDatabaseSnapshots,
   getTodayDateString,
   getCurrentTimeString,
@@ -104,6 +105,7 @@ import { ZapyaTransferModal } from './components/ZapyaTransferModal';
 import { UserGuideModal } from './components/UserGuideModal';
 import { ZeroSettingsConfirmModal } from './components/ZeroSettingsConfirmModal';
 import { DemoReloadConfirmModal } from './components/DemoReloadConfirmModal';
+import { RevertLiveStatusModal } from './components/RevertLiveStatusModal';
 import { LowStockAlertModal } from './components/LowStockAlertModal';
 import { ExcelImportModal, ExcelImportTarget } from './components/ExcelImportModal';
 import { UpdateNotificationModal } from './components/UpdateNotificationModal';
@@ -395,6 +397,7 @@ export default function App() {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [isZeroResetModalOpen, setIsZeroResetModalOpen] = useState<boolean>(false);
   const [isDemoReloadGuardModalOpen, setIsDemoReloadGuardModalOpen] = useState<boolean>(false);
+  const [isRevertLiveStatusOpen, setIsRevertLiveStatusOpen] = useState<boolean>(false);
   const [isLowStockAlertModalOpen, setIsLowStockAlertModalOpen] = useState<boolean>(false);
   const [isCashLedgerModalOpen, setIsCashLedgerModalOpen] = useState<boolean>(false);
   const [isAuditHistoryModalOpen, setIsAuditHistoryModalOpen] = useState<boolean>(false);
@@ -448,6 +451,8 @@ export default function App() {
     isAppLockSettingsOpen ||
     isUserGuideOpen ||
     isZeroResetModalOpen ||
+    isDemoReloadGuardModalOpen ||
+    isRevertLiveStatusOpen ||
     isLowStockAlertModalOpen ||
     isExcelImportOpen ||
     isNotificationOpen ||
@@ -472,6 +477,8 @@ export default function App() {
     setIsAppLockSettingsOpen(false);
     setIsUserGuideOpen(false);
     setIsZeroResetModalOpen(false);
+    setIsDemoReloadGuardModalOpen(false);
+    setIsRevertLiveStatusOpen(false);
     setIsLowStockAlertModalOpen(false);
     setIsExcelImportOpen(false);
     setIsNotificationOpen(false);
@@ -770,6 +777,7 @@ export default function App() {
   useEffect(() => { if (isDbLoaded) saveShopSettings(shopSettings); }, [shopSettings, isDbLoaded]);
   useEffect(() => { if (isDbLoaded) saveDeletedItems(deletedItems); }, [deletedItems, isDbLoaded]);
   useEffect(() => { if (isDbLoaded) saveAppLockSettings(appLockSettings); }, [appLockSettings, isDbLoaded]);
+  useEffect(() => { if (isDbLoaded) saveStoredRawMaterialPresets(rawMaterialPresets); }, [rawMaterialPresets, isDbLoaded]);
 
   // Transparently migrate legacy plaintext app lock credentials to salted hashes on initial startup
   useEffect(() => {
@@ -1515,6 +1523,71 @@ export default function App() {
     [shopSettings, appLockSettings]
   );
 
+  // Revert Live Status (Safe reversion with pre-backup and password PIN protection)
+  const handleConfirmRevertLive = useCallback(
+    async (options: { pin: string; backupFirst: boolean; reason?: string }) => {
+      // 1. If backupFirst, create snapshot before reverting
+      if (options.backupFirst) {
+        try {
+          const fullBackup = {
+            version: '1.0.0',
+            timestamp: new Date().toISOString(),
+            shopSettings,
+            appLockSettings,
+            products,
+            suppliers,
+            merchants,
+            transactions,
+            sales,
+            merchantPurchases,
+            orders,
+            peerTrades,
+            stockAdjustments,
+          };
+          const blob = new Blob([JSON.stringify(fullBackup, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `ShweLetYar_PreRevert_Backup_${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (backupErr) {
+          console.warn('Auto-download pre-revert backup error:', backupErr);
+        }
+      }
+
+      // 2. Revert Live Status
+      localStorage.removeItem('ledger_zero_settings_activated');
+      const updatedShop: ShopSettings = {
+        ...shopSettings,
+        isLiveConfirmed: false,
+        hideSampleDataButtons: false,
+      };
+      setShopSettings(updatedShop);
+      saveShopSettings(updatedShop);
+      if (db?.settings) {
+        await db.settings.put({ key: 'shopSettings', value: updatedShop, updatedAt: new Date().toISOString() });
+      }
+
+      try {
+        const entry = await recordAuditEvent({
+          action: 'Live Status ယာယီဖြုတ်သိမ်းခြင်း',
+          details: `Reason: ${options.reason || 'Manual revert by owner'}`,
+          entityType: 'SECURITY',
+        });
+        setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
+      } catch (err) {
+        console.error('Audit log error:', err);
+      }
+
+      setIsRevertLiveStatusOpen(false);
+      alert('Live Status အား အောင်မြင်စွာ ယာယီဖြုတ်ပြီးပါပြီ။ လိုအပ်သော ဆိုင်အချက်အလက်များကို စိတ်ကြိုက် ပြန်လည်ပြင်ဆင်ပြီးပါက စတင်အသုံးပြုမည် (Go-Live) ကို ပြန်လည်ပြုလုပ်နိုင်ပါသည်။');
+    },
+    [shopSettings, appLockSettings, products, suppliers, merchants, transactions, sales, merchantPurchases, orders, peerTrades, stockAdjustments]
+  );
+
   // Merchant Raw Material Purchases Handlers
   const handleSaveMerchantPurchase = useCallback(async (record: MerchantPurchaseRecord) => {
     try {
@@ -2103,6 +2176,7 @@ export default function App() {
         <Header
           shopSettings={shopSettings}
           isLive={isBusinessLive}
+          onOpenRevertLiveStatus={() => setIsRevertLiveStatusOpen(true)}
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onOpenNewEntry={() => handleOpenNewEntry()}
@@ -2309,6 +2383,9 @@ export default function App() {
           {normalizedTab === 'backup' && (
             <SettingsBackupTab
               isLive={isBusinessLive}
+              onOpenRevertLiveStatus={() => setIsRevertLiveStatusOpen(true)}
+              rawMaterialPresets={rawMaterialPresets}
+              onUpdateRawMaterialPresets={setRawMaterialPresets}
               products={products}
               suppliers={suppliers}
               transactions={transactions}
@@ -2522,6 +2599,14 @@ export default function App() {
           onClose={() => setIsDemoReloadGuardModalOpen(false)}
           onConfirmReload={handleExecuteDemoDataReload}
           appLockSettings={appLockSettings}
+        />
+
+        <RevertLiveStatusModal
+          isOpen={isRevertLiveStatusOpen}
+          onClose={() => setIsRevertLiveStatusOpen(false)}
+          onConfirmRevert={handleConfirmRevertLive}
+          appLockSettings={appLockSettings}
+          shopSettings={shopSettings}
         />
 
         <LowStockAlertModal
