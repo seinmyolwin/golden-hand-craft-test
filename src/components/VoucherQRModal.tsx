@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { QrCode, X, Copy, Check, Download, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { generateVoucherFilename } from '../utils/filenameSanitizer';
 
 interface VoucherQRModalProps {
   isOpen: boolean;
@@ -65,9 +66,10 @@ export const VoucherQRModal: React.FC<VoucherQRModalProps> = ({
 
   const handleDownloadQR = () => {
     if (!qrDataUrl) return;
+    const filename = generateVoucherFilename(title || voucherNo, new Date().toISOString().split('T')[0], 'QR', 'png');
     const a = document.createElement('a');
     a.href = qrDataUrl;
-    a.download = `QR_${voucherNo}_${Date.now()}.png`;
+    a.download = filename;
     a.click();
   };
 

@@ -206,13 +206,24 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
         <div
           ref={printRef}
           className={`voucher-printable-scope paper-${paperSize.toLowerCase()} p-4 sm:p-5 space-y-3 bg-white text-slate-900 flex-1 overflow-y-auto ${
-            paperSize === '58mm' ? 'text-[10px] max-w-[280px] mx-auto' : paperSize === '80mm' ? 'text-[11px] max-w-[360px] mx-auto' : 'text-xs'
+            paperSize === '58mm'
+              ? 'text-[10px] max-w-[54mm] w-full mx-auto'
+              : paperSize === '80mm'
+              ? 'text-[11px] max-w-[76mm] w-full mx-auto'
+              : paperSize === 'A5'
+              ? 'text-xs max-w-[138mm] w-full mx-auto'
+              : 'text-xs max-w-[192mm] w-full mx-auto'
           }`}
         >
           {/* Header */}
           <div className="text-center border-b border-dashed border-slate-300 pb-2.5 space-y-1">
             <div className="flex items-center justify-center gap-2">
-              <Logo size="sm" className="w-7 h-7 rounded-xl shadow-xs shrink-0" alt={shopName} />
+              <Logo
+                size="sm"
+                className="w-7 h-7 rounded-xl shadow-xs shrink-0"
+                alt={shopName}
+                logoUrl={shopSettings?.logoUrl}
+              />
               <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">{shopName}</h2>
             </div>
             <p className="text-[11px] text-slate-600 font-medium">{tagline}</p>
@@ -226,19 +237,19 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
           <div className="grid grid-cols-2 gap-1 text-[11px] border-b border-slate-200 pb-2">
             <div>
               <span className="text-slate-500">ဘောင်ချာနံပါတ်: </span>
-              <strong className="font-mono text-slate-800">{transaction.voucherNo}</strong>
+              <strong className="font-mono text-slate-800">{transaction.voucherNo || '-'}</strong>
             </div>
             <div className="text-right">
               <span className="text-slate-500">ရက်စွဲ: </span>
-              <strong className="text-slate-800">{transaction.date} ({transaction.time})</strong>
+              <strong className="text-slate-800">{transaction.date || '-'} {transaction.time ? `(${transaction.time})` : ''}</strong>
             </div>
             <div>
               <span className="text-slate-500">ကုန်ပစ္စည်းပေးသွင်းသူ: </span>
-              <strong className="text-slate-900">{transaction.supplierName}</strong>
+              <strong className="text-slate-900">{transaction.supplierName || 'ကုန်ကြမ်းပေးသွင်းသူ'}</strong>
             </div>
             <div className="text-right">
               <span className="text-slate-500">ရွာ/ဒေသ: </span>
-              <strong className="text-slate-800">{transaction.supplierVillage}</strong>
+              <strong className="text-slate-800">{transaction.supplierVillage || '-'}</strong>
             </div>
           </div>
 
@@ -254,17 +265,17 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {transaction.items && transaction.items.map((item, idx) => (
+                {(transaction.items || []).map((item, idx) => (
                   <tr key={idx} className="py-1">
-                    <td className="py-1 font-semibold text-slate-900">{item.productName}</td>
+                    <td className="py-1 font-semibold text-slate-900">{item.productName || item.name || '-'}</td>
                     <td className="py-1 text-center font-bold text-slate-700">
-                      {item.quantity} {item.unit}
+                      {item.quantity ?? 0} {item.unit || ''}
                     </td>
                     <td className="py-1 text-right text-slate-600">
-                      {formatNumberOnly(item.unitPrice)}
+                      {formatNumberOnly(item.unitPrice ?? 0)}
                     </td>
                     <td className="py-1 text-right font-extrabold text-slate-900">
-                      {formatNumberOnly(item.subtotal)}
+                      {formatNumberOnly(item.subtotal ?? ((item.quantity ?? 0) * (item.unitPrice ?? 0)))}
                     </td>
                   </tr>
                 ))}
@@ -276,37 +287,37 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
           <div className="space-y-1.5 pt-2 border-t border-slate-300 text-xs">
             <div className="flex justify-between font-bold text-slate-900">
               <span>သိမ်းဆည်းကုန်တန်ဖိုး စုစုပေါင်း:</span>
-              <span>{formatMMK(transaction.totalGoodsValue)}</span>
+              <span>{formatMMK(transaction.totalGoodsValue ?? 0)}</span>
             </div>
 
             <div className="flex justify-between text-slate-600 text-[11px]">
               <span>ယခင်လက်ကျန်အကြိုငွေ:</span>
-              <span>{formatMMK(transaction.previousAdvanceBalance)}</span>
+              <span>{formatMMK(transaction.previousAdvanceBalance ?? 0)}</span>
             </div>
 
             <div className="flex justify-between text-emerald-800 text-[11px] font-semibold">
               <span>ယခုအကြိုငွေမှ နုတ်ယူငွေ (ကျေပြီး):</span>
-              <span>- {formatMMK(transaction.advanceDeducted)}</span>
+              <span>- {formatMMK(transaction.advanceDeducted ?? 0)}</span>
             </div>
 
-            {transaction.newAdvanceTaken > 0 && (
+            {(transaction.newAdvanceTaken || 0) > 0 && (
               <div className="flex justify-between text-amber-800 text-[11px] font-semibold">
                 <span>အကြိုငွေအသစ် ထုတ်ပေးငွေ:</span>
-                <span>+ {formatMMK(transaction.newAdvanceTaken)}</span>
+                <span>+ {formatMMK(transaction.newAdvanceTaken ?? 0)}</span>
               </div>
             )}
 
-            {transaction.netCashPaidToSupplier > 0 && (
+            {((transaction.netCashPaidToSupplier ?? transaction.cashPaidToSupplier) || 0) > 0 && (
               <div className="flex justify-between text-blue-800 text-[11px] font-semibold">
                 <span>လက်ငင်းရှင်းပေးငွေ:</span>
-                <span>{formatMMK(transaction.netCashPaidToSupplier)}</span>
+                <span>{formatMMK((transaction.netCashPaidToSupplier ?? transaction.cashPaidToSupplier) ?? 0)}</span>
               </div>
             )}
 
             <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between items-center text-sm font-black">
               <span className="text-slate-900">လက်ကျန်အကြိုငွေ စာရင်း:</span>
-              <span className={transaction.remainingAdvanceBalance > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                {formatMMK(transaction.remainingAdvanceBalance)}
+              <span className={(transaction.remainingAdvanceBalance || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                {formatMMK(transaction.remainingAdvanceBalance ?? 0)}
               </span>
             </div>
           </div>

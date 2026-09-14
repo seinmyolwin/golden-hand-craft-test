@@ -122,8 +122,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         <div className="p-4 overflow-y-auto bg-slate-950 flex justify-center flex-1">
           <div
             id="thermal-printable-receipt"
-            className={`bg-[#fffdf7] text-slate-900 font-mono text-[11px] leading-relaxed p-4 rounded shadow-lg border border-slate-300 select-text ${
-              paperWidth === '58mm' ? 'w-[280px]' : 'w-[360px]'
+            className={`voucher-printable-scope paper-${paperWidth.toLowerCase()} bg-[#fffdf7] text-slate-900 font-mono text-[11px] leading-relaxed p-4 rounded shadow-lg border border-slate-300 select-text ${
+              paperWidth === '58mm' ? 'max-w-[54mm] w-full mx-auto' : 'max-w-[76mm] w-full mx-auto'
             }`}
             style={{
               fontFamily: '"Padauk", "Courier New", Courier, monospace',
