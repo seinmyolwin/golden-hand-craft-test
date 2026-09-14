@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Supplier,
   Product,
@@ -14,6 +14,8 @@ import {
   BackupValidationReport,
   UserSession,
   ActiveTab,
+  CategoryDomain,
+  MasterDataCategory,
 } from '../types';
 import {
   exportSuppliersCSV,
@@ -63,6 +65,8 @@ import { BackupImportPreviewModal } from './BackupImportPreviewModal';
 import { AutoRecoverySnapshotsModal } from './AutoRecoverySnapshotsModal';
 import { DatabaseHealthModal } from './DatabaseHealthModal';
 import { ProductMasterModal } from './master/ProductMasterModal';
+import { CategoryManageModal } from './CategoryManageModal';
+import { masterDataService } from '../services/masterDataService';
 import { Logo } from './Logo';
 import {
   Activity,
@@ -222,6 +226,40 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   );
   const [isCleaningAudit, setIsCleaningAudit] = useState<boolean>(false);
 
+  // Staff Tab Permissions State
+  const [staffTabsState, setStaffTabsState] = useState<ActiveTab[]>(() => {
+    return (
+      shopSettings?.staffAllowedTabs || [
+        'daily',
+        'inventory',
+        'orders',
+        'sales',
+        'purchases',
+        'peers',
+        'merchants',
+        'suppliers',
+        'history',
+      ]
+    );
+  });
+  const [staffSaveSuccess, setStaffSaveSuccess] = useState<boolean>(false);
+
+  const handleSaveStaffTabPermissions = () => {
+    if (!isOwner) {
+      alert('ဝန်ထမ်း Tab ခွင့်ပြုချက် သတ်မှတ်ခြင်းကို ဆိုင်ရှင် (OWNER) သာ လုပ်ဆောင်နိုင်ပါသည်');
+      return;
+    }
+    const updatedSettings: ShopSettings = {
+      ...(shopSettings || DEFAULT_SHOP_SETTINGS),
+      staffAllowedTabs: staffTabsState,
+    };
+    if (onSaveSettings) {
+      onSaveSettings(updatedSettings);
+    }
+    setStaffSaveSuccess(true);
+    setTimeout(() => setStaffSaveSuccess(false), 3000);
+  };
+
   const handleRetentionChange = async (newPeriod: string) => {
     if (!isOwner) {
       alert('စာရင်းစစ် မှတ်တမ်း ထိန်းသိမ်းချိန် သတ်မှတ်ခြင်းကို ဆိုင်ရှင် (OWNER) သာ လုပ်ဆောင်နိုင်ပါသည်');
@@ -314,28 +352,71 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
     }
   };
   const [isAddPresetOpen, setIsAddPresetOpen] = useState<boolean>(false);
-  const [presetCategory, setPresetCategory] = useState<string>('BAMBOO');
+  const [editingPreset, setEditingPreset] = useState<RawMaterialPreset | null>(null);
+  const [isCategoryManageOpen, setIsCategoryManageOpen] = useState<boolean>(false);
+  const [categoryManageDomain, setCategoryManageDomain] = useState<CategoryDomain>('RAW_MATERIAL');
+  const [masterCategories, setMasterCategories] = useState<MasterDataCategory[]>([]);
+  const [presetCategory, setPresetCategory] = useState<string>('ဝါးကုန်ကြမ်း');
   const [presetName, setPresetName] = useState<string>('');
   const [presetUnit, setPresetUnit] = useState<string>('လုံး');
   const [presetPrice, setPresetPrice] = useState<number>(3500);
   const [presetCategoryFilter, setPresetCategoryFilter] = useState<string>('all');
 
-  // Master Sections Collapse/Expand Toggles
+  const loadMasterCategories = useCallback(async () => {
+    try {
+      const cats = await masterDataService.getMasterDataCategories();
+      setMasterCategories(cats);
+    } catch (e) {
+      console.warn('Failed to load master categories:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMasterCategories();
+  }, [loadMasterCategories]);
+
+  // Dynamically derive all available raw material sub-groups
+  const availableRawCategories = useMemo(() => {
+    const list: string[] = [];
+    masterCategories
+      .filter((c) => c.domain === 'RAW_MATERIAL' && c.active !== false)
+      .forEach((c) => {
+        if (!list.includes(c.name)) list.push(c.name);
+      });
+    rawMaterialPresets.forEach((p) => {
+      const cat = p.categoryLabel || p.category;
+      if (cat && !list.includes(cat)) {
+        list.push(cat);
+      }
+    });
+    if (list.length === 0) {
+      return ['ဝါးကုန်ကြမ်း', 'ကြိမ်ကုန်ကြမ်း', 'ငွေကြိုယူ', 'အခြားကုန်ကြမ်း'];
+    }
+    return list;
+  }, [masterCategories, rawMaterialPresets]);
+
+  // Active section filter for prestigious, clean, clutter-free navigation
+  type SettingsSection = 'ALL' | 'BUSINESS' | 'SECURITY' | 'BACKUP' | 'SYSTEM';
+  const [activeSection, setActiveSection] = useState<SettingsSection>('ALL');
+  const [isShweLetYarDocExpanded, setIsShweLetYarDocExpanded] = useState<boolean>(false);
+  const [isRecentSnapshotsExpanded, setIsRecentSnapshotsExpanded] = useState<boolean>(false);
+
+  // Master Sections Collapse/Expand Toggles (default collapsed for sleek, professional view)
   const [isProductMasterExpanded, setIsProductMasterExpanded] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('settings_product_master_expanded');
-      return saved !== null ? JSON.parse(saved) : true;
+      return saved !== null ? JSON.parse(saved) : false;
     } catch {
-      return true;
+      return false;
     }
   });
 
   const [isRawMasterExpanded, setIsRawMasterExpanded] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('settings_raw_master_expanded');
-      return saved !== null ? JSON.parse(saved) : true;
+      return saved !== null ? JSON.parse(saved) : false;
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -359,33 +440,70 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
     });
   };
 
+  const handleOpenAddPreset = () => {
+    setEditingPreset(null);
+    setPresetName('');
+    const defaultCat = availableRawCategories[0] || 'ဝါးကုန်ကြမ်း';
+    setPresetCategory(defaultCat);
+    setPresetUnit(defaultCat.includes('ဝါး') ? 'လုံး' : defaultCat.includes('ကြိမ်') ? 'စည်း' : 'ခု');
+    setPresetPrice(defaultCat.includes('ဝါး') ? 3500 : defaultCat.includes('ကြိမ်') ? 12000 : 5000);
+    setIsAddPresetOpen(true);
+  };
+
+  const handleOpenEditPreset = (preset: RawMaterialPreset) => {
+    setEditingPreset(preset);
+    setPresetName(preset.name);
+    setPresetCategory(preset.categoryLabel || preset.category || 'ဝါးကုန်ကြမ်း');
+    setPresetUnit(preset.defaultUnit || 'ခု');
+    setPresetPrice(preset.defaultUnitPrice || 0);
+    setIsAddPresetOpen(true);
+  };
+
   const handleSavePreset = (e: React.FormEvent) => {
     e.preventDefault();
     if (!presetName.trim()) {
       alert('ပစ္စည်းအမည် ရိုက်ထည့်ပေးပါ');
       return;
     }
-    const catLabels: Record<string, string> = {
-      BAMBOO: 'ဝါးကုန်ကြမ်း',
-      RATTAN: 'ကြိမ်ကုန်ကြမ်း',
-      CASH_ADVANCE: 'ငွေကြိုယူ',
-      OTHER: 'အခြားကုန်ကြမ်း',
-    };
-    const newPreset: RawMaterialPreset = {
-      id: generateStableId('preset'),
-      name: presetName.trim(),
-      category: presetCategory,
-      categoryLabel: catLabels[presetCategory] || presetCategory,
-      defaultUnit: presetUnit.trim() || 'ခု',
-      defaultUnitPrice: Number(presetPrice) || 0,
-      isCustom: true,
-    };
-    const updated = [...rawMaterialPresets, newPreset];
-    setRawMaterialPresets(updated);
-    saveStoredRawMaterialPresets(updated);
-    setIsAddPresetOpen(false);
-    setPresetName('');
-    alert(`"${newPreset.name}" ကို ကုန်ကြမ်းကြိုထုတ် ရွေးချယ်မှုစာရင်းထဲ ထည့်သွင်းပြီးပါပြီ`);
+    const catLabel = presetCategory.trim() || 'ဝါးကုန်ကြမ်း';
+
+    if (editingPreset) {
+      const updated = rawMaterialPresets.map((p) => {
+        if (p.id === editingPreset.id) {
+          return {
+            ...p,
+            name: presetName.trim(),
+            category: catLabel,
+            categoryLabel: catLabel,
+            defaultUnit: presetUnit.trim() || 'ခု',
+            defaultUnitPrice: Number(presetPrice) || 0,
+          };
+        }
+        return p;
+      });
+      setRawMaterialPresets(updated);
+      saveStoredRawMaterialPresets(updated);
+      setIsAddPresetOpen(false);
+      setEditingPreset(null);
+      setPresetName('');
+      alert(`"${presetName.trim()}" ကို ပြင်ဆင်ပြီးပါပြီ`);
+    } else {
+      const newPreset: RawMaterialPreset = {
+        id: generateStableId('preset'),
+        name: presetName.trim(),
+        category: catLabel,
+        categoryLabel: catLabel,
+        defaultUnit: presetUnit.trim() || 'ခု',
+        defaultUnitPrice: Number(presetPrice) || 0,
+        isCustom: true,
+      };
+      const updated = [...rawMaterialPresets, newPreset];
+      setRawMaterialPresets(updated);
+      saveStoredRawMaterialPresets(updated);
+      setIsAddPresetOpen(false);
+      setPresetName('');
+      alert(`"${newPreset.name}" ကို ကုန်ကြမ်းကြိုထုတ် ရွေးချယ်မှုစာရင်းထဲ ထည့်သွင်းပြီးပါပြီ`);
+    }
   };
 
   const handleDeletePreset = (id: string, name: string) => {
@@ -747,233 +865,283 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-20">
-      {/* Header */}
-      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-lg space-y-2 border border-slate-800">
-        <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-base sm:text-lg font-bold text-white">
-            စနစ်ဆက်တင်များနှင့် ဒေတာသိမ်းဆည်းမှု (Settings & Backup)
-          </h2>
-        </div>
-        <p className="text-xs text-slate-400">
-          ဒေတာများ အရန်သိမ်းဆည်းခြင်း၊ အော့ဖ်လိုင်းအသုံးပြုမှု၊ Password Key Reset နှင့် လုံခြုံရေးထိန်းချုပ်ခြင်း
-        </p>
-      </div>
-
-      {/* User Guide and Zero Setup Quick Action Card */}
-      <div className="bg-gradient-to-r from-emerald-800 to-emerald-950 rounded-xl p-4 sm:p-5 text-white shadow-md border border-emerald-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-sm">
-            <BookOpen className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.5 rounded">
-                လမ်းညွှန်နှင့် စတင်အသုံးပြုပုံ
-              </span>
-              <span className="text-[10px] text-emerald-200 bg-emerald-800/80 px-2 py-0.5 rounded border border-emerald-600/50">
-                မြန်မာလို အပြည့်အစုံ
-              </span>
-            </div>
-            <h3 className="text-base font-extrabold text-white mt-1">
-              အက်ပ်အသုံးပြုနည်း လမ်းညွှန်နှင့် စတင်အသုံးပြုခြင်း
-            </h3>
-            <p className="text-xs text-emerald-100/80 mt-0.5 leading-relaxed">
-              ကုန်သိမ်း၊ အရောင်း၊ ကုန်လက်ကျန် သတိပေးချက်၊ အော်ဒါ၊ ဆိုင်ချင်းဖလှယ်မှု၊ အော့ဖ်လိုင်း Backup နှင့် အက်ပ်စတင်အသုံးပြုရန် (Zero Setting) နည်းလမ်းများ
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
-          {!isLive && onOpenZeroSettings && isOwner && (
-            <button
-              id="settings-zero-start-btn"
-              type="button"
-              onClick={onOpenZeroSettings}
-              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition-all border border-amber-300 animate-pulse"
-            >
-              <Sparkles className="w-4 h-4 fill-slate-950 text-slate-950" />
-              <span>စတင်အသုံးပြုမည် (Zero)</span>
-            </button>
-          )}
-
-          {onOpenUserGuide && (
-            <button
-              id="settings-open-user-guide-btn"
-              type="button"
-              onClick={onOpenUserGuide}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 active:scale-95 text-emerald-900 font-extrabold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
-            >
-              <BookOpen className="w-4 h-4 text-emerald-700" />
-              <span>လမ်းညွှန်စာအုပ် ဖွင့်ဖတ်မည်</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Business Profile Management Card */}
-      <div className="bg-white rounded-xl p-4 border border-amber-200/80 shadow-2xs space-y-3">
+    <div className="space-y-3.5 pb-20">
+      {/* Header & Quick Navigation Strip */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <Logo
-              size="md"
-              className="w-12 h-12 rounded-xl border border-amber-400/40 shadow-xs shrink-0"
-              alt={shopSettings?.shopName || 'ရွှေလက်ရာ'}
-            />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
+              <Database className="w-5 h-5" />
+            </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
-                  လုပ်ငန်းအချက်အလက်
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  စနစ်ဆက်တင်များနှင့် ဒေတာစီမံမှု
+                </h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-slate-700">
+                  Settings & Backup
                 </span>
               </div>
-              <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                {shopSettings?.shopName || 'ရွှေလက်ရာ'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {shopSettings?.tagline || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း'}
+              <p className="text-xs text-slate-400">
+                အချက်အလက် မာစတာ၊ စကားဝှက်လုံခြုံရေး၊ အရန်ဒေတာသိမ်းဆည်းမှုနှင့် စနစ်ကြံ့ခိုင်မှု
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onOpenEditShopProfile}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
-          >
-            <Edit3 className="w-4 h-4" />
-            <span>ဆိုင်အမည်နှင့် လိပ်စာပြင်မည်</span>
-          </button>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${isOwner ? 'bg-amber-400' : 'bg-blue-400'}`} />
+              <span>{isOwner ? 'ဆိုင်ရှင် (OWNER)' : 'ဝန်ထမ်း (STAFF)'}</span>
+            </span>
+          </div>
         </div>
 
-        {(shopSettings?.phone || shopSettings?.address || shopSettings?.ownerName) && (
-          <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg">
-            {shopSettings?.ownerName && (
-              <div>
-                <span className="text-[10px] text-slate-400 block">ပိုင်ရှင်:</span>
-                <span className="font-bold text-slate-800">{shopSettings.ownerName}</span>
-              </div>
-            )}
-            {shopSettings?.phone && (
-              <div>
-                <span className="text-[10px] text-slate-400 block">ဖုန်း:</span>
-                <span className="font-bold text-slate-800">{shopSettings.phone}</span>
-              </div>
-            )}
-            {shopSettings?.address && (
-              <div>
-                <span className="text-[10px] text-slate-400 block">လိပ်စာ:</span>
-                <span className="font-bold text-slate-800">{shopSettings.address}</span>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Section Navigation Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-slate-800 pb-0.5 no-scrollbar">
+          {[
+            { id: 'ALL' as SettingsSection, label: 'အားလုံး (All)' },
+            { id: 'BUSINESS' as SettingsSection, label: 'လုပ်ငန်းနှင့် ပစ္စည်းမာစတာ' },
+            { id: 'SECURITY' as SettingsSection, label: 'လုံခြုံရေးနှင့် ဝန်ထမ်း' },
+            { id: 'BACKUP' as SettingsSection, label: 'Backup & Sync' },
+            { id: 'SYSTEM' as SettingsSection, label: 'စနစ်နှင့် ဒေတာစီမံမှု' },
+          ].map((sec) => (
+            <button
+              key={sec.id}
+              type="button"
+              onClick={() => setActiveSection(sec.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                activeSection === sec.id
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              {sec.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ================= MASTER MANAGEMENT (ENTITIES & PRODUCTS) ================= */}
-      <div className="bg-white rounded-xl p-4 sm:p-5 border border-emerald-200 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      {/* User Guide and Zero Setup Quick Banner (Clean & Space-Efficient) */}
+      {(activeSection === 'ALL' || activeSection === 'SYSTEM') && (
+        <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-slate-900 rounded-xl p-3.5 sm:p-4 text-white shadow-xs border border-emerald-700/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-              <Store className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-xs">
+              <BookOpen className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                အဓိက အချက်အလက်နှင့် ကုန်ပစ္စည်း စီမံခန့်ခွဲမှု (Entity & Products Master)
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                ကုန်ပစ္စည်းပေးသွင်းသူအသစ်၊ ကုန်သည်အသစ်၊ ကုန်ပစ္စည်းအသစ် ထည့်သွင်းခြင်းနှင့် ကုန်ပစ္စည်းစာရင်း စိတ်ကြိုက် ပြင်ဆင်/ဖျက်/ထည့်ခြင်း
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.2 rounded">
+                  လမ်းညွှန်
+                </span>
+                <h3 className="text-xs sm:text-sm font-bold text-white">
+                  အက်ပ်အသုံးပြုနည်း လမ်းညွှန်နှင့် စတင်အသုံးပြုခြင်း
+                </h3>
+              </div>
+              <p className="text-[11px] text-emerald-100/80 mt-0.5">
+                ကုန်သိမ်း၊ အရောင်း၊ ကုန်လက်ကျန် သတိပေးချက်၊ အော့ဖ်လိုင်း Backup နှင့် Zero Setting နည်းလမ်းများ
               </p>
             </div>
           </div>
-        </div>
 
-        {/* Quick Add Action Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Add Supplier */}
-          <div className="p-3.5 bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-700" />
-                <span className="font-bold text-xs text-emerald-950">ကုန်ပစ္စည်းပေးသွင်းသူ အသစ်ထည့်ရန်</span>
-              </div>
-              <span className="text-[11px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
-                စုစုပေါင်း {suppliers.length} ဦး
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600">
-              ကုန်ချော/လက်မှု ပေးသွင်းသူအသစ်များ၏ အမည်၊ ရွာ၊ ဖုန်းနံပါတ် သတ်မှတ်ချက်များ
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setSupName('');
-                setSupVillage('မင်းနန်သူ');
-                setSupPhone('');
-                setSupNotes('');
-                setIsAddSupOpen(true);
-              }}
-              className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ ပေးသွင်းသူ အသစ်ထည့်မည်</span>
-            </button>
-          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {!isLive && onOpenZeroSettings && isOwner && (
+              <button
+                id="settings-zero-start-btn"
+                type="button"
+                onClick={onOpenZeroSettings}
+                className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black text-xs shadow-xs flex items-center gap-1 cursor-pointer transition-all border border-amber-300"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                <span>စတင်မည် (Zero)</span>
+              </button>
+            )}
 
-          {/* Add Merchant */}
-          <div className="p-3.5 bg-blue-50/60 hover:bg-blue-50 border border-blue-200 rounded-xl space-y-2 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-blue-700" />
-                <span className="font-bold text-xs text-blue-950">ကုန်သည် အသစ်ထည့်ရန်</span>
-              </div>
-              <span className="text-[11px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded-full border border-blue-200">
-                စုစုပေါင်း {merchants.length} ဦး
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600">
-              လက်ကားဝယ်ယူသူ ကုန်သည်အသစ်များ၏ အမည်၊ မြို့၊ ဖုန်းနံပါတ်၊ ဆိုင်လိပ်စာများ
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setMerchName('');
-                setMerchTown('မန္တလေး');
-                setMerchPhone('');
-                setMerchAddress('');
-                setMerchNotes('');
-                setIsAddMerchOpen(true);
-              }}
-              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ ကုန်သည် အသစ်ထည့်မည်</span>
-            </button>
-          </div>
-
-          {/* Add Product */}
-          <div className="p-3.5 bg-purple-50/60 hover:bg-purple-50 border border-purple-200 rounded-xl space-y-2 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-purple-700" />
-                <span className="font-bold text-xs text-purple-950">ကုန်ပစ္စည်း အသစ်ထည့်ရန်</span>
-              </div>
-              <span className="text-[11px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded-full border border-purple-200">
-                စုစုပေါင်း {products.length} မျိုး
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600">
-              ပစ္စည်းအသစ်၏ အမည်၊ အမျိုးအစား၊ ဝယ်စျေး၊ လက်ကားစျေး၊ အနိမ့်ဆုံးသတိပေးလက်ကျန်
-            </p>
-            <button
-              type="button"
-              onClick={handleOpenAddProduct}
-              className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ ကုန်ပစ္စည်း အသစ်ထည့်မည်</span>
-            </button>
+            {onOpenUserGuide && (
+              <button
+                id="settings-open-user-guide-btn"
+                type="button"
+                onClick={onOpenUserGuide}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition-all border border-white/20"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-emerald-300" />
+                <span>လမ်းညွှန်ဖတ်မည်</span>
+              </button>
+            )}
           </div>
         </div>
+      )}
+
+      {/* Business Profile Management Card */}
+      {(activeSection === 'ALL' || activeSection === 'BUSINESS') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-amber-200/80 shadow-2xs space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <Logo
+                size="md"
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl border border-amber-400/40 shadow-xs shrink-0"
+                alt={shopSettings?.shopName || 'ရွှေလက်ရာ'}
+              />
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded">
+                    လုပ်ငန်းအချက်အလက်
+                  </span>
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                    {shopSettings?.shopName || 'ရွှေလက်ရာ'}
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {shopSettings?.tagline || 'မြန်မာ့လက်မှု ကုန်ချောနှင့် ဝါးနှီးလုပ်ငန်း'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenEditShopProfile}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0 self-start sm:self-auto"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>ဆိုင်အမည်/လိပ်စာ ပြင်မည်</span>
+            </button>
+          </div>
+
+          {(shopSettings?.phone || shopSettings?.address || shopSettings?.ownerName) && (
+            <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-slate-50 p-2 rounded-lg">
+              {shopSettings?.ownerName && (
+                <div>
+                  <span className="text-[10px] text-slate-400 block">ပိုင်ရှင်:</span>
+                  <span className="font-bold text-slate-800 truncate block">{shopSettings.ownerName}</span>
+                </div>
+              )}
+              {shopSettings?.phone && (
+                <div>
+                  <span className="text-[10px] text-slate-400 block">ဖုန်း:</span>
+                  <span className="font-bold text-slate-800 font-mono">{shopSettings.phone}</span>
+                </div>
+              )}
+              {shopSettings?.address && (
+                <div>
+                  <span className="text-[10px] text-slate-400 block">လိပ်စာ:</span>
+                  <span className="font-bold text-slate-800 truncate block">{shopSettings.address}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================= MASTER MANAGEMENT (ENTITIES & PRODUCTS) ================= */}
+      {(activeSection === 'ALL' || activeSection === 'BUSINESS') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-emerald-200 shadow-2xs space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                <Store className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                  အဓိက အချက်အလက်နှင့် ကုန်ပစ္စည်း စီမံခန့်ခွဲမှု (Entity & Products Master)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ကုန်ပစ္စည်းပေးသွင်းသူ၊ ကုန်သည်နှင့် ကုန်ပစ္စည်းစာရင်း စိတ်ကြိုက် ပြင်ဆင်/ဖျက်/ထည့်ခြင်း
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Add Action Cards - Compact & Clean */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Add Supplier */}
+            <div className="p-3 bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200/80 rounded-xl space-y-2 transition-colors flex flex-col justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-emerald-700" />
+                    <span className="font-bold text-xs text-emerald-950">ပေးသွင်းသူအသစ်</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-0.2 rounded-full border border-emerald-200">
+                    {suppliers.length} ဦး
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  အမည်၊ ရွာ၊ ဖုန်းနံပါတ် သတ်မှတ်ချက်များ
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupName('');
+                  setSupVillage('မင်းနန်သူ');
+                  setSupPhone('');
+                  setSupNotes('');
+                  setIsAddSupOpen(true);
+                }}
+                className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ ပေးသွင်းသူ အသစ်</span>
+              </button>
+            </div>
+
+            {/* Add Merchant */}
+            <div className="p-3 bg-blue-50/50 hover:bg-blue-50 border border-blue-200/80 rounded-xl space-y-2 transition-colors flex flex-col justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-blue-700" />
+                    <span className="font-bold text-xs text-blue-950">ကုန်သည်အသစ်</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-700 bg-white px-2 py-0.2 rounded-full border border-blue-200">
+                    {merchants.length} ဦး
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  အမည်၊ မြို့၊ ဖုန်းနံပါတ်၊ ဆိုင်လိပ်စာများ
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMerchName('');
+                  setMerchTown('မန္တလေး');
+                  setMerchPhone('');
+                  setMerchAddress('');
+                  setMerchNotes('');
+                  setIsAddMerchOpen(true);
+                }}
+                className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ ကုန်သည် အသစ်</span>
+              </button>
+            </div>
+
+            {/* Add Product */}
+            <div className="p-3 bg-purple-50/50 hover:bg-purple-50 border border-purple-200/80 rounded-xl space-y-2 transition-colors flex flex-col justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-purple-700" />
+                    <span className="font-bold text-xs text-purple-950">ကုန်ပစ္စည်းအသစ်</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-purple-700 bg-white px-2 py-0.2 rounded-full border border-purple-200">
+                    {products.length} မျိုး
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-1">
+                  အမည်၊ အမျိုးအစား၊ ဝယ်/ရောင်းစျေး
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenAddProduct}
+                className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ ကုန်ပစ္စည်း အသစ်</span>
+              </button>
+            </div>
+          </div>
 
         {/* Product Management Section */}
         <div className="border-t border-slate-100 pt-4 space-y-3">
@@ -1025,6 +1193,18 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                     <span>ဖော်မည်</span>
                   </>
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryManageDomain('FINISHED_GOODS');
+                  setIsCategoryManageOpen(true);
+                }}
+                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 font-bold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                title="ကုန်ချော အုပ်စုခွဲများ စီမံမည်"
+              >
+                <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                <span>အုပ်စုခွဲများ စီမံမည်</span>
               </button>
               <button
                 type="button"
@@ -1206,7 +1386,19 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setIsAddPresetOpen(true)}
+                onClick={() => {
+                  setCategoryManageDomain('RAW_MATERIAL');
+                  setIsCategoryManageOpen(true);
+                }}
+                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-bold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                title="ကုန်ကြမ်း အုပ်စုခွဲများ စီမံမည်"
+              >
+                <Tag className="w-3.5 h-3.5 text-amber-700" />
+                <span>အုပ်စုခွဲများ စီမံမည်</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenAddPreset}
                 className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -1221,10 +1413,13 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                 {[
                   { id: 'all', label: 'အားလုံး', count: rawMaterialPresets.length },
-                  { id: 'BAMBOO', label: 'ဝါးကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'BAMBOO').length },
-                  { id: 'RATTAN', label: 'ကြိမ်ကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'RATTAN').length },
-                  { id: 'CASH_ADVANCE', label: 'ငွေကြိုယူ', count: rawMaterialPresets.filter((p) => p.category === 'CASH_ADVANCE').length },
-                  { id: 'OTHER', label: 'အခြားကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'OTHER').length },
+                  ...availableRawCategories.map((catName) => ({
+                    id: catName,
+                    label: catName,
+                    count: rawMaterialPresets.filter(
+                      (p) => (p.categoryLabel || p.category) === catName || p.category === catName
+                    ).length,
+                  })),
                 ].map((cat) => (
                   <button
                     key={cat.id}
@@ -1244,14 +1439,19 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               {/* Presets List Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                 {rawMaterialPresets
-                  .filter((p) => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
+                  .filter((p) => {
+                    if (presetCategoryFilter === 'all') return true;
+                    const cat = p.categoryLabel || p.category;
+                    return cat === presetCategoryFilter || p.category === presetCategoryFilter;
+                  })
                   .map((preset) => {
+                    const catLabel = preset.categoryLabel || preset.category;
                     const badgeColor =
-                      preset.category === 'BAMBOO'
+                      catLabel.includes('ဝါး')
                         ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                        : preset.category === 'RATTAN'
+                        : catLabel.includes('ကြိမ်')
                         ? 'bg-amber-100 text-amber-800 border-amber-200'
-                        : preset.category === 'CASH_ADVANCE'
+                        : catLabel.includes('ငွေ')
                         ? 'bg-blue-100 text-blue-800 border-blue-200'
                         : 'bg-slate-100 text-slate-800 border-slate-200';
 
@@ -1263,7 +1463,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeColor}`}>
-                              {preset.categoryLabel || preset.category}
+                              {catLabel}
                             </span>
                           </div>
                           <h4 className="font-bold text-xs text-slate-900 truncate">{preset.name}</h4>
@@ -1279,14 +1479,24 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                             )}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePreset(preset.id, preset.name)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="ဖျက်မည်"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditPreset(preset)}
+                            className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-100/70 rounded-lg transition-colors cursor-pointer"
+                            title="ပြင်ဆင်မည်"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePreset(preset.id, preset.name)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="ဖျက်မည်"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -1295,9 +1505,12 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* ================= APP LOCK & PASSWORD KEY RESET CARD ================= */}
-      <div className="bg-white rounded-xl p-4 sm:p-5 border border-amber-300 shadow-2xs space-y-4">
+      {(activeSection === 'ALL' || activeSection === 'SECURITY') && (
+      <>
+      <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-amber-300 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-3">
             <div
@@ -1596,402 +1809,443 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         )}
       </div>
 
-      {/* Multi-Device Hotspot Sync & Zapya Offline Transfer Card */}
-      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 border border-indigo-900 shadow-md space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-900/80 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 border border-indigo-500/30">
-              <Radio className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-white">
-                  ဖုန်းအချင်းချင်း ဒေတာကူးပြောင်းခြင်း (Multi-Phone Hotspot Sync)
-                </h3>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                  Wifi / Hotspot
-                </span>
+      {/* Staff Tab Access Restrictions Card (Role-Based Access Control) */}
+      {isOwner && (
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-purple-200 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 border border-purple-200">
+                <Users className="w-5 h-5" />
               </div>
-              <p className="text-xs text-indigo-200/80 mt-0.5">
-                အင်တာနက်မရှိချိန် ဖုန်းအချင်းချင်း Hotspot ဖွင့်ပြီး ဒေတာများကို တိုက်ရိုက် ပေါင်းစပ်နိုင်ပါသည်
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-indigo-400/20 flex flex-col justify-between space-y-3 transition-colors">
-            <div>
-              <div className="flex items-center gap-2">
-                <Radio className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold text-xs text-white">Hotspot / WiFi ဖြင့် Sync ပြုလုပ်မည်</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                    ဝန်ထမ်း (Staff) ကြည့်ရှုခွင့် Tab များ စီမံခြင်း (Staff Tab Permissions)
+                  </h3>
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+                    Owner Only
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ဆိုင်ရှင် (Owner) မဟုတ်သော ဝန်ထမ်းအကောင့်များ (Staff) ကြည့်ရှုအသုံးပြုခွင့်ရှိမည့် Tab များကို သီးသန့် ရွေးချယ်သတ်မှတ်ပေးနိုင်ပါသည်
+                </p>
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                ဖုန်းနှစ်လုံး Hotspot ချိတ်ဆက်ပြီး QR Code / ကုတ်နံပါတ်ဖြင့် အပြန်အလှန် ဒေတာဖလှယ်မည်
-              </p>
             </div>
-            <button
-              type="button"
-              onClick={onOpenSyncModal}
-              className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
-            >
-              <Radio className="w-4 h-4" />
-              <span>Hotspot Sync ဖွင့်မည်</span>
-            </button>
-          </div>
 
-          <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-purple-400/20 flex flex-col justify-between space-y-3 transition-colors">
-            <div>
-              <div className="flex items-center gap-2">
-                <Share2 className="w-4 h-4 text-purple-400" />
-                <span className="font-bold text-xs text-white">Zapya / Bluetooth ဖြင့် ပို့မည်</span>
-              </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                App တစ်ခုလုံး သို့မဟုတ် Backup ဖိုင်ကို Zapya / ShareMe မှတစ်ဆင့် အခြားဖုန်းသို့ ပေးပို့နိုင်သည်
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenZapyaModal}
-              className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Zapya မျှဝေမည်</span>
-            </button>
-          </div>
-
-          <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-emerald-400/20 flex flex-col justify-between space-y-3 transition-colors">
-            <div>
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold text-xs text-white">Excel ဖြင့် စာရင်းအမြောက်အမြား သွင်းမည်</span>
-              </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                ကုန်ပစ္စည်း၊ ပေးသွင်းသူ၊ ကုန်သည်စာရင်း ရာထောင်ချီကို Excel (.xlsx) ဖြင့် တစ်ပြိုင်နက် သွင်းနိုင်သည်
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenExcelImport}
-              className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Excel Import ဖွင့်မည်</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* App Version & Updates Card */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 border border-emerald-200">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  အက်ပ် ဗားရှင်းနှင့် အဆင့်မြှင့်တင်မှု စစ်ဆေးခြင်း (App Version & Updates)
-                </h3>
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  v{CURRENT_APP_VERSION} (Latest)
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                ဗားရှင်းအသစ်များ ထွက်ပေါ်လာပါက အချက်ပေးစနစ် အလိုအလျောက် သတိပေးမည်ဖြစ်ပါသည်
-              </p>
-            </div>
-          </div>
-
-          {onCheckForUpdates && (
-            <button
-              type="button"
-              disabled={isCheckingUpdates}
-              onClick={onCheckForUpdates}
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shadow-xs transition-all shrink-0 self-start sm:self-auto"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
-              <span>{isCheckingUpdates ? 'စစ်ဆေးနေပါသည်...' : 'ဗားရှင်းအသစ် စစ်ဆေးမည်'}</span>
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-700">
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-            <span className="font-bold text-slate-900 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Mobile Back Key Support</span>
-            </span>
-            <p className="text-[11px] text-slate-500">
-              ဖုန်း/တက်ဘလက် Back key နိပ်ပါက အက်ပ်မှ မထွက်ပဲ မူလစာမျက်နှာသို့ ပြန်ပို့ပေးပါသည်
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-            <span className="font-bold text-slate-900 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Page Refresh Resilience</span>
-            </span>
-            <p className="text-[11px] text-slate-500">
-              Browser refresh ပြုလုပ်ပါက စာရင်းမှ မထွက်ပဲ ဖွင့်လက်စနေရာတွင် ဆက်လက်ရှိနေပါသည်
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-            <span className="font-bold text-slate-900 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Offline Ready (PWA)</span>
-            </span>
-            <p className="text-[11px] text-slate-500">
-              အင်တာနက် မရှိချိန်တွင်လည်း အချက်အလက်များ သိမ်းဆည်းနိုင်ပြီး ပုံမှန်အလုပ်လုပ်ပါသည်
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Database Health & System Diagnostics Card (Phase 12) */}
-      <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-300/40">
-              <Activity className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  ဒေတာဘေ့စ် စစ်ဆေးမှုနှင့် ကျန်းမာရေး (Database Health & Diagnostics)
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Read-Only
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                စာရင်းဒေတာ တည်ငြိမ်မှု၊ ID မထပ်စေရေး၊ အကိုးအကားနှင့် ငွေကြေးဆိုင်ရာ အမှားများအား အလိုအလျောက် စစ်ဆေးခြင်း
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {onOpenAuditHistory && (
-              <button
-                id="settings-audit-trail-btn"
-                type="button"
-                onClick={onOpenAuditHistory}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>စာရင်းစစ်မှတ်တမ်း (Audit Trail)</span>
-              </button>
-            )}
-            {!isOwner ? (
-              <span className="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold text-xs rounded-xl flex items-center gap-1.5 border border-slate-200">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>စစ်ဆေးပြုပြင်ခြင်းကို ဆိုင်ရှင်သာ လုပ်ဆောင်နိုင်ပါသည်</span>
-              </span>
-            ) : (
-              <button
-                id="settings-db-health-btn"
-                type="button"
-                onClick={() => setIsDatabaseHealthOpen(true)}
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all shrink-0"
-              >
-                <Activity className="w-4 h-4 text-emerald-300" />
-                <span>ကျန်းမာရေး စစ်ဆေးမည် (Run Diagnostics)</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <div className="text-[11px] text-slate-500 font-medium">Schema Status</div>
-            <div className="font-bold text-slate-800 mt-0.5">Active (Dexie v4)</div>
-          </div>
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <div className="text-[11px] text-slate-500 font-medium">Data Integrity</div>
-            <div className="font-bold text-emerald-700 mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Protected</span>
-            </div>
-          </div>
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <div className="text-[11px] text-slate-500 font-medium">Offline Architecture</div>
-            <div className="font-bold text-slate-800 mt-0.5">IndexedDB Only</div>
-          </div>
-          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-            <div className="text-[11px] text-slate-500 font-medium">Safety Guarantee</div>
-            <div className="font-bold text-blue-700 mt-0.5">Non-Destructive</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Audit-log Retention Policy Card (Phase 21 Requirement 3) */}
-      <div className="bg-white rounded-xl p-4 border border-amber-300 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-300">
-              <Clock className="w-5 h-5 text-amber-700" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  စာရင်းစစ် မှတ်တမ်း ထိန်းသိမ်းချိန် သတ်မှတ်ချက် (Audit-Log Retention Policy)
-                </h3>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                  Owner Only
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                သတ်မှတ်ထားသော သက်တမ်းထက် ကျော်လွန်သည့် စာရင်းစစ်မှတ်တမ်းများကို အလိုအလျောက် သန့်ရှင်းရေး ပြုလုပ်ပေးပါမည်
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              disabled={!isOwner || isCleaningAudit}
-              value={retentionPeriod}
-              onChange={(e) => handleRetentionChange(e.target.value)}
-              className="px-3 py-2 bg-slate-50 border border-amber-300 rounded-xl font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-            >
-              <option value="10_DAYS">၁၀ ရက် (10 Days)</option>
-              <option value="3_MONTHS">၃ လ (3 Months)</option>
-              <option value="4_MONTHS">၄ လ (4 Months)</option>
-              <option value="5_MONTHS">၅ လ (5 Months)</option>
-              <option value="1_YEAR">၁ နှစ် (1 Year)</option>
-              <option value="FOREVER">အစဉ်အမြဲ ထိန်းသိမ်းမည် (Keep Forever)</option>
-            </select>
-
-            <button
-              type="button"
-              disabled={!isOwner || isCleaningAudit}
-              onClick={() => handleRetentionChange(retentionPeriod)}
-              className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
-              title="ယခု အလိုအလျောက် သန့်ရှင်းရေး လုပ်ဆောင်မည်"
-            >
-              <Trash2 className={`w-3.5 h-3.5 ${isCleaningAudit ? 'animate-spin' : ''}`} />
-              <span>{isCleaningAudit ? 'သန့်ရှင်းနေသည်...' : 'သန့်ရှင်းမည်'}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Time-stamped AutoRecovery Snapshots List Card */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-600 flex items-center justify-center shrink-0">
-              <RotateCcw className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  အလိုအလျောက် သိမ်းဆည်းမှတ်တမ်းများ (Time-stamped Snapshots)
-                </h3>
-                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                  {snapshots.length} ခု
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                အရောင်း၊ ကုန်သိမ်းမှု ပြုလုပ်တိုင်း အလိုအလျောက် သီးခြား Snapshot မှတ်တမ်းယူပေးထားပါသည်
-              </p>
-            </div>
-          </div>
-          {isOwner ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="အကြောင်းပြချက် (ရွေးချယ်ရန်)..."
-                value={snapshotReason}
-                onChange={(e) => setSnapshotReason(e.target.value)}
-                className="text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg w-40 sm:w-48 focus:outline-none"
-              />
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
               <button
                 type="button"
                 onClick={() => {
-                  onTakeSnapshotNow?.(snapshotReason || 'ကိုယ်တိုင် မှတ်တမ်းယူ (Manual Snapshot)');
-                  setSnapshotReason('');
+                  const allTabs: ActiveTab[] = [
+                    'daily',
+                    'inventory',
+                    'retail',
+                    'orders',
+                    'sales',
+                    'purchases',
+                    'peers',
+                    'merchants',
+                    'suppliers',
+                    'products',
+                    'history',
+                    'reports',
+                    'backup',
+                  ];
+                  setStaffTabsState(allTabs);
                 }}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
               >
-                <History className="w-3.5 h-3.5" />
-                <span>Snapshot ယူမည်</span>
+                အားလုံး ရွေးမည်
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultTabs: ActiveTab[] = [
+                    'daily',
+                    'inventory',
+                    'orders',
+                    'sales',
+                    'purchases',
+                    'peers',
+                    'merchants',
+                    'suppliers',
+                    'history',
+                  ];
+                  setStaffTabsState(defaultTabs);
+                }}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+              >
+                မူလအတိုင်း ထားမည်
               </button>
             </div>
-          ) : (
-            <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5 text-slate-400" />
-              <span>ဆိုင်ရှင်သာ Snapshot ရယူနိုင်ပါသည်</span>
-            </span>
-          )}
-        </div>
-
-        {snapshots.length === 0 ? (
-          <div className="p-4 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-            အရောင်း သို့မဟုတ် ကုန်သိမ်းပြီးပါက Snapshot များ အလိုအလျောက် ဤနေရာတွင် ပေါ်လာပါမည်
           </div>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-            {snapshots.slice(0, 8).map((snap) => (
-              <div
-                key={snap.id}
-                className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition-colors"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900">{snap.reason}</span>
-                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-semibold">
-                      {snap.date} {snap.time}
+
+          {staffSaveSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in duration-150">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>ဝန်ထမ်းများ၏ Tab ကြည့်ရှုခွင့်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+            {[
+              { id: 'daily' as ActiveTab, label: 'နေ့စဉ် ကုန်သိမ်း', sub: 'Daily Pickup' },
+              { id: 'inventory' as ActiveTab, label: 'ကုန်ပစ္စည်း လက်ကျန်', sub: 'Inventory Stock' },
+              { id: 'retail' as ActiveTab, label: 'လက်လီ အရောင်း POS', sub: 'Retail Sales' },
+              { id: 'orders' as ActiveTab, label: 'ကုန်သည် အော်ဒါ', sub: 'Merchant Orders' },
+              { id: 'sales' as ActiveTab, label: 'ကုန်သည် လက်ကားအရောင်း', sub: 'Wholesale Sales' },
+              { id: 'purchases' as ActiveTab, label: 'ကုန်ကြမ်း ဝယ်ယူမှု', sub: 'Raw Purchases' },
+              { id: 'peers' as ActiveTab, label: 'မိတ်ဖက် ကုန်ဖလှယ်မှု', sub: 'Peer Trading' },
+              { id: 'merchants' as ActiveTab, label: 'ကုန်သည်များ စာရင်း', sub: 'Merchants' },
+              { id: 'suppliers' as ActiveTab, label: 'ကုန်ပစ္စည်း ပေးသွင်းသူများ', sub: 'Suppliers' },
+              { id: 'products' as ActiveTab, label: 'ကုန်ပစ္စည်း မာစတာ', sub: 'Products' },
+              { id: 'history' as ActiveTab, label: 'မှတ်တမ်းဟောင်းများ', sub: 'History Logs' },
+              { id: 'reports' as ActiveTab, label: 'အစီရင်ခံစာများ', sub: 'Reports' },
+              { id: 'backup' as ActiveTab, label: 'ဆက်တင်နှင့် ဒေတာ', sub: 'Settings & Backup' },
+            ].map((tabItem) => {
+              const isChecked = staffTabsState.includes(tabItem.id);
+              return (
+                <button
+                  key={tabItem.id}
+                  type="button"
+                  onClick={() => {
+                    if (isChecked) {
+                      setStaffTabsState(staffTabsState.filter((t) => t !== tabItem.id));
+                    } else {
+                      setStaffTabsState([...staffTabsState, tabItem.id]);
+                    }
+                  }}
+                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-2.5 ${
+                    isChecked
+                      ? 'bg-purple-50/90 border-purple-400 text-purple-950 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => {}}
+                    className="mt-0.5 w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="font-bold text-xs block text-slate-900 leading-tight">
+                      {tabItem.label}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {tabItem.sub}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap gap-x-2">
-                    <span>ပစ္စည်း: {snap.recordCounts.products}</span>
-                    <span>•</span>
-                    <span>ပေးသွင်းသူ: {snap.recordCounts.suppliers}</span>
-                    <span>•</span>
-                    <span>ကုန်သည်: {snap.recordCounts.merchants}</span>
-                    <span>•</span>
-                    <span>ကုန်သိမ်း: {snap.recordCounts.transactions}</span>
-                    <span>•</span>
-                    <span>အရောင်း: {snap.recordCounts.sales}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <span className="text-xs text-slate-600 font-medium">
+              ခွင့်ပြုထားသော Tab စုစုပေါင်း: <strong className="text-purple-700 font-bold">{staffTabsState.length} ခု</strong>
+            </span>
+            <button
+              type="button"
+              onClick={handleSaveStaffTabPermissions}
+              className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Check className="w-4 h-4" />
+              <span>ဝန်ထမ်း ခွင့်ပြုချက်များ သိမ်းဆည်းမည်</span>
+            </button>
+          </div>
+        </div>
+      )}
+      </>
+      )}
+
+      {/* Multi-Device Hotspot Sync & Zapya Offline Transfer Card */}
+      {(activeSection === 'ALL' || activeSection === 'BACKUP') && (
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 border border-indigo-900 shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-900/80 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                <Radio className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-white">
+                    ဖုန်းအချင်းချင်း ဒေတာကူးပြောင်းခြင်း (Multi-Phone Hotspot Sync)
+                  </h3>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    Wifi / Hotspot
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-200/80 mt-0.5">
+                  အင်တာနက်မရှိချိန် ဖုန်းအချင်းချင်း Hotspot ဖွင့်ပြီး ဒေတာများကို တိုက်ရိုက် ပေါင်းစပ်နိုင်ပါသည်
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-indigo-400/20 flex flex-col justify-between space-y-3 transition-colors">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-400" />
+                  <span className="font-bold text-xs text-white">Hotspot / WiFi ဖြင့် Sync ပြုလုပ်မည်</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                  ဖုန်းနှစ်လုံး Hotspot ချိတ်ဆက်ပြီး QR Code / ကုတ်နံပါတ်ဖြင့် အပြန်အလှန် ဒေတာဖလှယ်မည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenSyncModal}
+                className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
+              >
+                <Radio className="w-4 h-4" />
+                <span>Hotspot Sync ဖွင့်မည်</span>
+              </button>
+            </div>
+
+            <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-purple-400/20 flex flex-col justify-between space-y-3 transition-colors">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Share2 className="w-4 h-4 text-purple-400" />
+                  <span className="font-bold text-xs text-white">Zapya / Bluetooth ဖြင့် ပို့မည်</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                  App တစ်ခုလုံး သို့မဟုတ် Backup ဖိုင်ကို Zapya / ShareMe မှတစ်ဆင့် အခြားဖုန်းသို့ ပေးပို့နိုင်သည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenZapyaModal}
+                className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Zapya မျှဝေမည်</span>
+              </button>
+            </div>
+
+            <div className="bg-white/10 hover:bg-white/15 p-3.5 rounded-xl border border-emerald-400/20 flex flex-col justify-between space-y-3 transition-colors">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  <span className="font-bold text-xs text-white">Excel ဖြင့် စာရင်းအမြောက်အမြား သွင်းမည်</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                  ကုန်ပစ္စည်း၊ ပေးသွင်းသူ၊ ကုန်သည်စာရင်း ရာထောင်ချီကို Excel (.xlsx) ဖြင့် တစ်ပြိုင်နက် သွင်းနိုင်သည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenExcelImport}
+                className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Excel Import ဖွင့်မည်</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* App Version & Updates Card */}
+      {(activeSection === 'ALL' || activeSection === 'SYSTEM') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 border border-emerald-200">
+                <Sparkles className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                    အက်ပ် ဗားရှင်းနှင့် အဆင့်မြှင့်တင်မှု စစ်ဆေးခြင်း (App Version & Updates)
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    v{CURRENT_APP_VERSION} (Latest)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ဗားရှင်းအသစ်များ ထွက်ပေါ်လာပါက အချက်ပေးစနစ် အလိုအလျောက် သတိပေးမည်ဖြစ်ပါသည်
+                </p>
+              </div>
+            </div>
+
+            {onCheckForUpdates && (
+              <button
+                type="button"
+                disabled={isCheckingUpdates}
+                onClick={onCheckForUpdates}
+                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-all shrink-0 self-start sm:self-auto"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+                <span>{isCheckingUpdates ? 'စစ်ဆေးနေပါသည်...' : 'ဗားရှင်းအသစ် စစ်ဆေးမည်'}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-700">
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Mobile Back Key Support</span>
+              </span>
+              <p className="text-[11px] text-slate-500">
+                ဖုန်း Back key နှိပ်ပါက စာရင်းမှမထွက်ဘဲ ပင်မစာမျက်နှာသို့ ပြန်ပို့ပေးပါသည်
+              </p>
+            </div>
+
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Page Refresh Resilience</span>
+              </span>
+              <p className="text-[11px] text-slate-500">
+                Browser refresh ဖြစ်သွားပါက ဖွင့်လက်စနေရာတွင် ဆက်လက်တည်ရှိနေပါသည်
+              </p>
+            </div>
+
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Offline Ready (PWA)</span>
+              </span>
+              <p className="text-[11px] text-slate-500">
+                အင်တာနက် မရှိချိန်တွင်လည်း အချက်အလက်များ သိမ်းဆည်းနိုင်ပြီး ပုံမှန်အလုပ်လုပ်ပါသည်
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Database Health & Audit Log Retention Unified Card */}
+      {(activeSection === 'ALL' || activeSection === 'SYSTEM') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-emerald-300 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-300/40">
+                <Activity className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900">
+                    ဒေတာဘေ့စ် စစ်ဆေးမှုနှင့် စာရင်းစစ် ထိန်းသိမ်းခြင်း
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    System Health & Audit
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ဒေတာ တည်ငြိမ်မှု စစ်ဆေးခြင်းနှင့် သတ်မှတ်သက်တမ်းထက် ကျော်လွန်သည့် စာရင်းစစ်မှတ်တမ်းများ သန့်ရှင်းခြင်း
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {onOpenAuditHistory && (
+                <button
+                  id="settings-audit-trail-btn"
+                  type="button"
+                  onClick={onOpenAuditHistory}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>စာရင်းစစ်မှတ်တမ်း</span>
+                </button>
+              )}
+              {!isOwner ? (
+                <span className="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold text-xs rounded-lg flex items-center gap-1.5 border border-slate-200">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>ဆိုင်ရှင်သာ စစ်ဆေးနိုင်ပါသည်</span>
+                </span>
+              ) : (
+                <button
+                  id="settings-db-health-btn"
+                  type="button"
+                  onClick={() => setIsDatabaseHealthOpen(true)}
+                  className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+                >
+                  <Activity className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>ကျန်းမာရေး စစ်ဆေးမည်</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-medium">Schema Status</div>
+              <div className="font-bold text-slate-800 mt-0.5 text-xs">Active (Dexie v4)</div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-medium">Data Integrity</div>
+              <div className="font-bold text-emerald-700 mt-0.5 text-xs flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <span>Protected</span>
+              </div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-medium">Storage Architecture</div>
+              <div className="font-bold text-slate-800 mt-0.5 text-xs">IndexedDB Offline</div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-[10px] text-slate-500 font-medium">Safety Guarantee</div>
+              <div className="font-bold text-blue-700 mt-0.5 text-xs">Non-Destructive</div>
+            </div>
+          </div>
+
+          {/* Audit Retention Row */}
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-slate-700 font-medium">
+                စာရင်းစစ်မှတ်တမ်း ထိန်းသိမ်းချိန် (Audit Retention):
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                disabled={!isOwner || isCleaningAudit}
+                value={retentionPeriod}
+                onChange={(e) => handleRetentionChange(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-amber-300 rounded-lg font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+              >
+                <option value="10_DAYS">၁၀ ရက် (10 Days)</option>
+                <option value="3_MONTHS">၃ လ (3 Months)</option>
+                <option value="4_MONTHS">၄ လ (4 Months)</option>
+                <option value="5_MONTHS">၅ လ (5 Months)</option>
+                <option value="1_YEAR">၁ နှစ် (1 Year)</option>
+                <option value="FOREVER">အစဉ်အမြဲ ထိန်းသိမ်းမည် (Keep Forever)</option>
+              </select>
+
+              <button
+                type="button"
+                disabled={!isOwner || isCleaningAudit}
+                onClick={() => handleRetentionChange(retentionPeriod)}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+                title="ယခု အလိုအလျောက် သန့်ရှင်းရေး လုပ်ဆောင်မည်"
+              >
+                <Trash2 className={`w-3 h-3 ${isCleaningAudit ? 'animate-spin' : ''}`} />
+                <span>{isCleaningAudit ? 'ရှင်းနေသည်...' : 'သန့်ရှင်းမည်'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backup Reminders & Deleted Records History (Recycle Bin) - 2 Column Grid */}
+      {(activeSection === 'ALL' || activeSection === 'BACKUP') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Daily Backup Reminder Settings Card */}
+          <div className="bg-white rounded-xl p-3.5 border border-emerald-300 shadow-2xs space-y-2.5 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                    <BellRing className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                      ပုံမှန် Data Backup သတိပေးချက်
+                    </h3>
                   </div>
                 </div>
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `"${snap.date} ${snap.time}" မှတ်တမ်းသို့ ဒေတာအားလုံး ပြန်လည်ပြောင်းလဲယူလိုပါသလား?`
-                        )
-                      ) {
-                        onRestoreSnapshot?.(snap);
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-white hover:bg-blue-600 hover:text-white text-blue-700 font-bold border border-blue-300 rounded-lg cursor-pointer transition-colors shrink-0 flex items-center gap-1 shadow-2xs self-end sm:self-auto"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>ပြန်ယူမည်</span>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Daily Backup Reminder Settings Card */}
-      <div className="bg-white rounded-xl p-4 border border-emerald-300 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
-              <BellRing className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  နေ့စဥ် ပုံမှန် Data Backup သတိပေးချက်
-                </h3>
                 <span
                   className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
                     backupReminderSettings?.enabled
@@ -1999,378 +2253,363 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                       : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}
                 >
-                  {backupReminderSettings?.enabled ? 'ဖွင့်ထားသည် (Active)' : 'ပိတ်ထားသည် (Off)'}
+                  {backupReminderSettings?.enabled ? 'ဖွင့်ထားသည်' : 'ပိတ်ထားသည်'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                သတ်မှတ်ချိန်ရောက်တိုင်း ဖုန်းတွင် အလိုအလျောက် သတိပေးပြီး Pop-up Box ဖြင့် Backup ယူစေမည်
+              <p className="text-[11px] text-slate-500">
+                သတ်မှတ်ချိန်ရောက်တိုင်း ဖုန်းတွင် Pop-up Box ဖြင့် အလိုအလျောက် Backup သတိပေးပါမည်
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isOwner ? (
-              <button
-                type="button"
-                onClick={onOpenBackupReminderModal}
-                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <BellRing className="w-4 h-4 text-emerald-600" />
-                <span>သတိပေးချက် စမ်းသပ်မည် (Test Alert)</span>
-              </button>
-            ) : (
-              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>ဆိုင်ရှင်သာ ပြင်ဆင်နိုင်ပါသည်</span>
-              </span>
-            )}
-          </div>
-        </div>
 
-        <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/50 p-3 rounded-lg text-xs">
-          <div className="flex items-center gap-3">
-            <label className={`flex items-center gap-2 font-bold text-slate-800 ${!isOwner ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}>
-              <input
-                type="checkbox"
-                disabled={!isOwner}
-                checked={backupReminderSettings?.enabled ?? true}
-                onChange={(e) =>
-                  onUpdateBackupReminderSettings?.({
-                    ...(backupReminderSettings || {
-                      enabled: true,
-                      reminderTime: '17:30',
-                    }),
-                    enabled: e.target.checked,
-                  })
-                }
-                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
-              />
-              <span>နေ့စဥ် Backup သတိပေးချက် ဖွင့်မည်</span>
-            </label>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-600 font-medium flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>သတိပေးချိန်:</span>
-            </span>
-            <input
-              type="time"
-              disabled={!isOwner}
-              value={backupReminderSettings?.reminderTime || '17:30'}
-              onChange={(e) =>
-                onUpdateBackupReminderSettings?.({
-                  ...(backupReminderSettings || {
-                    enabled: true,
-                    reminderTime: '17:30',
-                  }),
-                  reminderTime: e.target.value,
-                  lastDismissedDate: '',
-                })
-              }
-              className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-            <span className="text-[11px] text-slate-500">(ညနေပိုင်း အကြံပြု)</span>
-          </div>
-        </div>
-      </div>
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <label className={`flex items-center gap-2 font-bold text-slate-800 ${!isOwner ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}>
+                  <input
+                    type="checkbox"
+                    disabled={!isOwner}
+                    checked={backupReminderSettings?.enabled ?? true}
+                    onChange={(e) =>
+                      onUpdateBackupReminderSettings?.({
+                        ...(backupReminderSettings || {
+                          enabled: true,
+                          reminderTime: '17:30',
+                        }),
+                        enabled: e.target.checked,
+                      })
+                    }
+                    className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-xs">သတိပေးချက် ဖွင့်မည်</span>
+                </label>
 
-      {/* Deleted Records History (Recycle Bin) Card */}
-      <div className="bg-white rounded-xl p-4 border border-rose-200 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
-              <Trash2 className="w-5 h-5" />
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="time"
+                    disabled={!isOwner}
+                    value={backupReminderSettings?.reminderTime || '17:30'}
+                    onChange={(e) =>
+                      onUpdateBackupReminderSettings?.({
+                        ...(backupReminderSettings || {
+                          enabled: true,
+                          reminderTime: '17:30',
+                        }),
+                        reminderTime: e.target.value,
+                        lastDismissedDate: '',
+                      })
+                    }
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded font-bold text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={onOpenBackupReminderModal}
+                  className="w-full py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <BellRing className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>သတိပေးချက် စမ်းသပ်မည် (Test Alert)</span>
+                </button>
+              )}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-slate-900">
-                  ဖျက်လိုက်သော မှတ်တမ်းဟောင်းများ (Deleted Records History & Recycle Bin)
-                </h3>
-                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+          </div>
+
+          {/* Deleted Records History (Recycle Bin) Card */}
+          <div className="bg-white rounded-xl p-3.5 border border-rose-200 shadow-2xs space-y-2.5 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-rose-500/15 text-rose-600 flex items-center justify-center shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                      ဖျက်ထားသော မှတ်တမ်းများ (Recycle Bin)
+                    </h3>
+                  </div>
+                </div>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
                   {deletedRecordsCount} ခု
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                မှားဖျက်မိပါက အချိန်မရွေး ပြန်လည်ရယူနိုင်ပြီး ဖျက်ခဲ့သမျှ မှတ်တမ်းအားလုံးကို Excel ဖြင့် ထုတ်ယူနိုင်ပါသည်
+              <p className="text-[11px] text-slate-500">
+                မှားဖျက်မိပါက အချိန်မရွေး ပြန်လည်ရယူနိုင်ပြီး ဖျက်ခဲ့သမျှ မှတ်တမ်းအားလုံးကို Excel ဖြင့် ထုတ်ယူနိုင်သည်
               </p>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenDeletedHistory}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0"
-          >
-            <History className="w-4 h-4" />
-            <span>အမှိုက်ပုံးကြည့်မည် ({deletedRecordsCount})</span>
-          </button>
-        </div>
-      </div>
 
-      {/* Offline Ready Status Banner */}
-      <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-          <ShieldCheck className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="font-bold text-xs sm:text-sm text-emerald-950">
-            အင်တာနက်မလိုဘဲ ရာနှုန်းပြည့် အသုံးပြုနိုင်ပါသည် (Offline Ready)
-          </h3>
-          <p className="text-xs text-emerald-800 mt-0.5 leading-relaxed">
-            ဒေတာအားလုံးသည် သင့်စက်ပစ္စည်း (Device Storage) ပေါ်တွင်သာ လုံခြုံစွာ တည်ရှိနေပြီး အင်တာနက်လိုင်းမရှိဘဲ စာရင်းအကုန် ရေးသွင်း၊ ပြင်ဆင်၊ ပုံနှိပ်နိုင်ပါသည်။
-          </p>
-        </div>
-      </div>
-
-      {/* Data Backup & Restore Cards */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <h3 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
-            <Smartphone className="w-4 h-4 text-emerald-600" />
-            <span>ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်း (Backup & Restore)</span>
-          </h3>
-          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-            ဖိုင်တွဲညွှန်းဆိုမှု: Shwe let yar doc.
-          </span>
-        </div>
-
-        {downloadSuccessMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{downloadSuccessMsg}</span>
-          </div>
-        )}
-
-        <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
-          <FolderOpen className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <span className="font-bold block text-amber-950">
-              ဖုန်းအတွင်း သိမ်းဆည်းရန် လမ်းညွှန်ချက် (Shwe let yar doc. Folder):
-            </span>
-            <p className="text-slate-700 leading-relaxed">
-              ဖုန်း၏ File Manager (သို့မဟုတ်) Files App ရှိ <strong>Download</strong> ဖိုင်တွဲအတွင်း{' '}
-              <strong className="text-amber-900 font-mono bg-white px-1.5 py-0.5 rounded border border-amber-300">
-                Shwe let yar doc.
-              </strong>{' '}
-              ဟူသော folder တစ်ခု ဆောက်ထားပြီး အဆိုပါ folder ထဲသို့ Backup ဖိုင်များ သိမ်းဆည်းနိုင်ပါသည်။
-              ဖိုင်အမည်များကို <strong>Shwe_let_yar_doc_backup_[ရက်စွဲ].json</strong> ဖြင့် အလိုအလျောက် သတ်မှတ်ပေးထားပါသည်။
-            </p>
-          </div>
-        </div>
-
-        {!isOwner ? (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold flex items-center gap-2.5">
-            <Lock className="w-5 h-5 text-slate-500 shrink-0" />
-            <div>
-              <span className="font-bold block text-slate-900">ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်း (Backup & Restore)</span>
-              <span>ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်</span>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3.5 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည် (v3.0 Verified)</span>
-                  <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-semibold">အကြံပြုချက်</span>
-                </div>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  လက်ရှိ စာရင်းသွင်းထားသော ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို SHA-256 Checksum ပါဝင်သော JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
-                </p>
-              </div>
-              <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  id="direct-download-backup-btn"
-                  disabled={isBackingUp}
-                  onClick={() => handleShweLetYarDocBackup(false)}
-                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{isBackingUp ? 'Backup ဖိုင် ထုတ်ယူနေပါသည်...' : 'Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်'}</span>
-                </button>
-                <button
-                  type="button"
-                  id="download-backup-btn"
-                  disabled={isBackingUp}
-                  onClick={() => handleShweLetYarDocBackup(true)}
-                  className="w-full py-2 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
-                >
-                  <FolderOpen className="w-4 h-4 text-slate-600" />
-                  <span>နေရာရွေးပြီး Backup သိမ်းမည် (Folder Picker)</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Safe Restore)</span>
-                  <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">Integrity Verified</span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး ဖိုင်စစ်ဆေးမှု၊ နှိုင်းယှဉ်ချက်များနှင့် Smart Merge / Clean Overwrite အဆင့်ဆင့် ပြုလုပ်ပါမည်
-                </p>
-              </div>
-              <div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".json"
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  id="restore-backup-btn"
-                  disabled={isValidating}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-2.5 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
-                >
-                  <Upload className="w-4 h-4 text-slate-600" />
-                  <span>{isValidating ? 'ဖိုင်စစ်ဆေးနေပါသည်...' : 'Backup ဖိုင် ရွေးမည် (Preview & Validate)'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Auto-Recovery Safety Snapshots Management Card */}
-      <div className="bg-white rounded-xl p-4 border border-blue-200 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-xs sm:text-sm text-slate-900">
-                  အလိုအလျောက် Safety Snapshots နှင့် Rollback စနစ်
-                </h3>
-                <span className="text-xs font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                  {snapshots.length} ခု သိမ်းဆည်းပြီး
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Restore, Clear Data သို့မဟုတ် အရေးကြီးသော ပြောင်းလဲမှုများ မပြုလုပ်မီ စနစ်က လက်ရှိဒေတာကို Auto Snapshot အဖြစ် ကာကွယ်သိမ်းဆည်းပေးထားပါသည်
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isOwner ? (
+            <div className="pt-2 border-t border-slate-100">
               <button
                 type="button"
-                id="open-snapshots-modal-btn"
-                onClick={() => setIsSnapshotsModalOpen(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shrink-0"
+                onClick={onOpenDeletedHistory}
+                className="w-full py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
               >
-                <History className="w-4 h-4" />
-                <span>Safety Snapshots ကြည့်မည် / ပြန်ယူမည် ({snapshots.length})</span>
+                <History className="w-3.5 h-3.5" />
+                <span>အမှိုက်ပုံး စာရင်းကြည့်မည် ({deletedRecordsCount})</span>
               </button>
-            ) : (
-              <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>ဆိုင်ရှင်သာ စီမံခွင့်ရှိပါသည်</span>
-              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Data Backup & Restore Cards */}
+      {(activeSection === 'ALL' || activeSection === 'BACKUP') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+              <Smartphone className="w-4 h-4 text-emerald-600" />
+              <span>ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်း (Backup & Restore)</span>
+            </h3>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 self-start sm:self-auto">
+              ဖိုင်တွဲညွှန်းဆိုမှု: Shwe let yar doc.
+            </span>
+          </div>
+
+          {downloadSuccessMsg && (
+            <div className="p-2.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{downloadSuccessMsg}</span>
+            </div>
+          )}
+
+          {/* Collapsible Folder Guidance */}
+          <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-xs text-amber-900">
+            <div
+              className="flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setIsShweLetYarDocExpanded(!isShweLetYarDocExpanded)}
+            >
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-amber-700 shrink-0" />
+                <span className="font-bold text-amber-950 text-xs">
+                  ဖုန်းအတွင်း သိမ်းဆည်းရန် လမ်းညွှန်ချက် (Shwe let yar doc. Folder)
+                </span>
+              </div>
+              <button
+                type="button"
+                className="text-amber-800 hover:text-amber-950 p-0.5"
+                title={isShweLetYarDocExpanded ? 'ဝှက်မည်' : 'ဖွင့်ကြည့်မည်'}
+              >
+                {isShweLetYarDocExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {isShweLetYarDocExpanded && (
+              <div className="mt-2 pt-2 border-t border-amber-200/70 text-[11px] text-slate-700 leading-relaxed space-y-1">
+                <p>
+                  ဖုန်း၏ File Manager (သို့မဟုတ်) Files App ရှိ <strong>Download</strong> ဖိုင်တွဲအတွင်း{' '}
+                  <strong className="text-amber-900 font-mono bg-white px-1.5 py-0.5 rounded border border-amber-300">
+                    Shwe let yar doc.
+                  </strong>{' '}
+                  ဟူသော folder တစ်ခု ဆောက်ထားပြီး အဆိုပါ folder ထဲသို့ Backup ဖိုင်များ သိမ်းဆည်းနိုင်ပါသည်။
+                  ဖိုင်အမည်များကို <strong>Shwe_let_yar_doc_backup_[ရက်စွဲ].json</strong> ဖြင့် အလိုအလျောက် သတ်မှတ်ပေးထားပါသည်။
+                </p>
+              </div>
             )}
           </div>
-        </div>
 
-        {/* Quick Emergency Snapshot Bar */}
-        {isOwner && (
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center gap-2">
-            <input
-              type="text"
-              placeholder="Snapshot အကြောင်းပြချက် (ဥပမာ - လကုန်စာရင်းမရှင်းမီ မှတ်တမ်း)"
-              value={emergencyReason}
-              onChange={(e) => setEmergencyReason(e.target.value)}
-              className="w-full sm:flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-            />
+          {!isOwner ? (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+              <div>
+                <span className="font-bold block text-slate-900">ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်း</span>
+                <span className="text-[11px] text-slate-500">ဒေတာ အရန်သိမ်းခြင်းနှင့် ပြန်လည်သွင်းယူခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်</span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-900">အပြည့်အစုံ Backup ထုတ်ယူမည် (v3.0)</span>
+                    <span className="text-[10px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-semibold">အကြံပြုချက်</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    ကုန်ပစ္စည်းပေးသွင်းသူ {suppliers.length} ဦး၊ ကုန်သည် {merchants.length} ဦး၊ ကုန်ပစ္စည်း {products.length} မျိုး၊ ဘောင်ချာ {transactions.length + sales.length} စောင် အားလုံးကို SHA-256 Checksum ပါဝင်သော JSON ဖိုင်အဖြစ် ဒေါင်းလုဒ်သိမ်းဆည်းမည်
+                  </p>
+                </div>
+                <div className="space-y-1.5 pt-1">
+                  <button
+                    type="button"
+                    id="direct-download-backup-btn"
+                    disabled={isBackingUp}
+                    onClick={() => handleShweLetYarDocBackup(false)}
+                    className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{isBackingUp ? 'Backup ဖိုင် ထုတ်ယူနေပါသည်...' : 'Shwe let yar doc. ထဲ ဒေါင်းလုဒ်သိမ်းမည်'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="download-backup-btn"
+                    disabled={isBackingUp}
+                    onClick={() => handleShweLetYarDocBackup(true)}
+                    className="w-full py-1.5 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-2xs cursor-pointer transition-colors"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-slate-600" />
+                    <span>နေရာရွေးပြီး Backup သိမ်းမည် (Folder Picker)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-900 block">ဒေတာများ ပြန်သွင်းမည် (Safe Restore)</span>
+                    <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">Verified</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    ယခင်သိမ်းဆည်းထားသော .json Backup ဖိုင်ကို ရွေးချယ်ပြီး ဖိုင်စစ်ဆေးမှု၊ နှိုင်းယှဉ်ချက်များနှင့် Smart Merge / Clean Overwrite အဆင့်ဆင့် ပြုလုပ်ပါမည်
+                  </p>
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept=".json"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    id="restore-backup-btn"
+                    disabled={isValidating}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{isValidating ? 'ဖိုင်စစ်ဆေးနေပါသည်...' : 'Backup ဖိုင် ရွေးမည် (Preview & Validate)'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto-Recovery Safety Snapshots - Compact & High-Precision */}
+      {(activeSection === 'ALL' || activeSection === 'BACKUP') && (
+        <div className="bg-white rounded-xl p-3 sm:p-3.5 border border-blue-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                  Safety Snapshots & Auto-Rollback
+                </h3>
+                <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                  {snapshots.length} ခု
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                အရောင်း၊ ကုန်သိမ်းနှင့် Restore မတိုင်မီ လက်ရှိဒေတာကို Auto Snapshot ဖြင့် အရန်သိမ်းပေးပါသည်
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            {isOwner && (
+              <button
+                type="button"
+                disabled={isCreatingSnapshot}
+                onClick={async () => {
+                  setIsCreatingSnapshot(true);
+                  try {
+                    const reason = prompt('Snapshot မှတ်တမ်းအကြောင်းပြချက် ထည့်ပါ (ရွေးချယ်နိုင်သည်):', 'Manual Safety Snapshot') || 'Manual Safety Snapshot';
+                    await createAutoRecoverySnapshot(reason);
+                    if (onTakeSnapshotNow) {
+                      onTakeSnapshotNow(reason);
+                    }
+                    alert(`Safety Snapshot "${reason}" ကို သိမ်းဆည်းပြီးပါပြီ`);
+                  } catch (e: any) {
+                    alert(`Snapshot သိမ်းဆည်းရာတွင် အမှားဖြစ်ပွားပါသည်: ${e?.message || e}`);
+                  } finally {
+                    setIsCreatingSnapshot(false);
+                  }
+                }}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                title="Snapshot အသစ်ရယူမည်"
+              >
+                <Plus className="w-3.5 h-3.5 text-blue-600" />
+                <span>{isCreatingSnapshot ? 'သိမ်းနေသည်...' : 'Snapshot ရယူ'}</span>
+              </button>
+            )}
+
             <button
               type="button"
-              disabled={isCreatingSnapshot}
-              onClick={async () => {
-                setIsCreatingSnapshot(true);
-                try {
-                  const reason = emergencyReason.trim() || 'Manual Safety Snapshot';
-                  await createAutoRecoverySnapshot(reason);
-                  if (onTakeSnapshotNow) {
-                    onTakeSnapshotNow(reason);
-                  }
-                  setEmergencyReason('');
-                  alert(`Safety Snapshot "${reason}" ကို IndexedDB ထဲသို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ`);
-                } catch (e: any) {
-                  alert(`Snapshot သိမ်းဆည်းရာတွင် အမှားဖြစ်ပွားပါသည်: ${e?.message || e}`);
-                } finally {
-                  setIsCreatingSnapshot(false);
-                }
-              }}
-              className="w-full sm:w-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
+              id="open-snapshots-modal-btn"
+              onClick={() => setIsSnapshotsModalOpen(true)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-              <span>{isCreatingSnapshot ? 'သိမ်းဆည်းနေပါသည်...' : 'Snapshot ချက်ချင်း ရယူမည်'}</span>
+              <History className="w-3.5 h-3.5" />
+              <span>ကြည့်မည် / ပြန်ယူမည် ({snapshots.length})</span>
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Individual Excel Exports */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-3">
-        <h3 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-          <span>Excel / CSV ဖိုင်များ ခွဲခြားထုတ်ယူရန်</span>
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-          <button
-            type="button"
-            onClick={() => exportSuppliersCSV(suppliers)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1">
-              <Users className="w-4 h-4 text-emerald-600" />
-              <span>ကုန်ပစ္စည်းပေးသွင်းသူစာရင်း</span>
-            </div>
-            <span className="text-[11px] text-slate-500 block">Suppliers ({suppliers.length} ဦး)</span>
-          </button>
+      {(activeSection === 'ALL' || activeSection === 'BACKUP') && (
+        <div className="bg-white rounded-xl p-3.5 sm:p-4 border border-slate-200 shadow-2xs space-y-3">
+          <h3 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Excel / CSV ဖိုင်များ ခွဲခြားထုတ်ယူရန်</span>
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+            <button
+              type="button"
+              onClick={() => exportSuppliersCSV(suppliers)}
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-0.5">
+                <Users className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ကုန်ပစ္စည်းပေးသွင်းသူစာရင်း</span>
+              </div>
+              <span className="text-[10px] text-slate-500 block">Suppliers ({suppliers.length} ဦး)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => exportMerchantsCSV(merchants)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1">
-              <Building2 className="w-4 h-4 text-blue-600" />
-              <span>ကုန်သည်အရောင်းစာရင်း</span>
-            </div>
-            <span className="text-[11px] text-slate-500 block">Merchants ({merchants.length} ဦး)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => exportMerchantsCSV(merchants)}
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-0.5">
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>ကုန်သည်အရောင်းစာရင်း</span>
+              </div>
+              <span className="text-[10px] text-slate-500 block">Merchants ({merchants.length} ဦး)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => exportInventoryCSV(inventoryStock)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1">
-              <Package className="w-4 h-4 text-amber-600" />
-              <span>ကုန်ပစ္စည်းလက်ကျန်</span>
-            </div>
-            <span className="text-[11px] text-slate-500 block">Inventory ({inventoryStock.length} မျိုး)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => exportInventoryCSV(inventoryStock)}
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-0.5">
+                <Package className="w-3.5 h-3.5 text-amber-600" />
+                <span>ကုန်ပစ္စည်းလက်ကျန်</span>
+              </div>
+              <span className="text-[10px] text-slate-500 block">Inventory ({inventoryStock.length} မျိုး)</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => exportSalesHistoryCSV(sales)}
-            className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1">
-              <Download className="w-4 h-4 text-purple-600" />
-              <span>အရောင်းဘောင်ချာများ</span>
-            </div>
-            <span className="text-[11px] text-slate-500 block">Sales ({sales.length} စောင်)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => exportSalesHistoryCSV(sales)}
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-left cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-0.5">
+                <Download className="w-3.5 h-3.5 text-purple-600" />
+                <span>အရောင်းဘောင်ချာများ</span>
+              </div>
+              <span className="text-[10px] text-slate-500 block">Sales ({sales.length} စောင်)</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ================= DATA MANAGEMENT & SETUP OPTIONS ================= */}
+      {(activeSection === 'ALL' || activeSection === 'SYSTEM') && (
       <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-2xs space-y-4">
         <div>
           <h3 className="font-bold text-xs sm:text-base text-slate-900 flex items-center gap-2">
@@ -2569,6 +2808,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* ================= MODAL: ADD SUPPLIER ================= */}
       {isAddSupOpen && (
@@ -2775,7 +3015,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         availableCategories={Array.from(new Set(['ကုန်ချော', 'ပန်းပု', 'သစ်သား', 'ကြေးထည်', 'အခြား', ...products.map((p) => p.category).filter(Boolean)]))}
       />
 
-      {/* ================= MODAL: ADD RAW MATERIAL PRESET ================= */}
+      {/* ================= MODAL: ADD / EDIT RAW MATERIAL PRESET ================= */}
       {isAddPresetOpen && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 border border-slate-200">
@@ -2784,11 +3024,16 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
                   <Layers className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-slate-900 text-sm">ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားအသစ် ထည့်သွင်းခြင်း</h3>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {editingPreset ? 'ကုန်ကြမ်းကြိုထုတ် အမျိုးအစား ပြင်ဆင်ခြင်း' : 'ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားအသစ် ထည့်သွင်းခြင်း'}
+                </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddPresetOpen(false)}
+                onClick={() => {
+                  setIsAddPresetOpen(false);
+                  setEditingPreset(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2797,33 +3042,49 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 
             <form onSubmit={handleSavePreset} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-slate-700 font-bold mb-1">အမျိုးအစား ရွေးချယ်ပါ *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-bold">ကုန်ကြမ်း အုပ်စုခွဲ (Sub-group) *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryManageDomain('RAW_MATERIAL');
+                      setIsCategoryManageOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Tag className="w-3 h-3" />
+                    <span>+ အုပ်စုခွဲ စီမံမည်</span>
+                  </button>
+                </div>
                 <select
                   value={presetCategory}
                   onChange={(e) => {
                     const val = e.target.value;
                     setPresetCategory(val);
-                    if (val === 'BAMBOO') {
-                      setPresetUnit('လုံး');
-                      setPresetPrice(3500);
-                    } else if (val === 'RATTAN') {
-                      setPresetUnit('စည်း');
-                      setPresetPrice(12000);
-                    } else if (val === 'CASH_ADVANCE') {
-                      setPresetUnit('ကျပ်');
-                      setPresetPrice(1);
-                      if (!presetName) setPresetName('ငွေကြိုထုတ်');
-                    } else {
-                      setPresetUnit('ခု');
-                      setPresetPrice(5000);
+                    if (!editingPreset) {
+                      if (val.includes('ဝါး')) {
+                        setPresetUnit('လုံး');
+                        setPresetPrice(3500);
+                      } else if (val.includes('ကြိမ်')) {
+                        setPresetUnit('စည်း');
+                        setPresetPrice(12000);
+                      } else if (val.includes('ငွေ')) {
+                        setPresetUnit('ကျပ်');
+                        setPresetPrice(1);
+                        if (!presetName) setPresetName('ငွေကြိုထုတ်');
+                      } else {
+                        setPresetUnit('ခု');
+                        setPresetPrice(5000);
+                      }
                     }
                   }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 font-bold text-slate-800"
                 >
-                  <option value="BAMBOO">ဝါးကုန်ကြမ်း (BAMBOO)</option>
-                  <option value="RATTAN">ကြိမ်ကုန်ကြမ်း (RATTAN)</option>
-                  <option value="CASH_ADVANCE">ငွေကြိုယူ (CASH_ADVANCE)</option>
-                  <option value="OTHER">အခြားကုန်ကြမ်း (OTHER)</option>
+                  {availableRawCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -2833,11 +3094,11 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   type="text"
                   required
                   placeholder={
-                    presetCategory === 'BAMBOO'
+                    presetCategory.includes('ဝါး')
                       ? 'ဥပမာ - ဝါးပိုးဝါး (အလုံး)'
-                      : presetCategory === 'RATTAN'
+                      : presetCategory.includes('ကြိမ်')
                       ? 'ဥပမာ - ကြိမ်လုံးကြီး'
-                      : presetCategory === 'CASH_ADVANCE'
+                      : presetCategory.includes('ငွေ')
                       ? 'ဥပမာ - ငွေကြိုယူ'
                       : 'ဥပမာ - ကော်ရည် / သံမှို'
                   }
@@ -2862,17 +3123,17 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
 
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">
-                    {presetCategory === 'CASH_ADVANCE' ? 'ပေါက်ဈေး (၁ ကျပ်)' : 'မူလပေါက်ဈေး (ကျပ်)'}
+                    {presetCategory.includes('ငွေ') ? 'ပေါက်ဈေး (၁ ကျပ်)' : 'မူလပေါက်ဈေး (ကျပ်)'}
                   </label>
                   <input
                     type="number"
                     min={1}
                     required
-                    disabled={presetCategory === 'CASH_ADVANCE'}
+                    disabled={presetCategory.includes('ငွေ')}
                     value={presetPrice}
                     onChange={(e) => setPresetPrice(Number(e.target.value))}
                     className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 font-mono font-bold ${
-                      presetCategory === 'CASH_ADVANCE' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                      presetCategory.includes('ငွေ') ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
                     }`}
                   />
                 </div>
@@ -2885,7 +3146,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsAddPresetOpen(false)}
+                  onClick={() => {
+                    setIsAddPresetOpen(false);
+                    setEditingPreset(null);
+                  }}
                   className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl cursor-pointer"
                 >
                   မလုပ်တော့ပါ
@@ -2894,7 +3158,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   type="submit"
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl cursor-pointer shadow-xs"
                 >
-                  ကုန်ကြမ်း ထည့်သွင်းမည်
+                  {editingPreset ? 'ပြင်ဆင်ချက် သိမ်းဆည်းမည်' : 'ကုန်ကြမ်း ထည့်သွင်းမည်'}
                 </button>
               </div>
             </form>
@@ -2965,6 +3229,18 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       <DatabaseHealthModal
         isOpen={isDatabaseHealthOpen}
         onClose={() => setIsDatabaseHealthOpen(false)}
+      />
+
+      {/* Dynamic Sub-Group & Category Management Modal */}
+      <CategoryManageModal
+        isOpen={isCategoryManageOpen}
+        onClose={() => setIsCategoryManageOpen(false)}
+        initialDomain={categoryManageDomain}
+        onCategoriesChanged={async () => {
+          await loadMasterCategories();
+          const freshPresets = getStoredRawMaterialPresets();
+          setInternalRawMaterialPresets(freshPresets);
+        }}
       />
     </div>
   );

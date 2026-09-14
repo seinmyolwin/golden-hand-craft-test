@@ -8,6 +8,7 @@ import {
   MerchantPurchaseRecord,
   RawMaterialPreset,
   RawMaterialStockStat,
+  CategoryDomain,
 } from '../types';
 import {
   formatMMK,
@@ -26,6 +27,7 @@ import {
 } from '../services/stockLedgerService';
 import { ProductStockLedgerModal } from './ProductStockLedgerModal';
 import { ProductMasterModal } from './master/ProductMasterModal';
+import { CategoryManageModal } from './CategoryManageModal';
 import { NumericInput, getNotePlaceholder } from './NumericInput';
 import {
   Layers,
@@ -45,6 +47,7 @@ import {
   TrendingUp,
   FileSpreadsheet,
   Boxes,
+  Tag,
 } from 'lucide-react';
 
 interface InventoryTabProps {
@@ -63,13 +66,9 @@ interface InventoryTabProps {
   onOpenNewSupplierCollection?: () => void;
 }
 
-export type MaterialSectionType = 'ALL' | 'FINISHED' | 'BAMBOO' | 'RATTAN' | 'RAW_MATERIALS';
+export type MaterialSectionType = 'ALL' | 'FINISHED' | 'RAW_MATERIALS';
 
-export const getProductMaterialType = (product: { name: string; category?: string }): 'FINISHED' | 'BAMBOO' | 'RATTAN' => {
-  const name = (product.name || '').toLowerCase();
-  const cat = (product.category || '').toLowerCase();
-  if (name.includes('ဝါး') || (!cat.includes('ယွန်း') && cat.includes('ဝါး'))) return 'BAMBOO';
-  if (name.includes('ကြိမ်') || (!cat.includes('ယွန်း') && cat.includes('ကြိမ်'))) return 'RATTAN';
+export const getProductMaterialType = (product: { name: string; category?: string }): 'FINISHED' => {
   return 'FINISHED';
 };
 
@@ -103,6 +102,8 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<Product | null>(null);
 
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState<boolean>(false);
+  const [isCategoryManageModalOpen, setIsCategoryManageModalOpen] = useState<boolean>(false);
+  const [categoryModalDomain, setCategoryModalDomain] = useState<CategoryDomain>('FINISHED_GOODS');
 
   const allStockStats: ProductStockStats[] = useMemo(() => {
     return computeAllProductsStock(
@@ -170,64 +171,27 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     let finishedUnits = 0;
     const finishedItems: ProductStockStats[] = [];
 
-    let bambooCapital = 0;
-    let bambooUnits = 0;
-    const bambooItems: ProductStockStats[] = [];
-
-    let rattanCapital = 0;
-    let rattanUnits = 0;
-    const rattanItems: ProductStockStats[] = [];
-
     (allStockStats || []).forEach((stat) => {
       if (!stat) return;
-      const type = getProductMaterialType(stat.product);
-      if (type === 'BAMBOO') {
-        bambooCapital += stat.procurementValue || 0;
-        bambooUnits += stat.currentStock || 0;
-        bambooItems.push(stat);
-      } else if (type === 'RATTAN') {
-        rattanCapital += stat.procurementValue || 0;
-        rattanUnits += stat.currentStock || 0;
-        rattanItems.push(stat);
-      } else {
-        finishedCapital += stat.procurementValue || 0;
-        finishedUnits += stat.currentStock || 0;
-        finishedItems.push(stat);
-      }
+      finishedCapital += stat.procurementValue || 0;
+      finishedUnits += stat.currentStock || 0;
+      finishedItems.push(stat);
     });
 
     return {
       finished: {
         type: 'FINISHED' as const,
         label: 'ကုန်ချောပစ္စည်းများ',
-        subLabel: 'ကွမ်းအစ်၊ ဆွမ်းအုပ်၊ ပန်းကန် စသည်',
+        subLabel: 'ယွန်း၊ ဝါးထည်၊ ကြိမ်ထည်၊ ပန်းပု စသည့် ထုတ်လုပ်ပြီး ပစ္စည်းများ',
         itemsCount: finishedItems.length,
         units: finishedUnits,
         capital: finishedCapital,
         items: finishedItems,
       },
-      bamboo: {
-        type: 'BAMBOO' as const,
-        label: 'ဝါးထည်နှင့် ဝါးကုန်ကြမ်း',
-        subLabel: 'ခမောက်၊ ဗန်း၊ နှီးလိပ်၊ ဝါးပိုးဝါး',
-        itemsCount: bambooItems.length,
-        units: bambooUnits,
-        capital: bambooCapital,
-        items: bambooItems,
-      },
-      rattan: {
-        type: 'RATTAN' as const,
-        label: 'ကြိမ်ထည်နှင့် ကြိမ်ကုန်ကြမ်း',
-        subLabel: 'ကြိမ်တောင်း၊ ကြိမ်ဗန်း၊ ကြိမ်လုံးစည်း',
-        itemsCount: rattanItems.length,
-        units: rattanUnits,
-        capital: rattanCapital,
-        items: rattanItems,
-      },
       rawMaterials: {
         type: 'RAW_MATERIALS' as const,
         label: 'ကုန်ကြမ်းပစ္စည်းများ',
-        subLabel: 'ဝါးလုံး၊ ကြိမ်လုံး၊ ကော်၊ ဆေး စသည်',
+        subLabel: 'ဝါး၊ ကြိမ်၊ ကော်၊ ဆေး သိုလှောင်ကုန်ကြမ်းများ',
         itemsCount: rawMaterialStocks.length,
         units: rawMaterialsTotalUnits,
         capital: rawMaterialsTotalValuation,
@@ -259,8 +223,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
 
   const filteredStock = useMemo(() => {
     return allStockStats.filter((stat) => {
-      const matType = getProductMaterialType(stat.product);
-      const matchesGroup = selectedMaterialGroup === 'ALL' || matType === selectedMaterialGroup;
+      const matchesGroup = selectedMaterialGroup === 'ALL' || selectedMaterialGroup === 'FINISHED';
       const matchesSearch =
         stat.product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         stat.product.category.toLowerCase().includes(searchQuery.toLowerCase());
@@ -606,10 +569,6 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     exportAllProductsStockLedgerSummaryCSV(summaries);
   };
 
-  const finishedFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'FINISHED');
-  const bambooFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'BAMBOO');
-  const rattanFilteredItems = filteredStock.filter((s) => getProductMaterialType(s.product) === 'RATTAN');
-
   return (
     <div className="space-y-4 pb-20">
       {/* Top Header Card */}
@@ -715,14 +674,14 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           </div>
         </div>
 
-        {/* 4 Interactive Material Category Cards */}
+        {/* 2 Interactive Material Category Cards */}
         <div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Finished Goods Card */}
             <button
               type="button"
               onClick={() => setSelectedMaterialGroup(selectedMaterialGroup === 'FINISHED' ? 'ALL' : 'FINISHED')}
-              className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
+              className={`p-4 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
                 selectedMaterialGroup === 'FINISHED'
                   ? 'bg-emerald-950/90 border-emerald-400 ring-2 ring-emerald-500/50 shadow-md'
                   : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700/80'
@@ -730,90 +689,28 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             >
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <div>
-                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                    {groupCalculations.finished.label}
+                  <span className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-emerald-400" />
+                    <span>{groupCalculations.finished.label}</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                  <span className="text-xs text-slate-400 block mt-0.5">
                     {groupCalculations.finished.subLabel}
                   </span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-slate-700 text-slate-300">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold shrink-0 bg-slate-700 text-slate-200">
                   {groupCalculations.finished.itemsCount} မျိုး
                 </span>
               </div>
-              <div className="mt-2 flex items-baseline justify-between">
+              <div className="mt-3 flex items-baseline justify-between pt-2 border-t border-slate-700/60">
                 <div>
-                  <span className="text-[10px] text-emerald-400 block font-medium">အရင်းတန်ဖိုး</span>
-                  <span className="text-lg sm:text-xl font-black text-white">
+                  <span className="text-[10px] text-emerald-400 block font-medium">လက်ကျန် အရင်းတန်ဖိုး</span>
+                  <span className="text-xl sm:text-2xl font-black text-white">
                     {formatMMK(groupCalculations.finished.capital)}
                   </span>
                 </div>
-              </div>
-            </button>
-
-            {/* Bamboo Raw Material Card */}
-            <button
-              type="button"
-              onClick={() => setSelectedMaterialGroup(selectedMaterialGroup === 'BAMBOO' ? 'ALL' : 'BAMBOO')}
-              className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
-                selectedMaterialGroup === 'BAMBOO'
-                  ? 'bg-green-950/90 border-green-400 ring-2 ring-green-500/50 shadow-md'
-                  : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700/80'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div>
-                  <span className="text-xs font-bold text-green-300 flex items-center gap-1.5">
-                    {groupCalculations.bamboo.label}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {groupCalculations.bamboo.subLabel}
-                  </span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-slate-700 text-slate-300">
-                  {groupCalculations.bamboo.itemsCount} မျိုး
+                <span className="text-xs font-semibold text-emerald-300 hover:underline">
+                  {selectedMaterialGroup === 'FINISHED' ? '✓ ရွေးချယ်ထားသည်' : 'ကြည့်ရှုရန် နှိပ်ပါ →'}
                 </span>
-              </div>
-              <div className="mt-2 flex items-baseline justify-between">
-                <div>
-                  <span className="text-[10px] text-green-400 block font-medium">အရင်းတန်ဖိုး</span>
-                  <span className="text-lg sm:text-xl font-black text-white">
-                    {formatMMK(groupCalculations.bamboo.capital)}
-                  </span>
-                </div>
-              </div>
-            </button>
-
-            {/* Rattan Raw Material Card */}
-            <button
-              type="button"
-              onClick={() => setSelectedMaterialGroup(selectedMaterialGroup === 'RATTAN' ? 'ALL' : 'RATTAN')}
-              className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
-                selectedMaterialGroup === 'RATTAN'
-                  ? 'bg-amber-950/90 border-amber-400 ring-2 ring-amber-500/50 shadow-md'
-                  : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700/80'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div>
-                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    {groupCalculations.rattan.label}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    {groupCalculations.rattan.subLabel}
-                  </span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-slate-700 text-slate-300">
-                  {groupCalculations.rattan.itemsCount} မျိုး
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline justify-between">
-                <div>
-                  <span className="text-[10px] text-amber-400 block font-medium">အရင်းတန်ဖိုး</span>
-                  <span className="text-lg sm:text-xl font-black text-white">
-                    {formatMMK(groupCalculations.rattan.capital)}
-                  </span>
-                </div>
               </div>
             </button>
 
@@ -821,7 +718,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             <button
               type="button"
               onClick={() => setSelectedMaterialGroup(selectedMaterialGroup === 'RAW_MATERIALS' ? 'ALL' : 'RAW_MATERIALS')}
-              className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
+              className={`p-4 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
                 selectedMaterialGroup === 'RAW_MATERIALS'
                   ? 'bg-amber-950/90 border-amber-400 ring-2 ring-amber-500/50 shadow-md'
                   : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700/80'
@@ -829,25 +726,28 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             >
               <div className="flex items-start justify-between gap-2 mb-1.5">
                 <div>
-                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <Boxes className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                    <Boxes className="w-4 h-4 text-amber-400" />
                     <span>{groupCalculations.rawMaterials.label}</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                  <span className="text-xs text-slate-400 block mt-0.5">
                     {groupCalculations.rawMaterials.subLabel}
                   </span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-slate-700 text-slate-300">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold shrink-0 bg-slate-700 text-slate-200">
                   {groupCalculations.rawMaterials.itemsCount} မျိုး
                 </span>
               </div>
-              <div className="mt-2 flex items-baseline justify-between">
+              <div className="mt-3 flex items-baseline justify-between pt-2 border-t border-slate-700/60">
                 <div>
-                  <span className="text-[10px] text-amber-400 block font-medium">အရင်းတန်ဖိုး</span>
-                  <span className="text-lg sm:text-xl font-black text-white">
+                  <span className="text-[10px] text-amber-400 block font-medium">သိုလှောင်မှု အရင်းတန်ဖိုး</span>
+                  <span className="text-xl sm:text-2xl font-black text-white">
                     {formatMMK(groupCalculations.rawMaterials.capital)}
                   </span>
                 </div>
+                <span className="text-xs font-semibold text-amber-300 hover:underline">
+                  {selectedMaterialGroup === 'RAW_MATERIALS' ? '✓ ရွေးချယ်ထားသည်' : 'ကြည့်ရှုရန် နှိပ်ပါ →'}
+                </span>
               </div>
             </button>
           </div>
@@ -860,57 +760,35 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           <button
             type="button"
             onClick={() => setSelectedMaterialGroup('ALL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               selectedMaterialGroup === 'ALL'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            အားလုံး ({allStockStats.length})
+            ပစ္စည်းအားလုံး ({allStockStats.length + rawMaterialStocks.length})
           </button>
           <button
             type="button"
             onClick={() => setSelectedMaterialGroup('FINISHED')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               selectedMaterialGroup === 'FINISHED'
                 ? 'bg-emerald-700 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            ကုန်ချော ({groupCalculations.finished.itemsCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedMaterialGroup('BAMBOO')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-              selectedMaterialGroup === 'BAMBOO'
-                ? 'bg-green-700 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            ဝါးထည် ({groupCalculations.bamboo.itemsCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedMaterialGroup('RATTAN')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
-              selectedMaterialGroup === 'RATTAN'
-                ? 'bg-amber-700 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            ကြိမ်ထည် ({groupCalculations.rattan.itemsCount})
+            ကုန်ချောပစ္စည်းများ ({groupCalculations.finished.itemsCount})
           </button>
           <button
             type="button"
             onClick={() => setSelectedMaterialGroup('RAW_MATERIALS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
               selectedMaterialGroup === 'RAW_MATERIALS'
                 ? 'bg-amber-800 text-white shadow-xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            ကုန်ကြမ်း ({groupCalculations.rawMaterials.itemsCount})
+            ကုန်ကြမ်းပစ္စည်းများ ({groupCalculations.rawMaterials.itemsCount})
           </button>
         </div>
 
@@ -925,7 +803,8 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
               className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 flex-1">
             <button
               type="button"
               onClick={() => setSelectedCategory('all')}
@@ -935,7 +814,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              အားလုံး
+              အမျိုးအစား အားလုံး
             </button>
             {categories.map((cat) => (
               <button
@@ -952,11 +831,24 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setCategoryModalDomain(selectedMaterialGroup === 'RAW_MATERIALS' ? 'RAW_MATERIAL' : 'FINISHED_GOODS');
+              setIsCategoryManageModalOpen(true);
+            }}
+            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0 shadow-2xs"
+            title="ကုန်ချောနှင့် ကုန်ကြမ်း အုပ်စုခွဲ အမျိုးအစားများအား အသစ်ထည့်/ပြင်ဆင်မည်"
+          >
+            <Tag className="w-3.5 h-3.5 text-amber-700" />
+            <span>အုပ်စုခွဲများ စီမံမည်</span>
+          </button>
+        </div>
         </div>
       </div>
 
       {/* Categorized Stock Presentation */}
-      {filteredStock.length === 0 ? (
+      {filteredStock.length === 0 && filteredRawMaterials.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
           <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
             <Package className="w-6 h-6" />
@@ -975,101 +867,133 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             စစ်ထုတ်မှု ပြန်လည်ရှင်းထုတ်မည်
           </button>
         </div>
-      ) : selectedMaterialGroup === 'ALL' ? (
-        <div className="space-y-6">
-          {finishedFilteredItems.length > 0 && (
-            <div className="space-y-3">
-              <div className="bg-gradient-to-r from-emerald-50 via-slate-50 to-white p-3 rounded-xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
-                  {groupCalculations.finished.label} ({finishedFilteredItems.length} မျိုး)
-                </h3>
-                <span className="text-xs sm:text-sm font-black text-emerald-900">
-                  {formatMMK(groupCalculations.finished.capital)}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {finishedFilteredItems.map((stat) => renderProductCard(stat))}
-              </div>
-            </div>
-          )}
-
-          {bambooFilteredItems.length > 0 && (
-            <div className="space-y-3">
-              <div className="bg-gradient-to-r from-green-50 via-slate-50 to-white p-3 rounded-xl border border-green-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
-                  {groupCalculations.bamboo.label} ({bambooFilteredItems.length} မျိုး)
-                </h3>
-                <span className="text-xs sm:text-sm font-black text-green-900">
-                  {formatMMK(groupCalculations.bamboo.capital)}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {bambooFilteredItems.map((stat) => renderProductCard(stat))}
-              </div>
-            </div>
-          )}
-
-          {rattanFilteredItems.length > 0 && (
-            <div className="space-y-3">
-              <div className="bg-gradient-to-r from-amber-50 via-slate-50 to-white p-3 rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
-                  {groupCalculations.rattan.label} ({rattanFilteredItems.length} မျိုး)
-                </h3>
-                <span className="text-xs sm:text-sm font-black text-amber-900">
-                  {formatMMK(groupCalculations.rattan.capital)}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {rattanFilteredItems.map((stat) => renderProductCard(stat))}
-              </div>
-            </div>
-          )}
-
-          {filteredRawMaterials.length > 0 && (
-            <div className="space-y-3">
-              <div className="bg-gradient-to-r from-amber-100/70 via-amber-50 to-white p-3 rounded-xl border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
-                  <Boxes className="w-4 h-4 text-amber-700" />
-                  <span>ကုန်ကြမ်းသိုလှောင်မှု စာရင်း (Raw Materials Stock) ({filteredRawMaterials.length} မျိုး)</span>
-                </h3>
-                <span className="text-xs sm:text-sm font-black text-amber-950">
-                  ခန့်မှန်းတန်ဖိုး: {formatMMK(rawMaterialsTotalValuation)}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredRawMaterials.map((stat) => renderRawMaterialCard(stat))}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : selectedMaterialGroup === 'RAW_MATERIALS' ? (
-        <div className="space-y-3">
-          <div className="bg-gradient-to-r from-amber-100/70 via-amber-50 to-white p-3 rounded-xl border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
-              <Boxes className="w-4 h-4 text-amber-700" />
-              <span>ကုန်ကြမ်းသိုလှောင်မှု စာရင်း ({filteredRawMaterials.length} မျိုး)</span>
-            </h3>
-            <span className="text-xs sm:text-sm font-black text-amber-950">
-              စုစုပေါင်းတန်ဖိုး: {formatMMK(rawMaterialsTotalValuation)}
-            </span>
-          </div>
-          {filteredRawMaterials.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                <Boxes className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-800 mb-1">ကုန်ကြမ်းပစ္စည်း မရှိသေးပါ သို့မဟုတ် ရှာမတွေ့ပါ</h3>
-              <p className="text-xs text-slate-500">ကုန်ကြမ်းစီမံခြင်း (Raw Master) တွင် ကုန်ကြမ်းအမျိုးအစားများ စီမံနိုင်ပါသည်။</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredRawMaterials.map((stat) => renderRawMaterialCard(stat))}
-            </div>
-          )}
-        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredStock.map((stat) => renderProductCard(stat))}
+        <div className="space-y-6">
+          {/* FINISHED GOODS SECTION */}
+          {(selectedMaterialGroup === 'ALL' || selectedMaterialGroup === 'FINISHED') && filteredStock.length > 0 && (
+            <div className="space-y-4 bg-slate-50/60 p-4 rounded-2xl border border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      ကုန်ချောပစ္စည်းများ ({filteredStock.length} မျိုး)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">ထုတ်လုပ်ပြီး အချောထည် အမျိုးအစားများအလိုက် စုစည်းထားပါသည်</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryModalDomain('FINISHED_GOODS');
+                      setIsCategoryManageModalOpen(true);
+                    }}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-100/80 hover:bg-emerald-200 px-2.5 py-1 rounded-lg border border-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>ကုန်ချောအုပ်စုခွဲ ပြင်ရန်</span>
+                  </button>
+                  <span className="text-xs sm:text-sm font-black text-emerald-800 bg-emerald-100/80 px-3 py-1 rounded-full border border-emerald-200">
+                    စုစုပေါင်းတန်ဖိုး: {formatMMK(filteredStock.reduce((sum, s) => sum + (s.procurementValue || 0), 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Group products by category under Finished Goods */}
+              {Array.from(new Set(filteredStock.map((s) => s.product.category || 'အခြား'))).map((catName) => {
+                const groupItems = filteredStock.filter((s) => (s.product.category || 'အခြား') === catName);
+                const groupValuation = groupItems.reduce((sum, s) => sum + (s.procurementValue || 0), 0);
+                return (
+                  <div key={catName} className="space-y-2.5">
+                    <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                          {catName}
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+                          {groupItems.length} မျိုး
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-700">
+                        {formatMMK(groupValuation)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {groupItems.map((stat) => renderProductCard(stat))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* RAW MATERIALS SECTION */}
+          {(selectedMaterialGroup === 'ALL' || selectedMaterialGroup === 'RAW_MATERIALS') && filteredRawMaterials.length > 0 && (
+            <div className="space-y-4 bg-amber-50/40 p-4 rounded-2xl border border-amber-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-xs">
+                    <Boxes className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-amber-950">
+                      ကုန်ကြမ်းပစ္စည်းများ ({filteredRawMaterials.length} မျိုး)
+                    </h3>
+                    <p className="text-[11px] text-amber-800/80">သိုလှောင်ထားသော ကုန်ကြမ်းအမျိုးအစားများအလိုက် စုစည်းထားပါသည်</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryModalDomain('RAW_MATERIAL');
+                      setIsCategoryManageModalOpen(true);
+                    }}
+                    className="text-xs font-bold text-amber-900 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>ကုန်ကြမ်းအုပ်စုခွဲ ပြင်ရန်</span>
+                  </button>
+                  <span className="text-xs sm:text-sm font-black text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
+                    စုစုပေါင်းတန်ဖိုး: {formatMMK(filteredRawMaterials.reduce((sum, s) => sum + (s.estimatedValuation || 0), 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Group raw materials by categoryLabel */}
+              {Array.from(new Set(filteredRawMaterials.map((s) => s.categoryLabel || 'ကုန်ကြမ်း'))).map((catName) => {
+                const groupItems = filteredRawMaterials.filter((s) => (s.categoryLabel || 'ကုန်ကြမ်း') === catName);
+                const groupValuation = groupItems.reduce((sum, s) => sum + (s.estimatedValuation || 0), 0);
+                return (
+                  <div key={catName} className="space-y-2.5">
+                    <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        <h4 className="text-xs sm:text-sm font-bold text-amber-950">
+                          {catName}
+                        </h4>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 font-bold border border-amber-200">
+                          {groupItems.length} မျိုး
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-700">
+                        {formatMMK(groupValuation)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {groupItems.map((stat) => renderRawMaterialCard(stat))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1177,6 +1101,17 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Category Management Modal */}
+      <CategoryManageModal
+        isOpen={isCategoryManageModalOpen}
+        onClose={() => setIsCategoryManageModalOpen(false)}
+        products={products}
+        initialDomain={categoryModalDomain}
+        onCategoriesChanged={() => {
+          // Trigger re-render if needed
+        }}
+      />
 
       {/* Canonical Product Master Modal */}
       <ProductMasterModal

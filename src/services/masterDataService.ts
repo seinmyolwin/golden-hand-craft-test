@@ -576,6 +576,29 @@ export class MasterDataService {
       updatedAt: now,
     });
 
+    // Synchronize secondary storage caches
+    try {
+      if (domain === 'RAW_MATERIAL') {
+        const rawCatsSetting = await db.settings.get('rawMaterialCategories');
+        const currentRawCats = (rawCatsSetting && Array.isArray(rawCatsSetting.value)) ? rawCatsSetting.value : [];
+        if (!currentRawCats.includes(trimmed)) {
+          const updatedRawCats = [...currentRawCats, trimmed];
+          await db.settings.put({ key: 'rawMaterialCategories', value: updatedRawCats, updatedAt: now });
+          localStorage.setItem('ledger_raw_material_categories_v1', JSON.stringify(updatedRawCats));
+        }
+      } else if (domain === 'FINISHED_GOODS') {
+        const prodCatsSetting = await db.settings.get('productCategories');
+        const currentProdCats = (prodCatsSetting && Array.isArray(prodCatsSetting.value)) ? prodCatsSetting.value : [];
+        if (!currentProdCats.includes(trimmed)) {
+          const updatedProdCats = [...currentProdCats, trimmed];
+          await db.settings.put({ key: 'productCategories', value: updatedProdCats, updatedAt: now });
+          localStorage.setItem('ledger_product_categories_v1', JSON.stringify(updatedProdCats));
+        }
+      }
+    } catch (e) {
+      console.warn('Category sync warning:', e);
+    }
+
     await auditRepo.log(
       'CATEGORY_CREATED',
       `အမျိုးအစားအသစ် ဖန်တီးခြင်း: ${trimmed} (${domain === 'FINISHED_GOODS' ? 'အချောထည်' : 'ကုန်ကြမ်း'})`,
@@ -621,9 +644,87 @@ export class MasterDataService {
       updatedAt: now,
     });
 
+    // Synchronize presets and products with new category name
+    try {
+      if (target.domain === 'RAW_MATERIAL') {
+        // 1. Update presets in db
+        const presets = await db.rawMaterialPresets.toArray();
+        for (const preset of presets) {
+          if (preset.categoryLabel === oldName || preset.category === oldName || preset.category === categoryId) {
+            await db.rawMaterialPresets.put({
+              ...preset,
+              categoryLabel: trimmed,
+              category: preset.category === oldName ? trimmed : preset.category,
+            });
+          }
+        }
+        // 2. Update localStorage presets
+        const rawPresetsStr = localStorage.getItem('ledger_raw_material_presets_v1');
+        if (rawPresetsStr) {
+          const rawPresets = JSON.parse(rawPresetsStr);
+          if (Array.isArray(rawPresets)) {
+            const updatedPresets = rawPresets.map((p: any) => {
+              if (p.categoryLabel === oldName || p.category === oldName || p.category === categoryId) {
+                return {
+                  ...p,
+                  categoryLabel: trimmed,
+                  category: p.category === oldName ? trimmed : p.category,
+                };
+              }
+              return p;
+            });
+            localStorage.setItem('ledger_raw_material_presets_v1', JSON.stringify(updatedPresets));
+          }
+        }
+        // 3. Update rawMaterialCategories list
+        const rawCatsSetting = await db.settings.get('rawMaterialCategories');
+        if (rawCatsSetting && Array.isArray(rawCatsSetting.value)) {
+          const updatedRawCats = rawCatsSetting.value.map((c: string) => (c === oldName ? trimmed : c));
+          await db.settings.put({ key: 'rawMaterialCategories', value: updatedRawCats, updatedAt: now });
+        }
+        const localCats = localStorage.getItem('ledger_raw_material_categories_v1');
+        if (localCats) {
+          const parsed = JSON.parse(localCats);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((c: string) => (c === oldName ? trimmed : c));
+            localStorage.setItem('ledger_raw_material_categories_v1', JSON.stringify(updated));
+          }
+        }
+      } else if (target.domain === 'FINISHED_GOODS') {
+        // 1. Update products in db
+        const prods = await db.products.toArray();
+        for (const prod of prods) {
+          if (prod.category === oldName || prod.categoryId === categoryId) {
+            await db.products.put({
+              ...prod,
+              category: trimmed,
+              categoryId: categoryId,
+              updatedAt: now,
+            });
+          }
+        }
+        // 2. Update productCategories list
+        const prodCatsSetting = await db.settings.get('productCategories');
+        if (prodCatsSetting && Array.isArray(prodCatsSetting.value)) {
+          const updatedProdCats = prodCatsSetting.value.map((c: string) => (c === oldName ? trimmed : c));
+          await db.settings.put({ key: 'productCategories', value: updatedProdCats, updatedAt: now });
+        }
+        const localCats = localStorage.getItem('ledger_product_categories_v1');
+        if (localCats) {
+          const parsed = JSON.parse(localCats);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((c: string) => (c === oldName ? trimmed : c));
+            localStorage.setItem('ledger_product_categories_v1', JSON.stringify(updated));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Cascade update category warning:', err);
+    }
+
     await auditRepo.log(
       'CATEGORY_RENAMED',
-      `အမျိုးအစားအမည် ပြောင်းလဲခြင်း: "${oldName}" -> "${trimmed}"`,
+      `အမျိုးအစား အမည်ပြင်ဆင်ခြင်း (Renamed): ${oldName} -> ${trimmed}`,
       'MASTER_DATA',
       categoryId
     );
