@@ -29,6 +29,7 @@ import { db } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
 import { DailyClosingLockedError } from '../repositories/errors';
 import { enforcePermission } from './authorizationService';
+import { roundMMK, moneyMul, moneyAdd, moneySub, toSafeIntMoney } from '../utils/currency';
 
 export interface ProcessSalesReturnParams {
   saleId: string;
@@ -134,12 +135,13 @@ export async function validateSalesReturn(
       );
     }
 
-    const unitPrice =
+    const unitPrice = roundMMK(
       proposedItem.unitPrice ??
       origItem.unitPrice ??
-      (origItem.quantity > 0 ? origItem.subtotal / origItem.quantity : 0);
+      (origItem.quantity > 0 ? origItem.subtotal / origItem.quantity : 0)
+    );
 
-    const totalAmount = proposedItem.quantity * unitPrice;
+    const totalAmount = moneyMul(proposedItem.quantity, unitPrice);
 
     validatedItems.push({
       productId: proposedItem.productId,
@@ -151,7 +153,7 @@ export async function validateSalesReturn(
       reason: proposedItem.reason,
     });
 
-    totalReturnAmount += totalAmount;
+    totalReturnAmount = moneyAdd(totalReturnAmount, totalAmount);
   }
 
   if (validatedItems.length === 0) {
@@ -253,8 +255,8 @@ export async function validatePurchaseReturn(
       );
     }
 
-    const unitPrice = proposedItem.unitPrice ?? origItem.unitPrice ?? 0;
-    const totalAmount = proposedItem.quantity * unitPrice;
+    const unitPrice = roundMMK(proposedItem.unitPrice ?? origItem.unitPrice ?? 0);
+    const totalAmount = moneyMul(proposedItem.quantity, unitPrice);
 
     validatedItems.push({
       productId: proposedItem.productId,
@@ -266,7 +268,7 @@ export async function validatePurchaseReturn(
       reason: proposedItem.reason,
     });
 
-    totalReturnAmount += totalAmount;
+    totalReturnAmount = moneyAdd(totalReturnAmount, totalAmount);
   }
 
   if (validatedItems.length === 0) {
@@ -343,8 +345,8 @@ export async function processSalesReturnAtomic(
         items
       );
 
-      const refundCash = Math.min(Math.max(0, cashRefundAmount), totalReturnAmount);
-      const creditAdjustment = Math.max(0, totalReturnAmount - refundCash);
+      const refundCash = Math.min(Math.max(0, roundMMK(cashRefundAmount)), totalReturnAmount);
+      const creditAdjustment = moneySub(totalReturnAmount, refundCash);
 
       const returnId = generateStableId('ret');
       const shortCode = returnId.substring(returnId.length - 4).toUpperCase();
@@ -379,7 +381,7 @@ export async function processSalesReturnAtomic(
         const merchant = await db.merchants.get(sale.merchantId);
         if (merchant) {
           const currentRec = merchant.currentReceivableBalance || 0;
-          const updatedRec = Math.max(0, currentRec - creditAdjustment);
+          const updatedRec = Math.max(0, moneySub(currentRec, creditAdjustment));
           await db.merchants.update(sale.merchantId, {
             currentReceivableBalance: updatedRec,
             updatedAt: new Date().toISOString(),
@@ -531,8 +533,8 @@ export async function processPurchaseReturnAtomic(
         totalReturnAmount,
       } = await validatePurchaseReturn(purchaseId, referenceType, items);
 
-      const recoveryCash = Math.min(Math.max(0, cashRecoveryAmount), totalReturnAmount);
-      const creditAdjustment = Math.max(0, totalReturnAmount - recoveryCash);
+      const recoveryCash = Math.min(Math.max(0, roundMMK(cashRecoveryAmount)), totalReturnAmount);
+      const creditAdjustment = moneySub(totalReturnAmount, recoveryCash);
 
       const returnId = generateStableId('ret');
       const shortCode = returnId.substring(returnId.length - 4).toUpperCase();
@@ -569,7 +571,7 @@ export async function processPurchaseReturnAtomic(
         const merchant = await db.merchants.get(merchantId);
         if (merchant) {
           const currentPayable = merchant.payableBalance || 0;
-          const updatedPayable = Math.max(0, currentPayable - creditAdjustment);
+          const updatedPayable = Math.max(0, moneySub(currentPayable, creditAdjustment));
           await db.merchants.update(merchantId, {
             payableBalance: updatedPayable,
             updatedAt: new Date().toISOString(),
@@ -579,7 +581,7 @@ export async function processPurchaseReturnAtomic(
         const supplier = await db.suppliers.get(supplierId);
         if (supplier) {
           const currentAdv = supplier.currentAdvanceBalance || 0;
-          const updatedAdv = currentAdv + creditAdjustment;
+          const updatedAdv = moneyAdd(currentAdv, creditAdjustment);
           await db.suppliers.update(supplierId, {
             currentAdvanceBalance: updatedAdv,
             updatedAt: new Date().toISOString(),
@@ -798,7 +800,7 @@ export async function cancelReturnAtomic(
         if (merchant) {
           const currentRec = merchant.currentReceivableBalance || 0;
           await db.merchants.update(returnRecord.merchantId, {
-            currentReceivableBalance: currentRec + returnRecord.creditAdjustmentAmount,
+            currentReceivableBalance: moneyAdd(currentRec, returnRecord.creditAdjustmentAmount),
             updatedAt: now.toISOString(),
           });
         }
@@ -808,7 +810,7 @@ export async function cancelReturnAtomic(
           if (merchant) {
             const currentPayable = merchant.payableBalance || 0;
             await db.merchants.update(returnRecord.merchantId, {
-              payableBalance: currentPayable + returnRecord.creditAdjustmentAmount,
+              payableBalance: moneyAdd(currentPayable, returnRecord.creditAdjustmentAmount),
               updatedAt: now.toISOString(),
             });
           }
@@ -817,7 +819,7 @@ export async function cancelReturnAtomic(
           if (supplier) {
             const currentAdv = supplier.currentAdvanceBalance || 0;
             await db.suppliers.update(returnRecord.supplierId, {
-              currentAdvanceBalance: Math.max(0, currentAdv - returnRecord.creditAdjustmentAmount),
+              currentAdvanceBalance: Math.max(0, moneySub(currentAdv, returnRecord.creditAdjustmentAmount)),
               updatedAt: now.toISOString(),
             });
           }

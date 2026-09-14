@@ -54,6 +54,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   onAddNewMerchant,
 }) => {
   const [merchantId, setMerchantId] = useState<string>(initialMerchantId || (merchants[0]?.id || ''));
+  const [newMerchantName, setNewMerchantName] = useState<string>('');
+  const [newMerchantTown, setNewMerchantTown] = useState<string>('');
+  const [newMerchantPhone, setNewMerchantPhone] = useState<string>('');
   const [merchantSearch, setMerchantSearch] = useState<string>('');
   const [isQuickAddMerchantOpen, setIsQuickAddMerchantOpen] = useState<boolean>(false);
 
@@ -80,6 +83,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    if (merchantId === '__NEW__') {
+      return;
+    }
     if (initialMerchantId && merchants.some((m) => m.id === initialMerchantId)) {
       setMerchantId(initialMerchantId);
     } else if (merchantId && merchants.some((m) => m.id === merchantId)) {
@@ -106,8 +112,20 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   }, [isOpen, products, items.length]);
 
   const currentMerchant = useMemo(() => {
+    if (merchantId === '__NEW__') {
+      return {
+        id: '__NEW__',
+        name: newMerchantName.trim(),
+        town: newMerchantTown.trim() || 'အထွေထွေ',
+        phone: newMerchantPhone.trim(),
+        currentReceivableBalance: 0,
+        code: '',
+        createdAt: '',
+        updatedAt: '',
+      };
+    }
     return merchants.find((m) => m.id === merchantId);
-  }, [merchants, merchantId]);
+  }, [merchants, merchantId, newMerchantName, newMerchantTown, newMerchantPhone]);
 
   const filteredMerchants = useMemo(() => {
     if (!merchantSearch.trim()) return merchants;
@@ -167,7 +185,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentMerchant || isSubmitting) return;
+    if (isSubmitting) return;
+
+    if (merchantId === '__NEW__') {
+      if (!newMerchantName.trim()) {
+        alert('ဝယ်ယူသူ / ကုန်သည် အမည် ထည့်သွင်းပေးပါ');
+        return;
+      }
+    } else if (!currentMerchant) {
+      alert('ဝယ်ယူသူ / ကုန်သည် ရွေးချယ်ပေးပါ');
+      return;
+    }
 
     const validItems: SaleItem[] = items
       .map((it) => {
@@ -205,9 +233,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
     // Duplicate Sale Check
     const existingSales = getStoredSales();
+    const finalMerchantId = merchantId === '__NEW__' ? '__NEW__' : currentMerchant.id;
+    const finalMerchantName = merchantId === '__NEW__' ? newMerchantName.trim() : currentMerchant.name;
+    const finalMerchantTown = merchantId === '__NEW__' ? (newMerchantTown.trim() || 'အထွေထွေ') : currentMerchant.town;
+    const finalMerchantPhone = merchantId === '__NEW__' ? newMerchantPhone.trim() : currentMerchant.phone;
+
     const duplicate = findPotentialDuplicateSale(
       {
-        merchantId: currentMerchant.id,
+        merchantId: finalMerchantId,
         date: saleDate,
         grandTotal,
         items: validItems,
@@ -238,9 +271,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       voucherNo,
       date: saleDate,
       time: saleTime,
-      merchantId: currentMerchant.id,
-      merchantName: currentMerchant.name,
-      merchantTown: currentMerchant.town,
+      merchantId: finalMerchantId,
+      merchantName: finalMerchantName,
+      merchantTown: finalMerchantTown,
+      merchantPhone: finalMerchantPhone,
       items: validItems,
       totalItemsCount,
       grandTotal,
@@ -249,7 +283,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       remainingReceivableBalance,
       deliveryVehicle: deliveryVehicle.trim(),
       driverOrContact: driverOrContact.trim(),
-      driverPhone: driverPhone.trim(),
+      driverPhone: driverPhone.trim() || finalMerchantPhone,
       notes: notes.trim(),
     };
 
@@ -330,6 +364,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 className="w-full px-3 py-2.5 bg-white border-2 border-blue-300 focus:border-blue-600 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer touch-manipulation select-auto"
                 required
               >
+                <option value="__NEW__" className="font-bold text-blue-700 bg-blue-50">
+                  + ကုန်သည်အသစ် ထည့်ရန်...
+                </option>
                 {merchants.length === 0 ? (
                   <option value="">-- ကုန်သည်စာရင်း မရှိသေးပါ (+ အသစ်ထည့်ပါ) --</option>
                 ) : (
@@ -344,21 +381,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 )}
               </select>
 
-              {merchants.length === 0 && (
-                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
-                  <span className="text-[11px] text-amber-800 font-semibold">ကုန်သည်စာရင်း မရှိသေးပါ</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickAddMerchantOpen(true)}
-                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>+ အခုချက်ချင်းထည့်မည်</span>
-                  </button>
-                </div>
-              )}
-
-              {currentMerchant && (
+              {merchantId !== '__NEW__' && currentMerchant && (
                 <div className="mt-1.5 px-2.5 py-1.5 bg-blue-50/80 border border-blue-100 rounded-lg flex items-center justify-between text-[11px]">
                   <span className="text-blue-900 font-bold flex items-center gap-1">
                     <UserCheck className="w-3.5 h-3.5 text-blue-700" />
@@ -376,6 +399,55 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 {formatMMK(previousReceivableBalance)}
               </span>
             </div>
+
+            {merchantId === '__NEW__' && (
+              <div className="col-span-1 sm:col-span-2 p-3 bg-blue-50/70 border border-blue-300 rounded-xl space-y-2 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-950">
+                  <UserPlus className="w-4 h-4 text-blue-700 shrink-0" />
+                  <span>ဝယ်ယူသူ / ကုန်သည် အသစ်စာရင်းသွင်းရန်</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ကုန်သည်အမည် *
+                    </label>
+                    <input
+                      type="text"
+                      value={newMerchantName}
+                      onChange={(e) => setNewMerchantName(e.target.value)}
+                      placeholder="ဥပမာ - ရွှေမန္တလေး ယွန်းဆိုင်"
+                      className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      မြို့နယ် / နေရာ
+                    </label>
+                    <input
+                      type="text"
+                      value={newMerchantTown}
+                      onChange={(e) => setNewMerchantTown(e.target.value)}
+                      placeholder="ဥပမာ - မန္တလေး"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ဖုန်းနံပါတ်
+                    </label>
+                    <input
+                      type="text"
+                      value={newMerchantPhone}
+                      onChange={(e) => setNewMerchantPhone(e.target.value)}
+                      placeholder="09..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">

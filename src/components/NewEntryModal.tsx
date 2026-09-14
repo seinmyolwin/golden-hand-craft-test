@@ -54,6 +54,9 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
   onAddProduct,
 }) => {
   const [supplierId, setSupplierId] = useState<string>(initialSupplierId || (suppliers[0]?.id || ''));
+  const [newSupplierName, setNewSupplierName] = useState<string>('');
+  const [newSupplierVillage, setNewSupplierVillage] = useState<string>('');
+  const [newSupplierPhone, setNewSupplierPhone] = useState<string>('');
   const [entryDate, setEntryDate] = useState<string>(selectedDate || getTodayDateString());
   const [entryTime, setEntryTime] = useState<string>(getCurrentTimeString());
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState<boolean>(false);
@@ -78,8 +81,20 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
   }, [initialSupplierId, suppliers]);
 
   const currentSupplier = useMemo(() => {
+    if (supplierId === '__NEW__') {
+      return {
+        id: '__NEW__',
+        name: newSupplierName.trim(),
+        village: newSupplierVillage.trim() || 'အထွေထွေ',
+        phone: newSupplierPhone.trim(),
+        currentAdvanceBalance: 0,
+        code: '',
+        createdAt: '',
+        updatedAt: '',
+      };
+    }
     return suppliers.find((s) => s.id === supplierId);
-  }, [suppliers, supplierId]);
+  }, [suppliers, supplierId, newSupplierName, newSupplierVillage, newSupplierPhone]);
 
   const previousAdvanceBalance = currentSupplier?.currentAdvanceBalance || 0;
 
@@ -118,7 +133,17 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentSupplier || isSubmitting) return;
+    if (isSubmitting) return;
+
+    if (supplierId === '__NEW__') {
+      if (!newSupplierName.trim()) {
+        alert('ကုန်ပစ္စည်းပေးသွင်းသူ / ကုန်သည် အမည် ထည့်သွင်းပေးပါ');
+        return;
+      }
+    } else if (!currentSupplier) {
+      alert('ကုန်ပစ္စည်းပေးသွင်းသူ ရွေးချယ်ပေးပါ');
+      return;
+    }
 
     const validItems: TransactionItem[] = items
       .map((it) => {
@@ -142,9 +167,14 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
 
     // Duplicate Entry Protection
     const existingTxs = getStoredTransactions();
+    const finalSupplierId = supplierId === '__NEW__' ? '__NEW__' : currentSupplier.id;
+    const finalSupplierName = supplierId === '__NEW__' ? newSupplierName.trim() : currentSupplier.name;
+    const finalSupplierVillage = supplierId === '__NEW__' ? (newSupplierVillage.trim() || 'အထွေထွေ') : currentSupplier.village;
+    const finalSupplierPhone = supplierId === '__NEW__' ? newSupplierPhone.trim() : currentSupplier.phone;
+
     const duplicate = findPotentialDuplicateTransaction(
       {
-        supplierId: currentSupplier.id,
+        supplierId: finalSupplierId,
         date: entryDate,
         totalGoodsValue,
         items: validItems,
@@ -175,9 +205,10 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
       voucherNo,
       date: entryDate,
       time: entryTime,
-      supplierId: currentSupplier.id,
-      supplierName: currentSupplier.name,
-      supplierVillage: currentSupplier.village,
+      supplierId: finalSupplierId,
+      supplierName: finalSupplierName,
+      supplierVillage: finalSupplierVillage,
+      supplierPhone: finalSupplierPhone,
       type: 'COLLECTION_AND_SETTLEMENT',
       items: validItems,
       totalGoodsValue,
@@ -240,6 +271,9 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
                 required
               >
+                <option value="__NEW__" className="font-bold text-emerald-700 bg-emerald-50">
+                  + ကုန်သည် / ပေးသွင်းသူအသစ် ထည့်ရန်...
+                </option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.village}) - {s.code}
@@ -253,6 +287,55 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
                 {formatMMK(previousAdvanceBalance)}
               </span>
             </div>
+
+            {supplierId === '__NEW__' && (
+              <div className="col-span-1 sm:col-span-2 p-3 bg-emerald-50/70 border border-emerald-300 rounded-xl space-y-2 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                  <UserPlus className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>ကုန်သည် / ပေးသွင်းသူ အသစ်စာရင်းသွင်းရန်</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      အမည် *
+                    </label>
+                    <input
+                      type="text"
+                      value={newSupplierName}
+                      onChange={(e) => setNewSupplierName(e.target.value)}
+                      placeholder="ဥပမာ - ဦးဘကောင်း"
+                      className="w-full px-2.5 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ကျေးရွာ / မြို့နယ်
+                    </label>
+                    <input
+                      type="text"
+                      value={newSupplierVillage}
+                      onChange={(e) => setNewSupplierVillage(e.target.value)}
+                      placeholder="ဥပမာ - ကူကုန်း"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ဖုန်းနံပါတ်
+                    </label>
+                    <input
+                      type="text"
+                      value={newSupplierPhone}
+                      onChange={(e) => setNewSupplierPhone(e.target.value)}
+                      placeholder="09..."
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Date & Time */}

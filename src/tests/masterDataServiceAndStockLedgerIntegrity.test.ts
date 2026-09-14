@@ -10,7 +10,12 @@ import {
   getPersistedStockMovements,
   calculateProductStockLedger,
 } from '../services/stockLedgerService';
-import { Product, Supplier, Merchant } from '../types';
+import { Product, Supplier, Merchant, TransactionRecord, SaleRecord, MerchantPurchaseRecord } from '../types';
+import {
+  TransactionRepository,
+  SaleRepository,
+  MerchantPurchaseRepository,
+} from '../repositories';
 
 describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
   beforeEach(async () => {
@@ -279,6 +284,259 @@ describe('Master Data Service & Stock Ledger Persistence (Phase 14)', () => {
       // Running migration a second time skips (idempotent)
       const secondRun = await initializeOrMigrateStockLedger();
       expect(secondRun.skipped).toBe(true);
+    });
+  });
+
+  describe('Phase 22 — Auto-create Supplier/Merchant on Entry (Atomic)', () => {
+    const txRepo = new TransactionRepository(db);
+    const saleRepo = new SaleRepository(db);
+    const purRepo = new MerchantPurchaseRepository(db);
+
+    it('auto-creates a new supplier inside saveInboundAtomic when supplierId is __NEW__', async () => {
+      // 1. Setup product
+      const prod: Product = {
+        id: 'prod-auto-1',
+        name: 'ယွန်းပန်းကန်',
+        category: 'ကုန်ချော',
+        unit: 'ချပ်',
+        defaultPrice: 5000,
+        openingStock: 10,
+        currentStock: 10,
+        active: true,
+      };
+      await db.products.add(prod);
+
+      const tx: TransactionRecord = {
+        id: 'tx-auto-sup-1',
+        voucherNo: 'IN-AUTO-001',
+        date: '2026-03-01',
+        time: '14:30',
+        supplierId: '__NEW__',
+        supplierName: 'ဦးမောင်မောင်',
+        supplierVillage: 'ကူနီ',
+        supplierPhone: '0912345678',
+        type: 'COLLECTION_AND_SETTLEMENT',
+        items: [{ productId: 'prod-auto-1', productName: 'ယွန်းပန်းကန်', quantity: 20, unitPrice: 5000, subtotal: 100000, unit: 'ချပ်' }],
+        totalGoodsValue: 100000,
+        previousAdvanceBalance: 0,
+        advanceDeducted: 0,
+        newAdvanceTaken: 0,
+        cashPaidToSupplier: 100000,
+        netCashPaidToSupplier: 100000,
+        remainingAdvanceBalance: 0,
+      };
+
+      const savedTx = await txRepo.saveInboundAtomic(tx);
+      expect(savedTx.supplierId).not.toBe('__NEW__');
+      expect(savedTx.supplierName).toBe('ဦးမောင်မောင်');
+
+      // Verify supplier was created in DB
+      const createdSup = await db.suppliers.get(savedTx.supplierId);
+      expect(createdSup).toBeDefined();
+      expect(createdSup?.name).toBe('ဦးမောင်မောင်');
+      expect(createdSup?.village).toBe('ကူနီ');
+      expect(createdSup?.phone).toBe('0912345678');
+      expect(createdSup?.totalGoodsValueDelivered).toBe(100000);
+
+      // Verify audit log
+      const audit = await db.auditLogs.where('referenceId').equals(savedTx.supplierId).first();
+      expect(audit).toBeDefined();
+      expect(audit?.actionType).toBe('CREATE_SUPPLIER');
+
+      // Verify product stock updated
+      const updatedProd = await db.products.get('prod-auto-1');
+      expect(updatedProd?.currentStock).toBe(30);
+    });
+
+    it('reuses existing supplier case-insensitively without creating duplicate suppliers', async () => {
+      // Create initial supplier
+      const sup: Supplier = {
+        id: 'sup-exist-1',
+        code: 'SUP-001',
+        name: 'ဒေါ်အေးသန်း',
+        village: 'ဝက်လက်',
+        phone: '0998765432',
+        currentAdvanceBalance: 10000,
+        totalGoodsValueDelivered: 50000,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.suppliers.add(sup);
+
+      const prod: Product = {
+        id: 'prod-auto-2',
+        name: 'ယွန်းသေတ္တာ',
+        category: 'ကုန်ချော',
+        unit: 'လုံး',
+        defaultPrice: 15000,
+        openingStock: 5,
+        currentStock: 5,
+        active: true,
+      };
+      await db.products.add(prod);
+
+      const tx: TransactionRecord = {
+        id: 'tx-reuse-sup-1',
+        voucherNo: 'IN-REUSE-001',
+        date: '2026-03-01',
+        time: '15:00',
+        supplierId: '__NEW__',
+        supplierName: '  ဒေါ်အေးသန်း  ', // Same name with whitespace
+        supplierVillage: 'ဝက်လက်',
+        items: [{ productId: 'prod-auto-2', productName: 'ယွန်းသေတ္တာ', quantity: 2, unitPrice: 15000, subtotal: 30000, unit: 'လုံး' }],
+        totalGoodsValue: 30000,
+        previousAdvanceBalance: 10000,
+        advanceDeducted: 10000,
+        newAdvanceTaken: 0,
+        cashPaidToSupplier: 20000,
+        netCashPaidToSupplier: 20000,
+        remainingAdvanceBalance: 0,
+      };
+
+      const savedTx = await txRepo.saveInboundAtomic(tx);
+      expect(savedTx.supplierId).toBe('sup-exist-1');
+
+      // Ensure no duplicate supplier was created
+      const allSups = await db.suppliers.toArray();
+      expect(allSups.length).toBe(1);
+
+      // Verify balance update on existing supplier
+      const updatedSup = await db.suppliers.get('sup-exist-1');
+      expect(updatedSup?.currentAdvanceBalance).toBe(0);
+      expect(updatedSup?.totalGoodsValueDelivered).toBe(80000);
+    });
+
+    it('auto-creates a new merchant inside saveSaleAtomic when merchantId is __NEW__', async () => {
+      const prod: Product = {
+        id: 'prod-sale-1',
+        name: 'ယွန်းဖလား',
+        category: 'ကုန်ချော',
+        unit: 'လုံး',
+        defaultPrice: 8000,
+        defaultWholesalePrice: 12000,
+        openingStock: 50,
+        currentStock: 50,
+        active: true,
+      };
+      await db.products.add(prod);
+
+      const sale: SaleRecord = {
+        id: 'sale-auto-merch-1',
+        voucherNo: 'SL-AUTO-001',
+        date: '2026-03-02',
+        time: '11:00',
+        merchantId: '__NEW__',
+        merchantName: 'ရတနာရွှေပြည် ကုန်သည်',
+        merchantTown: 'မန္တလေး',
+        merchantPhone: '0977788899',
+        items: [{ productId: 'prod-sale-1', productName: 'ယွန်းဖလား', quantity: 10, unitPrice: 12000, subtotal: 120000, unit: 'လုံး' }],
+        totalItemsCount: 10,
+        grandTotal: 120000,
+        cashPaidByMerchant: 50000,
+        remainingReceivableBalance: 70000,
+      };
+
+      const savedSale = await saleRepo.saveSaleAtomic(sale);
+      expect(savedSale.merchantId).not.toBe('__NEW__');
+      expect(savedSale.merchantName).toBe('ရတနာရွှေပြည် ကုန်သည်');
+
+      // Check DB
+      const createdMerch = await db.merchants.get(savedSale.merchantId!);
+      expect(createdMerch).toBeDefined();
+      expect(createdMerch?.name).toBe('ရတနာရွှေပြည် ကုန်သည်');
+      expect(createdMerch?.town).toBe('မန္တလေး');
+      expect(createdMerch?.currentReceivableBalance).toBe(70000);
+      expect(createdMerch?.totalPurchasesValue).toBe(120000);
+      expect(createdMerch?.totalPaidAmount).toBe(50000);
+
+      // Audit log
+      const audit = await db.auditLogs.where('referenceId').equals(savedSale.merchantId!).first();
+      expect(audit).toBeDefined();
+      expect(audit?.actionType).toBe('CREATE_MERCHANT');
+
+      // Product stock decremented
+      const updatedProd = await db.products.get('prod-sale-1');
+      expect(updatedProd?.currentStock).toBe(40);
+    });
+
+    it('reuses existing merchant in saveSaleAtomic and savePurchaseAtomic without duplicates', async () => {
+      const merch: Merchant = {
+        id: 'merch-exist-1',
+        code: 'M-001',
+        name: 'အောင်သပြေ ရောင်းဝယ်ရေး',
+        town: 'ရန်ကုန်',
+        phone: '0944455566',
+        currentReceivableBalance: 10000,
+        totalPurchasesValue: 50000,
+        totalPaidAmount: 40000,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.merchants.add(merch);
+
+      const prod: Product = {
+        id: 'prod-sale-2',
+        name: 'ယွန်းဗန်း',
+        category: 'ကုန်ချော',
+        unit: 'ချပ်',
+        defaultPrice: 10000,
+        defaultWholesalePrice: 15000,
+        openingStock: 20,
+        currentStock: 20,
+        active: true,
+      };
+      await db.products.add(prod);
+
+      const sale: SaleRecord = {
+        id: 'sale-reuse-merch-1',
+        voucherNo: 'SL-REUSE-001',
+        date: '2026-03-02',
+        time: '12:00',
+        merchantId: '__NEW__',
+        merchantName: '  အောင်သပြေ ရောင်းဝယ်ရေး  ',
+        merchantTown: 'ရန်ကုန်',
+        items: [{ productId: 'prod-sale-2', productName: 'ယွန်းဗန်း', quantity: 5, unitPrice: 15000, subtotal: 75000, unit: 'ချပ်' }],
+        grandTotal: 75000,
+        cashPaidByMerchant: 75000,
+        remainingReceivableBalance: 10000,
+      };
+
+      const savedSale = await saleRepo.saveSaleAtomic(sale);
+      expect(savedSale.merchantId).toBe('merch-exist-1');
+
+      const allMerchants = await db.merchants.toArray();
+      expect(allMerchants.length).toBe(1);
+    });
+
+    it('rolls back newly created supplier if a downstream error occurs in saveInboundAtomic', async () => {
+      const tx: TransactionRecord = {
+        id: 'tx-fail-1',
+        voucherNo: 'IN-FAIL-001',
+        date: '2026-03-01',
+        time: '16:00',
+        supplierId: '__NEW__',
+        supplierName: 'ဦးကံဆိုး',
+        supplierVillage: 'ကူနီ',
+        type: 'COLLECTION_AND_SETTLEMENT',
+        items: [{ productId: 'non-existent-product-id', productName: 'မရှိသောပစ္စည်း', quantity: 10, unitPrice: 5000, subtotal: 50000, unit: 'ခု' }],
+        totalGoodsValue: 50000,
+        previousAdvanceBalance: 0,
+        advanceDeducted: 0,
+        newAdvanceTaken: 0,
+        cashPaidToSupplier: 50000,
+        netCashPaidToSupplier: 50000,
+        remainingAdvanceBalance: 0,
+      };
+
+      await expect(txRepo.saveInboundAtomic(tx)).rejects.toThrow();
+
+      // Ensure rollback: supplier must NOT exist in DB
+      const sup = await db.suppliers.where('name').equals('ဦးကံဆိုး').first();
+      expect(sup).toBeUndefined();
+
+      // Ensure transaction record was not saved
+      const txInDb = await db.transactions.get('tx-fail-1');
+      expect(txInDb).toBeUndefined();
     });
   });
 });

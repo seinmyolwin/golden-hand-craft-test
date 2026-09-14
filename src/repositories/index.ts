@@ -57,6 +57,7 @@ import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/cashLedgerService';
 import { recordAuditEvent } from '../services/auditTrailService';
 import { enforcePermission, AuthorizationError } from '../services/authorizationService';
+import { roundMMK, moneyMul, moneyAdd, moneySub, calcRemainingBalance } from '../utils/currency';
 
 export * from './types';
 export * from './errors';
@@ -266,12 +267,13 @@ export class MerchantRepository implements IMerchantRepository {
         }
 
         const now = new Date().toISOString();
-        const prevBalance = merchant.currentReceivableBalance || 0;
-        const newBalance = Math.max(0, prevBalance - paymentAmount);
+        const paymentAmountMMK = roundMMK(paymentAmount);
+        const prevBalance = roundMMK(merchant.currentReceivableBalance || 0);
+        const newBalance = Math.max(0, moneySub(prevBalance, paymentAmountMMK));
         const updatedMerchant: Merchant = {
           ...merchant,
           currentReceivableBalance: newBalance,
-          totalPaidAmount: (merchant.totalPaidAmount || 0) + paymentAmount,
+          totalPaidAmount: moneyAdd(merchant.totalPaidAmount || 0, paymentAmountMMK),
           updatedAt: now,
         };
 
@@ -282,9 +284,9 @@ export class MerchantRepository implements IMerchantRepository {
         const idempotencyKey = buildCashIdempotencyKey('MERCHANT_DEBT_COLLECTION_IN', merchant.id, Date.now().toString());
         await this.database.cashMovements.put({
           id: cashId,
-          amount: Math.abs(paymentAmount),
+          amount: Math.abs(paymentAmountMMK),
           direction: 'IN',
-          signedAmount: Math.abs(paymentAmount),
+          signedAmount: Math.abs(paymentAmountMMK),
           type: 'MERCHANT_DEBT_COLLECTION_IN',
           typeLabelMy: getCashMovementTypeLabel('MERCHANT_DEBT_COLLECTION_IN'),
           referenceType: 'MERCHANT_PAYMENT',
@@ -306,10 +308,10 @@ export class MerchantRepository implements IMerchantRepository {
           {
             action: 'ကုန်သည်ကြွေးကျန် ပေးဆပ်ခြင်း (Atomic)',
             actionType: 'CASH_MOVEMENT',
-            details: `${merchant.name} (${merchant.town}): ပေးဆပ်ငွေ ${paymentAmount.toLocaleString()} ကျပ် (${paymentMethod}) | လက်ကျန်ကြွေး: ${newBalance.toLocaleString()} ကျပ်${notes ? ` | မှတ်ချက်: ${notes}` : ''}`,
+            details: `${merchant.name} (${merchant.town}): ပေးဆပ်ငွေ ${paymentAmountMMK.toLocaleString()} ကျပ် (${paymentMethod}) | လက်ကျန်ကြွေး: ${newBalance.toLocaleString()} ကျပ်${notes ? ` | မှတ်ချက်: ${notes}` : ''}`,
             referenceType: 'MERCHANT',
             referenceId: merchant.id,
-            amount: paymentAmount,
+            amount: paymentAmountMMK,
           },
           this.database
         );
@@ -370,6 +372,9 @@ export class TransactionRepository implements ITransactionRepository {
    */
   async saveInboundAtomic(tx: TransactionRecord): Promise<TransactionRecord> {
     await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်သိမ်းစာရင်းသွင်းခြင်း');
+    if (tx.supplierId === '__NEW__' || (!tx.supplierId && tx.supplierName?.trim())) {
+      await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်းပေးသွင်းသူ အသစ်ဖန်တီးခြင်း (Atomic)');
+    }
     return this.database.transaction(
       'rw',
       [
@@ -396,23 +401,87 @@ export class TransactionRepository implements ITransactionRepository {
           }
         }
 
-        // 2. Validate supplier
-        const supplier = await this.database.suppliers.get(tx.supplierId);
-        if (!supplier) {
-          throw new EntityNotFoundError('Supplier', tx.supplierId);
+        // 2. Validate supplier (or auto-create / reuse within same atomic transaction)
+        const now = new Date().toISOString();
+        let supplier: Supplier | undefined;
+        if (tx.supplierId && tx.supplierId !== '__NEW__') {
+          supplier = await this.database.suppliers.get(tx.supplierId);
+          if (!supplier) {
+            throw new EntityNotFoundError('Supplier', tx.supplierId);
+          }
         }
 
-        const now = new Date().toISOString();
+        if (!supplier) {
+          const supplierNameTrimmed = (tx.supplierName || '').trim();
+          if (!supplierNameTrimmed) {
+            throw new EntityNotFoundError('Supplier', tx.supplierId || '__NEW__');
+          }
+
+          // Check if existing supplier matches name (trimmed, case-insensitive)
+          const allSuppliers = await this.database.suppliers.toArray();
+          const existing = allSuppliers.find(
+            (s) => s.name.trim().toLowerCase() === supplierNameTrimmed.toLowerCase()
+          );
+
+          if (existing) {
+            supplier = existing;
+          } else {
+            const newSupplierId = (tx.supplierId && tx.supplierId !== '__NEW__') ? tx.supplierId : generateStableId('sup');
+            const supCode = `SUP-${String(allSuppliers.length + 1).padStart(3, '0')}`;
+            const newSupplier: Supplier = {
+              id: newSupplierId,
+              code: supCode,
+              name: supplierNameTrimmed,
+              village: (tx.supplierVillage || 'အထွေထွေ').trim(),
+              phone: (tx.supplierPhone || '').trim(),
+              currentAdvanceBalance: 0,
+              totalAdvanceGiven: 0,
+              totalGoodsValueDelivered: 0,
+              createdAt: now,
+              updatedAt: now,
+            };
+            await this.database.suppliers.put(newSupplier);
+
+            await recordAuditEvent(
+              {
+                action: 'ကုန်ပစ္စည်းပေးသွင်းသူ အသစ်ထည့်သွင်းခြင်း (Auto-created on Inbound)',
+                actionType: 'CREATE_SUPPLIER',
+                details: `${newSupplier.name} (${newSupplier.village}) - ကုန်သိမ်းစာရင်းသွင်းစဉ် အလိုအလျောက် ထည့်သွင်းခဲ့သည်`,
+                referenceType: 'SUPPLIER',
+                referenceId: newSupplier.id,
+              },
+              this.database
+            );
+
+            supplier = newSupplier;
+          }
+        }
+
         const normalizedTxDate = (tx.date || now.slice(0, 10)).trim().slice(0, 10);
-        const cashPaid = tx.cashPaidToSupplier ?? tx.netCashPaidToSupplier ?? (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) ?? 0;
+        const rawCashPaid = tx.cashPaidToSupplier ?? tx.netCashPaidToSupplier ?? (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) ?? 0;
+        const cashPaid = roundMMK(rawCashPaid);
+        const totalGoodsVal = roundMMK(tx.totalGoodsValue || 0);
+        const advDeducted = roundMMK(tx.advanceDeducted || 0);
+        const newAdvTaken = roundMMK(tx.newAdvanceTaken || 0);
+        const remAdvBalance = roundMMK(tx.remainingAdvanceBalance || 0);
+        const cashRepayment = roundMMK(tx.cashRepaymentReceived || 0);
+
         const enrichedTx: TransactionRecord = {
           ...tx,
           id: tx.id || generateStableId('tx'),
           voucherNo: tx.voucherNo || generateVoucherNo('TX', normalizedTxDate),
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          supplierVillage: supplier.village,
           date: normalizedTxDate,
           type: tx.type || 'COLLECTION_AND_SETTLEMENT',
+          totalGoodsValue: totalGoodsVal,
+          advanceDeducted: advDeducted,
+          newAdvanceTaken: newAdvTaken,
+          remainingAdvanceBalance: remAdvBalance,
+          cashRepaymentReceived: cashRepayment,
           cashPaidToSupplier: cashPaid,
-          netCashPaidToSupplier: tx.netCashPaidToSupplier ?? cashPaid,
+          netCashPaidToSupplier: tx.netCashPaidToSupplier !== undefined ? roundMMK(tx.netCashPaidToSupplier) : cashPaid,
           status: 'COMPLETED',
           createdAt: tx.createdAt || now,
           updatedAt: now,
@@ -436,6 +505,8 @@ export class TransactionRepository implements ITransactionRepository {
 
             // Write stock movement ledger
             const mvId = generateStableId('mv');
+            const unitPrice = roundMMK(item.unitPrice || 0);
+            const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
             await this.database.stockMovements.put({
               id: mvId,
               productId: item.productId,
@@ -448,8 +519,8 @@ export class TransactionRepository implements ITransactionRepository {
               referenceId: enrichedTx.id,
               referenceVoucherNo: enrichedTx.voucherNo,
               counterpartName: tx.supplierName || supplier.name,
-              unitPrice: item.unitPrice,
-              totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+              unitPrice,
+              totalValue: totalVal,
               transactionDate: normalizedTxDate,
               transactionTime: tx.time,
               createdAt: now,
@@ -463,11 +534,15 @@ export class TransactionRepository implements ITransactionRepository {
         // 4. Update supplier balance & delivered stats
         const updatedSupplier: Supplier = {
           ...supplier,
-          currentAdvanceBalance: tx.remainingAdvanceBalance,
-          totalGoodsValueDelivered:
-            (supplier.totalGoodsValueDelivered || supplier.totalGoodsDeliveredValue || 0) + (tx.totalGoodsValue || 0),
-          totalAdvanceGiven:
-            (supplier.totalAdvanceGiven || supplier.totalAdvancesGiven || 0) + (tx.newAdvanceTaken || 0),
+          currentAdvanceBalance: remAdvBalance,
+          totalGoodsValueDelivered: moneyAdd(
+            supplier.totalGoodsValueDelivered || (supplier as any).totalGoodsDeliveredValue || 0,
+            totalGoodsVal
+          ),
+          totalAdvanceGiven: moneyAdd(
+            supplier.totalAdvanceGiven || (supplier as any).totalAdvancesGiven || 0,
+            newAdvTaken
+          ),
           updatedAt: now,
         };
         await this.database.suppliers.put(updatedSupplier);
@@ -500,14 +575,14 @@ export class TransactionRepository implements ITransactionRepository {
         }
 
         // 5b. Cash Advance given during collection
-        if (tx.newAdvanceTaken && tx.newAdvanceTaken > 0) {
+        if (newAdvTaken > 0) {
           const advCashId = generateStableId('csh');
           const advIdempotencyKey = buildCashIdempotencyKey('SUPPLIER_ADVANCE_GIVEN', enrichedTx.id);
           await this.database.cashMovements.put({
             id: advCashId,
-            amount: Math.abs(tx.newAdvanceTaken),
+            amount: Math.abs(newAdvTaken),
             direction: 'OUT',
-            signedAmount: -Math.abs(tx.newAdvanceTaken),
+            signedAmount: -Math.abs(newAdvTaken),
             type: 'SUPPLIER_ADVANCE_GIVEN',
             typeLabelMy: getCashMovementTypeLabel('SUPPLIER_ADVANCE_GIVEN'),
             referenceType: 'TRANSACTION',
@@ -526,14 +601,14 @@ export class TransactionRepository implements ITransactionRepository {
           });
         }
 
-        if (tx.cashRepaymentReceived && tx.cashRepaymentReceived > 0) {
+        if (cashRepayment > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_REPAYMENT_IN', enrichedTx.id);
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(tx.cashRepaymentReceived),
+            amount: Math.abs(cashRepayment),
             direction: 'IN',
-            signedAmount: Math.abs(tx.cashRepaymentReceived),
+            signedAmount: Math.abs(cashRepayment),
             type: 'SUPPLIER_REPAYMENT_IN',
             typeLabelMy: getCashMovementTypeLabel('SUPPLIER_REPAYMENT_IN'),
             referenceType: 'TRANSACTION',
@@ -560,11 +635,11 @@ export class TransactionRepository implements ITransactionRepository {
           {
             action: 'ကုန်သိမ်းစာရင်း ရေးသွင်းခြင်း (Atomic)',
             actionType: 'PURCHASE',
-            details: `ဘောင်ချာ ${enrichedTx.voucherNo} - ${tx.supplierName}: တန်ဖိုး ${(tx.totalGoodsValue || 0).toLocaleString()} ကျပ် | အကြိုငွေနုတ်: ${(tx.advanceDeducted || 0).toLocaleString()} ကျပ် | လက်ကျန်: ${tx.remainingAdvanceBalance.toLocaleString()} ကျပ်`,
+            details: `ဘောင်ချာ ${enrichedTx.voucherNo} - ${tx.supplierName}: တန်ဖိုး ${totalGoodsVal.toLocaleString()} ကျပ် | အကြိုငွေနုတ်: ${advDeducted.toLocaleString()} ကျပ် | လက်ကျန်: ${remAdvBalance.toLocaleString()} ကျပ်`,
             referenceType: 'TRANSACTION',
             referenceId: enrichedTx.id,
             referenceVoucherNo: enrichedTx.voucherNo,
-            amount: tx.totalGoodsValue || 0,
+            amount: totalGoodsVal,
             timestamp: `${tx.date} ${tx.time || ''}`.trim() || now,
           },
           this.database
@@ -620,6 +695,8 @@ export class TransactionRepository implements ITransactionRepository {
                 updatedAt: now,
               });
 
+              const unitPrice = roundMMK(item.unitPrice || 0);
+              const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
               await this.database.stockMovements.put({
                 id: generateStableId('mv'),
                 productId: item.productId,
@@ -632,8 +709,8 @@ export class TransactionRepository implements ITransactionRepository {
                 referenceId: tx.id,
                 referenceVoucherNo: tx.voucherNo,
                 counterpartName: tx.supplierName,
-                unitPrice: item.unitPrice,
-                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                unitPrice,
+                totalValue: totalVal,
                 transactionDate: now.slice(0, 10),
                 transactionTime: now.slice(11, 16),
                 createdAt: now,
@@ -647,7 +724,8 @@ export class TransactionRepository implements ITransactionRepository {
         }
 
         // 2. Compensating Cash Ledger Reversals
-        const cashPaid = tx.cashPaidToSupplier || tx.netCashPaidToSupplier || (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) || 0;
+        const rawCashPaid = tx.cashPaidToSupplier || tx.netCashPaidToSupplier || (tx.type === 'CASH_PAYMENT_ONLY' ? tx.paidAmount : 0) || 0;
+        const cashPaid = roundMMK(rawCashPaid);
         if (cashPaid > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'PAYOUT_REV');
@@ -675,14 +753,16 @@ export class TransactionRepository implements ITransactionRepository {
           });
         }
 
-        if (tx.cashRepaymentReceived && tx.cashRepaymentReceived > 0) {
+        const rawCashRepayment = tx.cashRepaymentReceived || 0;
+        const cashRepayment = roundMMK(rawCashRepayment);
+        if (cashRepayment > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'REP_REV');
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(tx.cashRepaymentReceived),
+            amount: Math.abs(cashRepayment),
             direction: 'OUT',
-            signedAmount: -Math.abs(tx.cashRepaymentReceived),
+            signedAmount: -Math.abs(cashRepayment),
             type: 'TRANSACTION_CANCELLED_CASH_REVERSAL',
             typeLabelMy: getCashMovementTypeLabel('TRANSACTION_CANCELLED_CASH_REVERSAL'),
             referenceType: 'TRANSACTION',
@@ -702,14 +782,16 @@ export class TransactionRepository implements ITransactionRepository {
           });
         }
 
-        if (tx.newAdvanceTaken && tx.newAdvanceTaken > 0) {
+        const rawNewAdv = tx.newAdvanceTaken || 0;
+        const newAdv = roundMMK(rawNewAdv);
+        if (newAdv > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('TRANSACTION_CANCELLED_CASH_REVERSAL', tx.id, 'ADV_REV');
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(tx.newAdvanceTaken),
+            amount: Math.abs(newAdv),
             direction: 'IN',
-            signedAmount: Math.abs(tx.newAdvanceTaken),
+            signedAmount: Math.abs(newAdv),
             type: 'TRANSACTION_CANCELLED_CASH_REVERSAL',
             typeLabelMy: getCashMovementTypeLabel('TRANSACTION_CANCELLED_CASH_REVERSAL'),
             referenceType: 'TRANSACTION',
@@ -732,18 +814,19 @@ export class TransactionRepository implements ITransactionRepository {
         // 3. Revert supplier balance
         const supplier = await this.database.suppliers.get(tx.supplierId);
         if (supplier) {
-          // Re-add deducted advance or revert to previous balance
-          const revertedAdvanceBalance = tx.previousAdvanceBalance ?? supplier.currentAdvanceBalance;
+          const revertedAdvanceBalance = tx.previousAdvanceBalance !== undefined
+            ? roundMMK(tx.previousAdvanceBalance)
+            : supplier.currentAdvanceBalance;
           const updatedSupplier: Supplier = {
             ...supplier,
             currentAdvanceBalance: revertedAdvanceBalance,
             totalGoodsValueDelivered: Math.max(
               0,
-              (supplier.totalGoodsValueDelivered || supplier.totalGoodsDeliveredValue || 0) - (tx.totalGoodsValue || 0)
+              moneySub(supplier.totalGoodsValueDelivered || (supplier as any).totalGoodsDeliveredValue || 0, tx.totalGoodsValue || 0)
             ),
             totalAdvanceGiven: Math.max(
               0,
-              (supplier.totalAdvanceGiven || supplier.totalAdvancesGiven || 0) - (tx.newAdvanceTaken || 0)
+              moneySub(supplier.totalAdvanceGiven || (supplier as any).totalAdvancesGiven || 0, tx.newAdvanceTaken || 0)
             ),
             updatedAt: now,
           };
@@ -818,13 +901,14 @@ export class TransactionRepository implements ITransactionRepository {
           throw new EntityNotFoundError('Supplier', supplierId);
         }
 
-        const prevBalance = supplier.currentAdvanceBalance || 0;
-        const newBalance = prevBalance + advanceAmount;
+        const advanceMMK = roundMMK(advanceAmount);
+        const prevBalance = roundMMK(supplier.currentAdvanceBalance || 0);
+        const newBalance = moneyAdd(prevBalance, advanceMMK);
 
         const updatedSupplier: Supplier = {
           ...supplier,
           currentAdvanceBalance: newBalance,
-          totalAdvanceGiven: (supplier.totalAdvanceGiven || supplier.totalAdvancesGiven || 0) + advanceAmount,
+          totalAdvanceGiven: moneyAdd(supplier.totalAdvanceGiven || (supplier as any).totalAdvancesGiven || 0, advanceMMK),
           updatedAt: now.toISOString(),
         };
         await this.database.suppliers.put(updatedSupplier);
@@ -843,7 +927,7 @@ export class TransactionRepository implements ITransactionRepository {
           totalGoodsValue: 0,
           previousAdvanceBalance: prevBalance,
           advanceDeducted: 0,
-          newAdvanceTaken: advanceAmount,
+          newAdvanceTaken: advanceMMK,
           newAdvanceReason: reason,
           remainingAdvanceBalance: newBalance,
           status: 'COMPLETED',
@@ -857,9 +941,9 @@ export class TransactionRepository implements ITransactionRepository {
         const idempotencyKey = buildCashIdempotencyKey('SUPPLIER_ADVANCE_GIVEN', tx.id);
         await this.database.cashMovements.put({
           id: cashId,
-          amount: Math.abs(advanceAmount),
+          amount: Math.abs(advanceMMK),
           direction: 'OUT',
-          signedAmount: -Math.abs(advanceAmount),
+          signedAmount: -Math.abs(advanceMMK),
           type: 'SUPPLIER_ADVANCE_GIVEN',
           typeLabelMy: getCashMovementTypeLabel('SUPPLIER_ADVANCE_GIVEN'),
           referenceType: 'SUPPLIER_ADVANCE',
@@ -882,11 +966,11 @@ export class TransactionRepository implements ITransactionRepository {
           {
             action: 'အကြိုငွေသီးသန့် ထုတ်ပေးခြင်း (Atomic)',
             actionType: 'CASH_MOVEMENT',
-            details: `${supplier.name} (${supplier.village}): အကြိုငွေ ${advanceAmount.toLocaleString()} ကျပ် | အကြောင်းပြချက်: ${reason} | လက်ကျန်: ${newBalance.toLocaleString()} ကျပ်`,
+            details: `${supplier.name} (${supplier.village}): အကြိုငွေ ${advanceMMK.toLocaleString()} ကျပ် | အကြောင်းပြချက်: ${reason} | လက်ကျန်: ${newBalance.toLocaleString()} ကျပ်`,
             referenceType: 'SUPPLIER_ADVANCE',
             referenceId: tx.id,
             referenceVoucherNo: tx.voucherNo,
-            amount: advanceAmount,
+            amount: advanceMMK,
           },
           this.database
         );
@@ -953,6 +1037,9 @@ export class SaleRepository implements ISaleRepository {
    */
   async saveSaleAtomic(sale: SaleRecord): Promise<SaleRecord> {
     await enforcePermission('OPERATIONAL_DATA_ENTRY', 'အရောင်းဘောင်ချာ ထုတ်ယူခြင်း');
+    if (sale.merchantId === '__NEW__' || (!sale.merchantId && sale.merchantName?.trim())) {
+      await enforcePermission('MANAGE_MASTER_DATA', 'ဝယ်ယူသူ/ကုန်သည် မာစတာဒေတာ သိမ်းဆည်းခြင်း');
+    }
     return this.database.transaction(
       'rw',
       [
@@ -979,20 +1066,72 @@ export class SaleRepository implements ISaleRepository {
           }
         }
 
-        // 2. Validate merchant (if merchantId provided)
+        // 2. Validate merchant (or auto-create / reuse within same atomic transaction)
+        const now = new Date().toISOString();
         let merchant: Merchant | undefined;
-        if (sale.merchantId) {
+        if (sale.merchantId && sale.merchantId !== '__NEW__') {
           merchant = await this.database.merchants.get(sale.merchantId);
-          if (!merchant) {
-            throw new EntityNotFoundError('Merchant', sale.merchantId);
+        }
+
+        const merchantNameTrimmed = (sale.merchantName || '').trim();
+        if (!merchant && (sale.merchantId === '__NEW__' || merchantNameTrimmed)) {
+          if (merchantNameTrimmed) {
+            // Check if existing merchant matches name (case-insensitive, trimmed)
+            const allMerchants = await this.database.merchants.toArray();
+            const existing = allMerchants.find(
+              (m) => m.name.trim().toLowerCase() === merchantNameTrimmed.toLowerCase()
+            );
+
+            if (existing) {
+              merchant = existing;
+            } else {
+              const newMerchantId = (sale.merchantId && sale.merchantId !== '__NEW__') ? sale.merchantId : generateStableId('merch');
+              const merchCode = `M-${String(allMerchants.length + 1).padStart(3, '0')}`;
+              const newMerchant: Merchant = {
+                id: newMerchantId,
+                code: merchCode,
+                name: merchantNameTrimmed,
+                town: (sale.merchantTown || 'အထွေထွေ').trim(),
+                phone: (sale.merchantPhone || (sale as any).driverPhone || '').trim(),
+                currentReceivableBalance: 0,
+                totalPurchasesValue: 0,
+                totalPaidAmount: 0,
+                createdAt: now,
+                updatedAt: now,
+              };
+              await this.database.merchants.put(newMerchant);
+
+              await recordAuditEvent(
+                {
+                  action: 'ကုန်သည် အသစ်ထည့်သွင်းခြင်း (Auto-created on Sale)',
+                  actionType: 'CREATE_MERCHANT',
+                  details: `${newMerchant.name} (${newMerchant.town}) - အရောင်းဘောင်ချာဖွင့်စဉ် အလိုအလျောက် ထည့်သွင်းခဲ့သည်`,
+                  referenceType: 'MERCHANT',
+                  referenceId: newMerchant.id,
+                },
+                this.database
+              );
+
+              merchant = newMerchant;
+            }
           }
         }
 
-        const now = new Date().toISOString();
+        const grandTotalVal = roundMMK(sale.grandTotal ?? sale.totalAmount ?? 0);
+        const paidVal = roundMMK(sale.cashPaidByMerchant ?? sale.paidAmount ?? 0);
+
         const enrichedSale: SaleRecord = {
           ...sale,
           id: sale.id || generateStableId('sale'),
           voucherNo: sale.voucherNo || generateVoucherNo('SALE', sale.date),
+          merchantId: merchant?.id || sale.merchantId,
+          merchantName: merchant?.name || sale.merchantName,
+          merchantTown: merchant?.town || sale.merchantTown,
+          grandTotal: grandTotalVal,
+          totalAmount: grandTotalVal,
+          paidAmount: paidVal,
+          cashPaidByMerchant: paidVal,
+          remainingReceivableBalance: sale.remainingReceivableBalance !== undefined ? roundMMK(sale.remainingReceivableBalance) : undefined,
           status: 'COMPLETED',
           createdAt: sale.createdAt || now,
           updatedAt: now,
@@ -1016,6 +1155,8 @@ export class SaleRepository implements ISaleRepository {
 
             // Write stock movement ledger
             const mvId = generateStableId('mv');
+            const unitPrice = roundMMK(item.unitPrice || 0);
+            const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
             await this.database.stockMovements.put({
               id: mvId,
               productId: item.productId,
@@ -1028,8 +1169,8 @@ export class SaleRepository implements ISaleRepository {
               referenceId: enrichedSale.id,
               referenceVoucherNo: enrichedSale.voucherNo,
               counterpartName: sale.merchantName || merchant?.name || 'ကုန်သည်',
-              unitPrice: item.unitPrice,
-              totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+              unitPrice,
+              totalValue: totalVal,
               transactionDate: sale.date || now.slice(0, 10),
               transactionTime: sale.time,
               createdAt: now,
@@ -1042,33 +1183,31 @@ export class SaleRepository implements ISaleRepository {
 
         // 4. Update merchant receivable balance & totals
         if (merchant) {
-          const grandTotalVal = sale.grandTotal ?? sale.totalAmount ?? 0;
-          const paidVal = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
-          const currentBal = (merchant as any).currentBalance ?? merchant.currentReceivableBalance ?? 0;
-          const remainingVal = sale.remainingReceivableBalance !== undefined
-            ? sale.remainingReceivableBalance
-            : (currentBal + grandTotalVal - paidVal);
+          const currentBal = roundMMK((merchant as any).currentBalance ?? merchant.currentReceivableBalance ?? 0);
+          const remainingVal = enrichedSale.remainingReceivableBalance !== undefined
+            ? enrichedSale.remainingReceivableBalance
+            : moneySub(moneyAdd(currentBal, grandTotalVal), paidVal);
+          enrichedSale.remainingReceivableBalance = remainingVal;
 
           const updatedMerchant: Merchant = {
             ...merchant,
             currentReceivableBalance: remainingVal,
-            totalPurchasesValue: (merchant.totalPurchasesValue || 0) + grandTotalVal,
-            totalPaidAmount: (merchant.totalPaidAmount || 0) + paidVal,
+            totalPurchasesValue: moneyAdd(merchant.totalPurchasesValue || 0, grandTotalVal),
+            totalPaidAmount: moneyAdd(merchant.totalPaidAmount || 0, paidVal),
             updatedAt: now,
           };
           await this.database.merchants.put(updatedMerchant);
         }
 
         // 5. Cash Ledger Recording
-        const paidAmount = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
-        if (paidAmount > 0) {
+        if (paidVal > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('SALE_PAYMENT_IN', enrichedSale.id);
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(paidAmount),
+            amount: Math.abs(paidVal),
             direction: 'IN',
-            signedAmount: Math.abs(paidAmount),
+            signedAmount: Math.abs(paidVal),
             type: 'SALE_PAYMENT_IN',
             typeLabelMy: getCashMovementTypeLabel('SALE_PAYMENT_IN'),
             referenceType: 'SALE',
@@ -1091,9 +1230,7 @@ export class SaleRepository implements ISaleRepository {
         await this.database.sales.put(enrichedSale);
 
         // 7. Audit Log
-        const grandTotalVal = sale.grandTotal ?? sale.totalAmount ?? 0;
-        const paidVal = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
-        const remainingVal = sale.remainingReceivableBalance ?? (sale as any).remainingBalance ?? 0;
+        const remainingVal = enrichedSale.remainingReceivableBalance ?? (enrichedSale as any).remainingBalance ?? 0;
 
         const auditEntry = await recordAuditEvent(
           {
@@ -1159,6 +1296,8 @@ export class SaleRepository implements ISaleRepository {
                 updatedAt: now,
               });
 
+              const unitPrice = roundMMK(item.unitPrice || 0);
+              const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
               await this.database.stockMovements.put({
                 id: generateStableId('mv'),
                 productId: item.productId,
@@ -1171,8 +1310,8 @@ export class SaleRepository implements ISaleRepository {
                 referenceId: sale.id,
                 referenceVoucherNo: sale.voucherNo,
                 counterpartName: sale.merchantName,
-                unitPrice: item.unitPrice,
-                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                unitPrice,
+                totalValue: totalVal,
                 transactionDate: now.slice(0, 10),
                 transactionTime: now.slice(11, 16),
                 createdAt: now,
@@ -1186,7 +1325,8 @@ export class SaleRepository implements ISaleRepository {
         }
 
         // 2. Compensating Cash Ledger Reversal
-        const paidAmount = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+        const rawPaid = sale.cashPaidByMerchant ?? sale.paidAmount ?? 0;
+        const paidAmount = roundMMK(rawPaid);
         if (paidAmount > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('SALE_CANCELLED_CASH_REVERSAL', sale.id);
@@ -1218,13 +1358,14 @@ export class SaleRepository implements ISaleRepository {
         if (sale.merchantId) {
           const merchant = await this.database.merchants.get(sale.merchantId);
           if (merchant) {
-            const unpaidAmountOnThisSale = Math.max(0, (sale.grandTotal || 0) - (sale.cashPaidByMerchant || 0));
-            const newReceivable = Math.max(0, (merchant.currentReceivableBalance || 0) - unpaidAmountOnThisSale);
+            const grandTotalVal = roundMMK(sale.grandTotal ?? sale.totalAmount ?? 0);
+            const unpaidAmountOnThisSale = Math.max(0, moneySub(grandTotalVal, paidAmount));
+            const newReceivable = Math.max(0, moneySub(merchant.currentReceivableBalance || 0, unpaidAmountOnThisSale));
             const updatedMerchant: Merchant = {
               ...merchant,
               currentReceivableBalance: newReceivable,
-              totalPurchasesValue: Math.max(0, (merchant.totalPurchasesValue || 0) - (sale.grandTotal || 0)),
-              totalPaidAmount: Math.max(0, (merchant.totalPaidAmount || 0) - (sale.cashPaidByMerchant || 0)),
+              totalPurchasesValue: Math.max(0, moneySub(merchant.totalPurchasesValue || 0, grandTotalVal)),
+              totalPaidAmount: Math.max(0, moneySub(merchant.totalPaidAmount || 0, paidAmount)),
               updatedAt: now,
             };
             await this.database.merchants.put(updatedMerchant);
@@ -1313,6 +1454,9 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
    */
   async savePurchaseAtomic(purchase: MerchantPurchaseRecord): Promise<MerchantPurchaseRecord> {
     await enforcePermission('OPERATIONAL_DATA_ENTRY', 'ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း');
+    if (purchase.merchantId === '__NEW__' || (!purchase.merchantId && purchase.merchantName?.trim())) {
+      await enforcePermission('MANAGE_MASTER_DATA', 'ဝယ်ယူသူ/ကုန်သည် မာစတာဒေတာ သိမ်းဆည်းခြင်း');
+    }
     return this.database.transaction(
       'rw',
       [
@@ -1333,41 +1477,78 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         }
 
         const now = new Date().toISOString();
-        let merchant = purchase.merchantId ? await this.database.merchants.get(purchase.merchantId) : undefined;
+        let merchant = (purchase.merchantId && purchase.merchantId !== '__NEW__') ? await this.database.merchants.get(purchase.merchantId) : undefined;
         if (!merchant) {
-          // Upsert-create merchant directly within the transaction if not existing
-          const newMerchantId = purchase.merchantId || generateStableId('merch');
-          merchant = {
-            id: newMerchantId,
-            code: `M-${newMerchantId.slice(-6).toUpperCase()}`,
-            name: (purchase.merchantName || 'အမည်မသိ ကုန်သည်').trim(),
-            town: (purchase.merchantTown || 'အထွေထွေ').trim(),
-            phone: (purchase.sellerPhone || '').trim(),
-            role: 'SUPPLIER',
-            payableBalance: purchase.remainingPayableBalance || 0,
-            totalPurchasedFromMerchant: purchase.totalAmount || 0,
-            currentReceivableBalance: 0,
-            totalPurchasesValue: 0,
-            totalPaidAmount: 0,
-            createdAt: now,
-            updatedAt: now,
-          };
-          await this.database.merchants.put(merchant);
+          const merchantNameTrimmed = (purchase.merchantName || 'အမည်မသိ ကုန်သည်').trim();
+          const allMerchants = await this.database.merchants.toArray();
+          const existing = allMerchants.find(
+            (m) => m.name.trim().toLowerCase() === merchantNameTrimmed.toLowerCase()
+          );
+
+          if (existing) {
+            merchant = existing;
+            const currentPayable = merchant.payableBalance || 0;
+            const updatedPayable = currentPayable + (purchase.remainingPayableBalance || 0);
+            await this.database.merchants.update(merchant.id, {
+              payableBalance: updatedPayable,
+              totalPurchasedFromMerchant: (merchant.totalPurchasedFromMerchant || 0) + (purchase.totalAmount || 0),
+              updatedAt: now,
+            });
+          } else {
+            const newMerchantId = (purchase.merchantId && purchase.merchantId !== '__NEW__') ? purchase.merchantId : generateStableId('merch');
+            const merchCode = `M-${String(allMerchants.length + 1).padStart(3, '0')}`;
+            merchant = {
+              id: newMerchantId,
+              code: merchCode,
+              name: merchantNameTrimmed,
+              town: (purchase.merchantTown || 'အထွေထွေ').trim(),
+              phone: (purchase.sellerPhone || '').trim(),
+              role: 'SUPPLIER',
+              payableBalance: purchase.remainingPayableBalance || 0,
+              totalPurchasedFromMerchant: purchase.totalAmount || 0,
+              currentReceivableBalance: 0,
+              totalPurchasesValue: 0,
+              totalPaidAmount: 0,
+              createdAt: now,
+              updatedAt: now,
+            };
+            await this.database.merchants.put(merchant);
+
+            await recordAuditEvent(
+              {
+                action: 'ကုန်သည် အသစ်ထည့်သွင်းခြင်း (Auto-created on Purchase)',
+                actionType: 'CREATE_MERCHANT',
+                details: `${merchant.name} (${merchant.town}) - ကုန်ကြမ်းဝယ်ယူမှုသွင်းစဉ် အလိုအလျောက် ထည့်သွင်းခဲ့သည်`,
+                referenceType: 'MERCHANT',
+                referenceId: merchant.id,
+              },
+              this.database
+            );
+          }
         } else {
-          const currentPayable = merchant.payableBalance || 0;
-          const updatedPayable = currentPayable + (purchase.remainingPayableBalance || 0);
+          const currentPayable = roundMMK(merchant.payableBalance || 0);
+          const remPayable = roundMMK(purchase.remainingPayableBalance || 0);
+          const totalAmt = roundMMK(purchase.totalAmount || 0);
+          const updatedPayable = moneyAdd(currentPayable, remPayable);
           await this.database.merchants.update(merchant.id, {
             payableBalance: updatedPayable,
-            totalPurchasedFromMerchant: (merchant.totalPurchasedFromMerchant || 0) + (purchase.totalAmount || 0),
+            totalPurchasedFromMerchant: moneyAdd(merchant.totalPurchasedFromMerchant || 0, totalAmt),
             updatedAt: now,
           });
         }
+
+        const totalAmt = roundMMK(purchase.totalAmount || 0);
+        const paidAmt = roundMMK(purchase.paidAmount || 0);
+        const remPayable = roundMMK(purchase.remainingPayableBalance || 0);
 
         const enrichedPurchase: MerchantPurchaseRecord = {
           ...purchase,
           id: purchase.id || generateStableId('pur'),
           merchantId: merchant.id,
           purchaseNo: purchase.purchaseNo || generateVoucherNo('PUR', purchase.date),
+          totalAmount: totalAmt,
+          paidAmount: paidAmt,
+          remainingPayableBalance: remPayable,
           status: 'COMPLETED',
           createdAt: purchase.createdAt || now,
           updatedAt: now,
@@ -1387,6 +1568,8 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
                 updatedAt: now,
               });
 
+              const unitPrice = roundMMK(item.unitPrice || 0);
+              const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
               await this.database.stockMovements.put({
                 id: generateStableId('mv'),
                 productId: item.productId,
@@ -1399,8 +1582,8 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
                 referenceId: enrichedPurchase.id,
                 referenceVoucherNo: enrichedPurchase.purchaseNo,
                 counterpartName: purchase.merchantName || merchant.name,
-                unitPrice: item.unitPrice,
-                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                unitPrice,
+                totalValue: totalVal,
                 transactionDate: purchase.date || now.slice(0, 10),
                 transactionTime: purchase.time,
                 createdAt: now,
@@ -1413,14 +1596,14 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         }
 
         // Record Cash Ledger Movement
-        if (purchase.paidAmount && purchase.paidAmount > 0) {
+        if (paidAmt > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('MERCHANT_PURCHASE_PAYOUT', enrichedPurchase.id);
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(purchase.paidAmount),
+            amount: Math.abs(paidAmt),
             direction: 'OUT',
-            signedAmount: -Math.abs(purchase.paidAmount),
+            signedAmount: -Math.abs(paidAmt),
             type: 'MERCHANT_PURCHASE_PAYOUT',
             typeLabelMy: getCashMovementTypeLabel('MERCHANT_PURCHASE_PAYOUT'),
             referenceType: 'PURCHASE',
@@ -1445,11 +1628,11 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
           {
             action: 'ကုန်ကြမ်းဝယ်ယူမှု စာရင်းသွင်းခြင်း (Atomic)',
             actionType: 'PURCHASE',
-            details: `ဘောင်ချာ ${enrichedPurchase.purchaseNo} - ${purchase.merchantName}: စုစုပေါင်း ${(purchase.totalAmount || 0).toLocaleString()} ကျပ် | ပေးရန်ကျန်: ${(purchase.remainingPayableBalance || 0).toLocaleString()} ကျပ်`,
+            details: `ဘောင်ချာ ${enrichedPurchase.purchaseNo} - ${purchase.merchantName}: စုစုပေါင်း ${totalAmt.toLocaleString()} ကျပ် | ပေးရန်ကျန်: ${remPayable.toLocaleString()} ကျပ်`,
             referenceType: 'PURCHASE',
             referenceId: enrichedPurchase.id,
             referenceVoucherNo: enrichedPurchase.purchaseNo,
-            amount: purchase.totalAmount || 0,
+            amount: totalAmt,
             timestamp: `${purchase.date} ${purchase.time || ''}`.trim() || now,
           },
           this.database
@@ -1488,8 +1671,10 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
 
         const merchant = await this.database.merchants.get(purchase.merchantId);
         if (merchant) {
-          const newPayable = Math.max(0, (merchant.payableBalance || 0) - (purchase.remainingPayableBalance || 0));
-          const newTotalPurchased = Math.max(0, (merchant.totalPurchasedFromMerchant || 0) - (purchase.totalAmount || 0));
+          const remPayable = roundMMK(purchase.remainingPayableBalance || 0);
+          const totalAmt = roundMMK(purchase.totalAmount || 0);
+          const newPayable = Math.max(0, moneySub(merchant.payableBalance || 0, remPayable));
+          const newTotalPurchased = Math.max(0, moneySub(merchant.totalPurchasedFromMerchant || 0, totalAmt));
           await this.database.merchants.update(purchase.merchantId, {
             payableBalance: newPayable,
             totalPurchasedFromMerchant: newTotalPurchased,
@@ -1510,6 +1695,8 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
                 updatedAt: now,
               });
 
+              const unitPrice = roundMMK(item.unitPrice || 0);
+              const totalVal = roundMMK(moneyMul(item.quantity || 0, unitPrice));
               await this.database.stockMovements.put({
                 id: generateStableId('mv'),
                 productId: item.productId,
@@ -1522,8 +1709,8 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
                 referenceId: purchase.id,
                 referenceVoucherNo: purchase.purchaseNo,
                 counterpartName: purchase.merchantName,
-                unitPrice: item.unitPrice,
-                totalValue: (item.quantity || 0) * (item.unitPrice || 0),
+                unitPrice,
+                totalValue: totalVal,
                 transactionDate: now.slice(0, 10),
                 transactionTime: now.slice(11, 16),
                 createdAt: now,
@@ -1537,14 +1724,16 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
         }
 
         // Compensating Cash Ledger Reversal
-        if (purchase.paidAmount && purchase.paidAmount > 0) {
+        const rawPaid = purchase.paidAmount || 0;
+        const paidAmount = roundMMK(rawPaid);
+        if (paidAmount > 0) {
           const cashId = generateStableId('csh');
           const idempotencyKey = buildCashIdempotencyKey('PURCHASE_CANCELLED_CASH_REVERSAL', purchase.id);
           await this.database.cashMovements.put({
             id: cashId,
-            amount: Math.abs(purchase.paidAmount),
+            amount: Math.abs(paidAmount),
             direction: 'IN',
-            signedAmount: Math.abs(purchase.paidAmount),
+            signedAmount: Math.abs(paidAmount),
             type: 'PURCHASE_CANCELLED_CASH_REVERSAL',
             typeLabelMy: getCashMovementTypeLabel('PURCHASE_CANCELLED_CASH_REVERSAL'),
             referenceType: 'PURCHASE',
@@ -2365,9 +2554,10 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
               const supplier = await this.database.suppliers.get(data.supplierId);
               if (supplier) {
                 const curDelivered = supplier.totalGoodsValueDelivered || (supplier as any).totalGoodsDeliveredValue || 0;
+                const goodsVal = roundMMK(data.totalGoodsValue || 0);
                 await this.database.suppliers.update(data.supplierId, {
-                  currentAdvanceBalance: data.remainingAdvanceBalance ?? supplier.currentAdvanceBalance,
-                  totalGoodsValueDelivered: curDelivered + (data.totalGoodsValue || 0),
+                  currentAdvanceBalance: data.remainingAdvanceBalance !== undefined ? roundMMK(data.remainingAdvanceBalance) : supplier.currentAdvanceBalance,
+                  totalGoodsValueDelivered: moneyAdd(curDelivered, goodsVal),
                   updatedAt: new Date().toISOString(),
                 });
               }
@@ -2391,14 +2581,16 @@ export class SoftDeleteRepository implements ISoftDeleteRepository {
             if (data.merchantId) {
               const merchant = await this.database.merchants.get(data.merchantId);
               if (merchant) {
-                const grandTotal = data.grandTotal ?? data.totalAmount ?? 0;
-                const paid = data.cashPaidByMerchant ?? data.paidAmount ?? 0;
+                const grandTotal = roundMMK(data.grandTotal ?? data.totalAmount ?? 0);
+                const paid = roundMMK(data.cashPaidByMerchant ?? data.paidAmount ?? 0);
+                const currentBal = roundMMK(merchant.currentReceivableBalance || 0);
                 await this.database.merchants.update(data.merchantId, {
                   currentReceivableBalance:
-                    data.remainingReceivableBalance ??
-                    ((merchant.currentReceivableBalance || 0) + grandTotal - paid),
-                  totalPurchasesValue: (merchant.totalPurchasesValue || 0) + grandTotal,
-                  totalPaidAmount: (merchant.totalPaidAmount || 0) + paid,
+                    data.remainingReceivableBalance !== undefined
+                      ? roundMMK(data.remainingReceivableBalance)
+                      : moneySub(moneyAdd(currentBal, grandTotal), paid),
+                  totalPurchasesValue: moneyAdd(merchant.totalPurchasesValue || 0, grandTotal),
+                  totalPaidAmount: moneyAdd(merchant.totalPaidAmount || 0, paid),
                   updatedAt: new Date().toISOString(),
                 });
               }

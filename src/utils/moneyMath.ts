@@ -28,6 +28,11 @@ export function toSafeIntMoney(amount: number | string | undefined | null): numb
 }
 
 /**
+ * Alias for toSafeIntMoney - Rounds monetary amount to integer MMK.
+ */
+export const roundMMK = toSafeIntMoney;
+
+/**
  * Deterministic addition of multiple monetary amounts.
  */
 export function moneyAdd(...amounts: (number | string | undefined | null)[]): number {

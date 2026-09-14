@@ -142,6 +142,7 @@ export interface TransactionRecord {
   supplierId: string;
   supplierName: string;
   supplierVillage?: string;
+  supplierPhone?: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   type?: 'COLLECTION_AND_SETTLEMENT' | 'ADVANCE_ONLY' | 'CASH_PAYMENT_ONLY' | 'RAW_MATERIAL_CREDIT' | 'SUPPLIER_REPAYMENT' | string;
@@ -185,6 +186,7 @@ export interface SaleRecord {
   merchantId?: string;
   merchantName?: string;
   merchantTown?: string;
+  merchantPhone?: string;
   customerName?: string;
   customerPhone?: string;
   date: string; // YYYY-MM-DD

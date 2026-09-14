@@ -4,14 +4,12 @@ import jsQR from 'jsqr';
 import {
   X,
   Wifi,
-  Smartphone,
   Check,
   Copy,
   Download,
   Upload,
   QrCode,
   Camera,
-  ArrowRight,
   ShieldCheck,
   RefreshCw,
   Info,
@@ -22,7 +20,11 @@ import {
   RotateCcw,
   Sparkles,
   Send,
-  Layers,
+  Play,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
 } from 'lucide-react';
 import { safeJsonParse } from '../utils/security';
 import {
@@ -31,9 +33,14 @@ import {
   persistMergedDataToDatabase,
   SyncMergeMode,
   SyncMergeResult,
-  SyncPackagePayload,
 } from '../services/syncMergeService';
 import { db } from '../db/database';
+import {
+  encodeForQrTransfer,
+  calculateRequiredChunks,
+  QrChunkReceiver,
+  MAX_QR_CHUNKS_THRESHOLD,
+} from '../utils/qrChunkTransfer';
 
 function isValidSyncPayload(data: any): boolean {
   if (!data || typeof data !== 'object') return false;
@@ -66,16 +73,22 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
   const [activeTab, setActiveTab] = useState<SyncTab>('SEND_RECEIVE');
   const [syncCode, setSyncCode] = useState('');
   const [copied, setCopied] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
   const [isPackaging, setIsPackaging] = useState(false);
 
+  // Chunked Animated QR State (Sender Side)
+  const [chunkQrUrls, setChunkQrUrls] = useState<string[]>([]);
+  const [currentChunkIndex, setCurrentChunkIndex] = useState<number>(0);
+  const [isPlayingAnimation, setIsPlayingAnimation] = useState<boolean>(true);
+  const [isQrOverLimit, setIsQrOverLimit] = useState<boolean>(false);
+  const [qrOverLimitCount, setQrOverLimitCount] = useState<number>(0);
+  const [animationSpeedMs, setAnimationSpeedMs] = useState<number>(350);
+
   // Network Detection State
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [connectionType, setConnectionType] = useState<string>('wifi');
 
   // Pending Import State for Merge vs Overwrite Confirmation Dialog
   const [pendingIncomingPayload, setPendingIncomingPayload] = useState<any | null>(null);
@@ -84,8 +97,11 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
 
   // Return Sync Package State (Auto-Ready after merge/overwrite)
   const [returnPackageReady, setReturnPackageReady] = useState<boolean>(false);
-  const [lastMergeResult, setLastMergeResult] = useState<SyncMergeResult | null>(null);
-  const [returnQrUrl, setReturnQrUrl] = useState<string>('');
+  const [, setLastMergeResult] = useState<SyncMergeResult | null>(null);
+
+  // Camera and Scanning Receiver State
+  const receiverRef = useRef<QrChunkReceiver>(new QrChunkReceiver());
+  const [scanProgress, setScanProgress] = useState<{ received: number; total: number; sessionId: string } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -93,7 +109,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 1. Detect Network (Wifi / Hotspot / Online status)
+  // 1. Detect Network
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -101,43 +117,47 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Check Network Information API if available
-    const navConn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-    if (navConn) {
-      setConnectionType(navConn.type || navConn.effectiveType || 'wifi');
-      const updateConn = () => setConnectionType(navConn.type || navConn.effectiveType || 'wifi');
-      navConn.addEventListener('change', updateConn);
-      return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-        navConn.removeEventListener('change', updateConn);
-      };
-    }
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  // 2. Fetch or Generate QR Data URL
+  // 2. Generate Chunked Animated QR Codes
   const generateSyncQR = useCallback(async () => {
     try {
       setIsGeneratingQR(true);
       const pkg = await buildLatestSyncPackage();
-      const jsonStr = JSON.stringify(pkg);
-      const url = await QRCode.toDataURL(jsonStr, {
-        errorCorrectionLevel: 'L',
-        width: 320,
-        margin: 1,
-      });
-      setQrDataUrl(url);
+      const analysis = calculateRequiredChunks(pkg);
+
+      if (analysis.isOverLimit) {
+        setIsQrOverLimit(true);
+        setQrOverLimitCount(analysis.totalChunks);
+        setChunkQrUrls([]);
+        setIsGeneratingQR(false);
+        return;
+      }
+
+      setIsQrOverLimit(false);
+      setQrOverLimitCount(analysis.totalChunks);
+      const chunkStrings = encodeForQrTransfer(pkg);
+
+      const urls = await Promise.all(
+        chunkStrings.map((str) =>
+          QRCode.toDataURL(str, {
+            errorCorrectionLevel: 'L',
+            width: 320,
+            margin: 1,
+          })
+        )
+      );
+
+      setChunkQrUrls(urls);
+      setCurrentChunkIndex(0);
       setIsGeneratingQR(false);
-      return url;
     } catch (err) {
-      console.error('QR generation error:', err);
+      console.error('QR chunk generation error:', err);
       setIsGeneratingQR(false);
-      return '';
     }
   }, []);
 
@@ -147,7 +167,19 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     }
   }, [isOpen, activeTab, generateSyncQR]);
 
-  // Clean up camera on unmount or tab switch
+  // 3. Sender QR Animation Loop
+  useEffect(() => {
+    if (activeTab !== 'QR_CODE' && !returnPackageReady) return;
+    if (chunkQrUrls.length <= 1 || !isPlayingAnimation) return;
+
+    const interval = setInterval(() => {
+      setCurrentChunkIndex((prev) => (prev + 1) % chunkQrUrls.length);
+    }, animationSpeedMs);
+
+    return () => clearInterval(interval);
+  }, [activeTab, chunkQrUrls.length, isPlayingAnimation, animationSpeedMs, returnPackageReady]);
+
+  // 4. Clean up camera on unmount or tab switch
   useEffect(() => {
     return () => {
       stopCamera();
@@ -163,11 +195,15 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    receiverRef.current.reset();
+    setScanProgress(null);
     setIsScanning(false);
   };
 
   const startCamera = async () => {
     setScanError('');
+    receiverRef.current.reset();
+    setScanProgress(null);
     setIsScanning(true);
 
     try {
@@ -203,17 +239,19 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
           });
 
           if (code && code.data && typeof code.data === 'string' && code.data.length < 2000000) {
-            try {
-              const parsed = safeJsonParse(code.data);
-              if (isValidSyncPayload(parsed)) {
-                stopCamera();
-                // Prompt user with Merge vs Overwrite confirmation
-                setPendingIncomingPayload(parsed);
-                setIsConfirmingMode(true);
-                return;
-              }
-            } catch {
-              // Not JSON QR or invalid structure, keep scanning
+            const result = receiverRef.current.processFrame(code.data);
+
+            if (result.status === 'COMPLETE') {
+              stopCamera();
+              setPendingIncomingPayload(result.data);
+              setIsConfirmingMode(true);
+              return;
+            } else if (result.status === 'IN_PROGRESS') {
+              setScanProgress(result.progress);
+              setScanError('');
+            } else if (result.status === 'CHECKSUM_FAILED') {
+              setScanError('ဒေတာ စစ်ဆေးမှု မအောင်မြင်ပါ (Checksum error) - ထပ်ကြိုးစားပါ');
+              setScanProgress(null);
             }
           }
         }
@@ -222,7 +260,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     animationFrameRef.current = requestAnimationFrame(tickScan);
   };
 
-  // Requirement 2: Auto-package update file when "ဒေတာပို့မည်" is clicked
+  // Direct File Packaging & Send
   const handleSendData = async () => {
     try {
       setIsPackaging(true);
@@ -232,7 +270,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
       const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
       const filename = `shwe-let-yar-sync-${nowStr}.json`;
 
-      // Try Web Share API with file support if mobile/supported
       const file = new File([blob], filename, { type: 'application/json' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
@@ -242,7 +279,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
         });
         setSuccessMsg('ဒေတာဖိုင် ပေးပို့ရန် မျှဝေပြီးပါပြီ');
       } else {
-        // Fallback: Direct instant download
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -271,7 +307,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     }
   };
 
-  // Trigger file selection for receiving Zapya / JSON sync file
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -292,7 +327,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
       }
     };
     reader.readAsText(file);
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -315,13 +349,12 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     }
   };
 
-  // Requirement 3, 4 & 5: Execute Smart Merge / Overwrite with confirmation & Auto-Ready return package
+  // Smart Merge or Overwrite Confirmation
   const handleConfirmSyncMode = async (mode: SyncMergeMode) => {
     if (!pendingIncomingPayload) return;
     setIsMerging(true);
 
     try {
-      // 1. Fetch current local state
       const [
         products,
         suppliers,
@@ -358,26 +391,37 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
         shopSettings: shopSettingsRecord?.value,
       };
 
-      // 2. Perform Smart Merge (Newer-Wins & Disjoint Union) or Overwrite
       const mergeResult = await executeSyncMerge(localSnapshot, pendingIncomingPayload, { mode });
 
       if (mergeResult.success) {
-        // 3. Persist to Dexie IndexedDB
         await persistMergedDataToDatabase(mergeResult.mergedData);
-
-        // 4. Notify parent App component
         onImportData(mergeResult.mergedData, mode);
 
-        // 5. Auto-prepare Return Sync Package for the sending device
+        // Auto-prepare Return Sync Package for the sending device
         const updatedPackage = await buildLatestSyncPackage();
-        const updatedJsonStr = JSON.stringify(updatedPackage);
-        const returnQr = await QRCode.toDataURL(updatedJsonStr, {
-          errorCorrectionLevel: 'L',
-          width: 320,
-          margin: 1,
-        });
+        const returnAnalysis = calculateRequiredChunks(updatedPackage);
 
-        setReturnQrUrl(returnQr);
+        if (returnAnalysis.isOverLimit) {
+          setIsQrOverLimit(true);
+          setQrOverLimitCount(returnAnalysis.totalChunks);
+          setChunkQrUrls([]);
+        } else {
+          setIsQrOverLimit(false);
+          setQrOverLimitCount(returnAnalysis.totalChunks);
+          const returnChunkStrings = encodeForQrTransfer(updatedPackage);
+          const returnUrls = await Promise.all(
+            returnChunkStrings.map((str) =>
+              QRCode.toDataURL(str, {
+                errorCorrectionLevel: 'L',
+                width: 320,
+                margin: 1,
+              })
+            )
+          );
+          setChunkQrUrls(returnUrls);
+          setCurrentChunkIndex(0);
+        }
+
         setLastMergeResult(mergeResult);
         setReturnPackageReady(true);
         setIsConfirmingMode(false);
@@ -396,7 +440,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     }
   };
 
-  // Helper to extract incoming payload summary counts
   const getIncomingSummary = (payload: any) => {
     if (!payload) return null;
     const raw = payload.data || payload;
@@ -449,7 +492,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
           </button>
         </div>
 
-        {/* Network Status Detection Banner (Requirement 1) */}
+        {/* Network Status Detection Banner */}
         <div className="px-4 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
@@ -496,7 +539,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
             }`}
           >
             <QrCode className="w-3.5 h-3.5 text-emerald-400" />
-            <span>QR Scan ဖြင့် ကူးမည်</span>
+            <span>Animated QR ဖြင့် ကူးမည်</span>
           </button>
           <button
             type="button"
@@ -539,7 +582,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
             </div>
           )}
 
-          {/* CONFIRMATION DIALOG: Merge vs Overwrite (Requirement 4) */}
+          {/* CONFIRMATION DIALOG: Merge vs Overwrite */}
           {isConfirmingMode && incomingSummary && (
             <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3.5 border border-slate-700 shadow-xl animate-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-800">
@@ -587,7 +630,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
 
               {/* Two Option Cards */}
               <div className="space-y-2.5">
-                {/* OPTION 1: Smart Merge (Recommended) */}
                 <button
                   type="button"
                   disabled={isMerging}
@@ -612,7 +654,6 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
                   </div>
                 </button>
 
-                {/* OPTION 2: Clean Overwrite */}
                 <button
                   type="button"
                   disabled={isMerging}
@@ -639,7 +680,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
             </div>
           )}
 
-          {/* RETURN SYNC PACKAGE AUTO-READY BANNER (Requirement 5) */}
+          {/* RETURN SYNC PACKAGE AUTO-READY BANNER */}
           {returnPackageReady && (
             <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl space-y-3 animate-in fade-in">
               <div className="flex items-center gap-2 text-emerald-900">
@@ -674,7 +715,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
           {/* TAB 1: SEND & RECEIVE HUB */}
           {activeTab === 'SEND_RECEIVE' && !isConfirmingMode && (
             <div className="space-y-4">
-              {/* Send Card (Requirement 2) */}
+              {/* Send Card */}
               <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2 text-emerald-900 font-extrabold text-xs">
                   <Send className="w-4 h-4 text-emerald-600" />
@@ -741,35 +782,130 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: QR CODE */}
+          {/* TAB 2: ANIMATED QR CODE */}
           {activeTab === 'QR_CODE' && !isConfirmingMode && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Send Phone QR */}
+                {/* Send Phone QR (Animated Chunk Transfer) */}
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center text-center space-y-2.5">
                   <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
                     ၁
                   </div>
                   <span className="font-bold text-xs text-slate-900">ပေးပို့မည့်ဖုန်းတွင် QR ထုတ်ပြပါ</span>
 
-                  {qrDataUrl ? (
-                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <img
-                        src={returnQrUrl || qrDataUrl}
-                        alt="Sync QR"
-                        className="w-40 h-40 object-contain mx-auto"
-                        referrerPolicy="no-referrer"
-                      />
+                  {isQrOverLimit ? (
+                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-left space-y-2 text-xs">
+                      <div className="flex items-start gap-2 text-amber-900 font-bold">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>ဒေတာ များနေလို့ QR နဲ့ မကူးနိုင်ပါ</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        စက်ရှိ စာရင်းပမာဏ များပြားနေသောကြောင့် (Chunk {qrOverLimitCount} ခု &gt; {MAX_QR_CHUNKS_THRESHOLD}) QR ဖြင့် အပြည့်အစုံ မကူးနိုင်ပါ။
+                      </p>
+                      <p className="text-[11px] text-slate-700 font-medium">
+                        👉 <strong>Text Code</strong> tab ကနေ JSON file ကို <strong>Zapya / Bluetooth</strong> ဖြင့် အလွယ်တကူ ပို့ဆောင်နိုင်ပါသည်။
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('TEXT_CODE')}
+                        className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] transition-colors"
+                      >
+                        စာရင်းကုဒ် / ဖိုင် (Text Code) သို့ သွားမည်
+                      </button>
+                    </div>
+                  ) : chunkQrUrls.length > 0 ? (
+                    <div className="w-full space-y-2">
+                      {/* Animated QR Container */}
+                      <div className="relative bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                        <img
+                          src={chunkQrUrls[currentChunkIndex]}
+                          alt={`Sync QR Chunk ${currentChunkIndex + 1}`}
+                          className="w-40 h-40 object-contain mx-auto"
+                          referrerPolicy="no-referrer"
+                        />
+
+                        {/* Chunk Progress Badge Overlay */}
+                        <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-slate-900/85 text-emerald-300 text-[10px] font-mono font-bold shadow-xs">
+                          Chunk {currentChunkIndex + 1} / {chunkQrUrls.length}
+                        </div>
+
+                        {/* Visual Progress Bar */}
+                        {chunkQrUrls.length > 1 && (
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full transition-all duration-200"
+                              style={{
+                                width: `${((currentChunkIndex + 1) / chunkQrUrls.length) * 100}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Animation Controls (Pause / Play, Next, Prev, Restart) */}
+                      {chunkQrUrls.length > 1 && (
+                        <div className="flex items-center justify-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentChunkIndex(0)}
+                            title="ပြန်စမည် (Restart)"
+                            className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer text-xs"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCurrentChunkIndex(
+                                (prev) => (prev - 1 + chunkQrUrls.length) % chunkQrUrls.length
+                              )
+                            }
+                            title="ယခင် (Previous)"
+                            className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer text-xs"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsPlayingAnimation(!isPlayingAnimation)}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white cursor-pointer font-bold text-xs flex items-center gap-1 shadow-2xs"
+                          >
+                            {isPlayingAnimation ? (
+                              <>
+                                <Pause className="w-3.5 h-3.5 text-amber-400" />
+                                <span>ခေတ္တရပ်မည်</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>ဆက်ဖွင့်မည်</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCurrentChunkIndex((prev) => (prev + 1) % chunkQrUrls.length)
+                            }
+                            title="ရှေ့သို့ (Next)"
+                            className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 cursor-pointer text-xs"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        {chunkQrUrls.length > 1
+                          ? `လက်ခံမည့်ဖုန်းမှ Scan ဖတ်နေစဉ် ဤ QR အလှည့်ကျ ပြသနေမှုကို ကင်မရာဖြင့် ချိန်ထားပါ (Chunk ${chunkQrUrls.length} ခုလုံး ရောက်သည်အထိ)`
+                          : 'နောက်ဆုံး သိမ်းထားသော စာရင်းအချက်အလက်များ ပါဝင်ပါသည်'}
+                      </p>
                     </div>
                   ) : (
                     <div className="w-40 h-40 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs">
                       {isGeneratingQR ? 'QR ဖန်တီးနေပါသည်...' : 'QR အဆင်သင့်မဖြစ်သေးပါ'}
                     </div>
                   )}
-
-                  <p className="text-[11px] text-slate-500">
-                    နောက်ဆုံး သိမ်းထားသော စာရင်းအချက်အလက်များ ပါဝင်ပါသည်
-                  </p>
                 </div>
 
                 {/* Receive Phone Camera */}
@@ -784,6 +920,26 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
                       <video ref={videoRef} className="w-full h-full object-cover" />
                       <canvas ref={canvasRef} className="hidden" />
                       <div className="absolute inset-4 border-2 border-emerald-400 rounded-lg animate-pulse pointer-events-none" />
+
+                      {/* Live Chunk Scan Counter on Camera Overlay */}
+                      {scanProgress && (
+                        <div className="absolute bottom-2 inset-x-2 bg-slate-900/90 text-white rounded-lg p-1.5 text-center shadow-lg border border-slate-700 space-y-1">
+                          <div className="flex items-center justify-between text-[11px] px-1 font-bold text-emerald-300">
+                            <span>ရရှိမှု:</span>
+                            <span>
+                              {scanProgress.received} / {scanProgress.total} Chunks
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-400 h-full transition-all duration-150"
+                              style={{
+                                width: `${Math.min(100, (scanProgress.received / scanProgress.total) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="w-40 h-40 bg-slate-100 rounded-xl flex flex-col items-center justify-center text-slate-500 gap-2 border border-slate-200">
@@ -842,9 +998,9 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                  <span className="font-bold text-slate-900 block text-xs">အဆင့် ၃: ဒေတာပို့မည် သို့မဟုတ် QR Code ဖြင့် ပေးပို့ပါ</span>
-                  <p className="text-[11px] text-slate-600">
-                    အထက်ပါ <strong>"ဒေတာပို့မည်"</strong> ခလုတ်ကို နှိပ်၍ Zapya / Bluetooth ဖြင့် ပေးပို့နိုင်ပြီး လက်ခံသည့်ဖုန်းတွင် <strong>"စမတ်ပေါင်းစည်းမည် (Smart Merge)"</strong> ကို ရွေးချယ်ပါ။
+                  <span className="font-bold text-slate-900 block text-xs">အဆင့် ၃: စာရင်းဖိုင် (Zapya / Bluetooth) သို့မဟုတ် Animated QR ဖြင့် ပို့ပါ</span>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    စာရင်းဒေတာ အနည်းငယ်အတွက် <strong>Animated QR Code</strong> ဖြင့် အလှည့်ကျ စကင်ဖတ်နိုင်ပါသည်။ စာရင်းဒေတာ အလွန်များပြားသည့် ဆိုင်ကြီးများ (Large Dataset) အတွက် <strong>"ဒေတာပို့မည်" (Zapya / Bluetooth)</strong> သို့မဟုတ် <strong>စာရင်းကုဒ် / ဖိုင် (Text Code)</strong> ဖြင့် ပေးပို့ခြင်းသည် အမြန်ဆုံးနှင့် အစိတ်ချရဆုံး ဖြစ်ပါသည်။
                   </p>
                 </div>
               </div>
