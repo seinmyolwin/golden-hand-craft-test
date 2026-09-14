@@ -18,6 +18,7 @@ import {
   PeerTradeRecord,
   SyncPacket,
   RawMaterialPreset,
+  RawMaterialStockStat,
 } from '../types';
 import {
   DEFAULT_PRODUCTS,
@@ -226,14 +227,15 @@ export const DEFAULT_RAW_MATERIAL_PRESETS: RawMaterialPreset[] = [
 export function getStoredRawMaterialPresets(): RawMaterialPreset[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS);
-    if (!data) {
+    if (data === null) {
       localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify(DEFAULT_RAW_MATERIAL_PRESETS));
+      localStorage.setItem('raw_material_presets_initialized_v2', 'true');
       return DEFAULT_RAW_MATERIAL_PRESETS;
     }
     const parsed = JSON.parse(data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       // Filter out any lingering LACQUER / သစ်စေး items if user had previous version
-      return parsed.filter((p: any) => p.category !== 'LACQUER' && p.categoryLabel !== 'သစ်စေး' && !p.name?.includes('သစ်စေး'));
+      return parsed.filter((p: any) => p && p.category !== 'LACQUER' && p.categoryLabel !== 'သစ်စေး' && !p.name?.includes('သစ်စေး'));
     }
     return DEFAULT_RAW_MATERIAL_PRESETS;
   } catch (e) {
@@ -243,10 +245,19 @@ export function getStoredRawMaterialPresets(): RawMaterialPreset[] {
 }
 
 export function saveStoredRawMaterialPresets(presets: RawMaterialPreset[]): void {
-  const list = presets && presets.length > 0 ? presets : DEFAULT_RAW_MATERIAL_PRESETS;
+  const list = Array.isArray(presets) ? presets : [];
+  try {
+    localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify(list));
+    localStorage.setItem('raw_material_presets_initialized_v2', 'true');
+  } catch (e) {
+    console.error('Error saving raw material presets to localStorage', e);
+  }
+
   db.transaction('rw', db.rawMaterialPresets, async () => {
     await db.rawMaterialPresets.clear();
-    await db.rawMaterialPresets.bulkPut(list);
+    if (list.length > 0) {
+      await db.rawMaterialPresets.bulkPut(list);
+    }
   }).catch((err) => console.error('Dexie save raw material presets error:', err));
 }
 
@@ -859,6 +870,152 @@ export function computeAllProductsStock(
       currentStock: s.calculatedClosingBalance,
       procurementValue: s.currentStockCostValuation,
       potentialSalesValue: s.currentStockWholesaleValuation,
+      status,
+    };
+  });
+}
+
+export function computeRawMaterialsStock(
+  presets: RawMaterialPreset[] = [],
+  merchantPurchases: MerchantPurchaseRecord[] = [],
+  transactions: TransactionRecord[] = [],
+  sales: SaleRecord[] = [],
+  _adjustments: StockAdjustmentRecord[] = []
+): RawMaterialStockStat[] {
+  // Filter out pure cash advances as they are money, not raw materials
+  const materialPresets = (presets || []).filter((p) => p && p.category !== 'CASH_ADVANCE');
+
+  // Map to accumulate inflows, outflows, and details
+  const materialMap = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      category: string;
+      categoryLabel: string;
+      unit: string;
+      unitPrice: number;
+      inflow: number;
+      outflow: number;
+    }
+  >();
+
+  materialPresets.forEach((p) => {
+    materialMap.set(p.name.trim().toLowerCase(), {
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      categoryLabel: p.categoryLabel || 'ကုန်ကြမ်း',
+      unit: p.defaultUnit || 'ခု',
+      unitPrice: p.defaultUnitPrice || 0,
+      inflow: 0,
+      outflow: 0,
+    });
+  });
+
+  // 1. Process Merchant Purchases (Inflows)
+  (merchantPurchases || []).forEach((pur) => {
+    if (pur.status === 'CANCELLED') return;
+    (pur.items || []).forEach((item) => {
+      const name = (item.productName || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      let record = materialMap.get(key);
+      if (!record) {
+        record = {
+          id: item.productId || `rm-${generateStableId('custom')}`,
+          name,
+          category: 'OTHER',
+          categoryLabel: 'အခြားကုန်ကြမ်း',
+          unit: item.unit || 'ခု',
+          unitPrice: item.unitPrice || 0,
+          inflow: 0,
+          outflow: 0,
+        };
+        materialMap.set(key, record);
+      }
+      record.inflow += Number(item.quantity) || 0;
+      if (item.unitPrice && item.unitPrice > 0) {
+        record.unitPrice = item.unitPrice;
+      }
+    });
+  });
+
+  // 2. Process Supplier Transactions (Outflow via Raw Material Credit)
+  (transactions || []).forEach((tx) => {
+    if (tx.status === 'CANCELLED') return;
+    if (tx.type === 'RAW_MATERIAL_CREDIT') {
+      const items = tx.rawMaterialItems && tx.rawMaterialItems.length > 0 ? tx.rawMaterialItems : tx.items || [];
+      items.forEach((item: any) => {
+        const name = (item.name || item.productName || '').trim();
+        if (!name) return;
+        const key = name.toLowerCase();
+        let record = materialMap.get(key);
+        if (!record) {
+          record = {
+            id: item.id || `rm-${generateStableId('custom')}`,
+            name,
+            category: 'OTHER',
+            categoryLabel: 'အခြားကုန်ကြမ်း',
+            unit: item.unit || 'ခု',
+            unitPrice: item.unitPrice || 0,
+            inflow: 0,
+            outflow: 0,
+          };
+          materialMap.set(key, record);
+        }
+        record.outflow += Number(item.quantity) || 0;
+      });
+    }
+  });
+
+  // 3. Process Direct Sales (Outflow via Direct Raw Material Sales)
+  (sales || []).forEach((sale) => {
+    if (sale.status === 'CANCELLED') return;
+    (sale.items || []).forEach((item) => {
+      let rawName = '';
+      if (item.productId && (item.productId.startsWith('rm-') || materialPresets.some((p) => p.id === item.productId))) {
+        rawName = item.productName.replace(/^\[ကုန်ကြမ်း\]\s*/, '').trim();
+      } else if (item.productName && item.productName.startsWith('[ကုန်ကြမ်း]')) {
+        rawName = item.productName.replace(/^\[ကုန်ကြမ်း\]\s*/, '').trim();
+      } else {
+        const directMatch = materialPresets.find(
+          (p) => p.name.trim().toLowerCase() === item.productName.trim().toLowerCase()
+        );
+        if (directMatch) rawName = directMatch.name;
+      }
+
+      if (rawName) {
+        const key = rawName.toLowerCase();
+        const record = materialMap.get(key);
+        if (record) {
+          record.outflow += Number(item.quantity) || 0;
+        }
+      }
+    });
+  });
+
+  // 4. Build final stats
+  return Array.from(materialMap.values()).map((m) => {
+    const currentStock = Math.max(0, m.inflow - m.outflow);
+    let status: 'OUT_OF_STOCK' | 'LOW_STOCK' | 'IN_STOCK' = 'IN_STOCK';
+    if (currentStock <= 0) {
+      status = 'OUT_OF_STOCK';
+    } else if (currentStock <= 10) {
+      status = 'LOW_STOCK';
+    }
+
+    return {
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      categoryLabel: m.categoryLabel,
+      defaultUnit: m.unit,
+      unitPrice: m.unitPrice,
+      totalInflow: m.inflow,
+      totalOutflow: m.outflow,
+      currentStock,
+      estimatedValuation: currentStock * m.unitPrice,
       status,
     };
   });

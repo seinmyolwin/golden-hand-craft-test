@@ -19,6 +19,7 @@ import {
   OrderStatus,
   MerchantPurchaseRecord,
   ReturnRecord,
+  RawMaterialPreset,
 } from './types';
 import {
   DEFAULT_SHOP_SETTINGS,
@@ -51,6 +52,7 @@ import {
   computeAllProductsStock,
   getStoredMerchantPurchases,
   saveStoredMerchantPurchases,
+  getStoredRawMaterialPresets,
   mergeDatabaseSnapshots,
   getTodayDateString,
   getCurrentTimeString,
@@ -203,6 +205,9 @@ export default function App() {
   const [shopSettings, setShopSettings] = useState<ShopSettings>(DEFAULT_SHOP_SETTINGS);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [deletedItems, setDeletedItems] = useState<SoftDeletedItem[]>([]);
+  const [rawMaterialPresets, setRawMaterialPresets] = useState<RawMaterialPreset[]>(() =>
+    getStoredRawMaterialPresets()
+  );
 
   // Safe offline migration & IndexedDB Hydration on initial launch
   useEffect(() => {
@@ -1842,6 +1847,42 @@ export default function App() {
     setIsNewSaleModalOpen(true);
   }, []);
 
+  const handleOpenNewSaleForSupplier = useCallback(
+    (supId: string) => {
+      const supplier = suppliers.find((s) => s.id === supId);
+      if (!supplier) return;
+      const existingMerchant = merchants.find(
+        (m) =>
+          m.name.trim().toLowerCase() === supplier.name.trim().toLowerCase() ||
+          (supplier.phone && m.phone && m.phone === supplier.phone)
+      );
+      if (existingMerchant) {
+        handleOpenNewSale(existingMerchant.id);
+      } else {
+        const now = new Date().toISOString();
+        const newMerchant: Merchant = {
+          id: generateStableId('merchant'),
+          name: supplier.name,
+          town: supplier.village || 'ကျေးရွာ/ရပ်ကွက်',
+          contactPerson: supplier.name,
+          phone: supplier.phone || '',
+          address: supplier.address || supplier.village || '',
+          role: 'BOTH',
+          currentReceivableBalance: 0,
+          receivableBalance: 0,
+          payableBalance: 0,
+          totalPurchasesValue: 0,
+          totalPaidAmount: 0,
+          createdAt: now,
+          updatedAt: now,
+        };
+        handleAddMerchant(newMerchant);
+        handleOpenNewSale(newMerchant.id);
+      }
+    },
+    [suppliers, merchants, handleAddMerchant, handleOpenNewSale]
+  );
+
   // Stock Adjustment Handler
   const handleAddStockAdjustment = useCallback(async (adj: StockAdjustmentRecord) => {
     try {
@@ -2119,6 +2160,8 @@ export default function App() {
               products={products}
               transactions={transactions}
               sales={sales}
+              merchantPurchases={merchantPurchases}
+              rawMaterialPresets={rawMaterialPresets}
               stockAdjustments={stockAdjustments}
               peerTrades={peerTrades}
               onUpdateProduct={handleUpdateProduct}
@@ -2178,6 +2221,7 @@ export default function App() {
               purchases={merchantPurchases}
               merchants={merchants}
               products={products}
+              rawMaterialPresets={rawMaterialPresets}
               selectedDate={selectedDate}
               onSavePurchase={handleSaveMerchantPurchase}
               onDeletePurchase={handleDeleteMerchantPurchase}
@@ -2220,6 +2264,7 @@ export default function App() {
               onUpdateSupplier={handleUpdateSupplier}
               onDeleteSupplier={handleDeleteSupplier}
               onOpenNewEntryWithSupplier={(supId) => handleOpenNewEntry(supId)}
+              onOpenNewSaleForSupplier={handleOpenNewSaleForSupplier}
               onViewSupplierLedger={handleViewSupplierLedger}
               onOpenDeletedHistory={() => setIsDeletedHistoryModalOpen(true)}
               deletedRecordsCount={deletedItems.filter((d) => d.type === 'SUPPLIER').length}
@@ -2335,6 +2380,7 @@ export default function App() {
           onClose={() => setIsNewSaleModalOpen(false)}
           merchants={merchants}
           products={products}
+          rawMaterialPresets={rawMaterialPresets}
           initialMerchantId={initialSaleMerchantId}
           selectedDate={selectedDate}
           inventoryStock={inventoryStock}

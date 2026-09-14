@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Merchant, Product, SaleRecord, SaleItem, PaymentMethod } from '../types';
+import { Merchant, Product, SaleRecord, SaleItem, PaymentMethod, RawMaterialPreset } from '../types';
 import {
   formatMMK,
   formatNumberOnly,
@@ -33,6 +33,7 @@ interface NewSaleModalProps {
   onClose: () => void;
   merchants: Merchant[];
   products: Product[];
+  rawMaterialPresets?: RawMaterialPreset[];
   initialMerchantId?: string;
   selectedDate: string;
   inventoryStock?: any[];
@@ -45,6 +46,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   onClose,
   merchants = [],
   products = [],
+  rawMaterialPresets = [],
   initialMerchantId,
   selectedDate,
   inventoryStock = [],
@@ -149,11 +151,16 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   };
 
   const handleProductChange = (index: number, pId: string) => {
-    const prod = products.find((p) => p.id === pId);
     const updated = [...items];
     updated[index].productId = pId;
+    const prod = products.find((p) => p.id === pId);
     if (prod) {
       updated[index].unitPrice = prod.defaultWholesalePrice || Math.round(prod.defaultPrice * 1.25);
+    } else {
+      const preset = (rawMaterialPresets || []).find((rp) => rp.id === pId);
+      if (preset) {
+        updated[index].unitPrice = preset.defaultUnitPrice || 1000;
+      }
     }
     setItems(updated);
   };
@@ -164,16 +171,30 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
     const validItems: SaleItem[] = items
       .map((it) => {
+        if (it.quantity <= 0) return null;
         const prod = products.find((p) => p.id === it.productId);
-        if (!prod || it.quantity <= 0) return null;
-        return {
-          productId: prod.id,
-          productName: prod.name,
-          quantity: it.quantity,
-          unit: prod.unit,
-          unitPrice: it.unitPrice,
-          subtotal: it.quantity * it.unitPrice,
-        };
+        if (prod) {
+          return {
+            productId: prod.id,
+            productName: prod.name,
+            quantity: it.quantity,
+            unit: prod.unit,
+            unitPrice: it.unitPrice,
+            subtotal: it.quantity * it.unitPrice,
+          };
+        }
+        const preset = (rawMaterialPresets || []).find((rp) => rp.id === it.productId);
+        if (preset) {
+          return {
+            productId: preset.id,
+            productName: `[ကုန်ကြမ်း] ${preset.name}`,
+            quantity: it.quantity,
+            unit: preset.defaultUnit || 'ခု',
+            unitPrice: it.unitPrice,
+            subtotal: it.quantity * it.unitPrice,
+          };
+        }
+        return null;
       })
       .filter((it): it is SaleItem => it !== null);
 
@@ -408,11 +429,24 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                         onChange={(e) => handleProductChange(idx, e.target.value)}
                         className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
                       >
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.unit})
-                          </option>
-                        ))}
+                        <optgroup label="-- ကုန်ချောပစ္စည်းများ (Finished Products) --">
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.unit})
+                            </option>
+                          ))}
+                        </optgroup>
+                        {rawMaterialPresets && rawMaterialPresets.filter((rp) => rp.category !== 'CASH_ADVANCE').length > 0 && (
+                          <optgroup label="-- ကုန်ကြမ်း တိုက်ရိုက်ရောင်းချခြင်း (Raw Materials) --">
+                            {rawMaterialPresets
+                              .filter((rp) => rp.category !== 'CASH_ADVANCE')
+                              .map((rp) => (
+                                <option key={rp.id} value={rp.id}>
+                                  [ကုန်ကြမ်း] {rp.name} ({rp.defaultUnit})
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
                       </select>
                       {curProdStock && (
                         <span className="text-[10px] text-slate-500 block mt-0.5">

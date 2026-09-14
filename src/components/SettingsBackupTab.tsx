@@ -106,6 +106,8 @@ import {
   BookOpen,
   Sparkles,
   Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   DEFAULT_PRODUCTS,
@@ -303,6 +305,45 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   const [presetUnit, setPresetUnit] = useState<string>('လုံး');
   const [presetPrice, setPresetPrice] = useState<number>(3500);
   const [presetCategoryFilter, setPresetCategoryFilter] = useState<string>('all');
+
+  // Master Sections Collapse/Expand Toggles
+  const [isProductMasterExpanded, setIsProductMasterExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('settings_product_master_expanded');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [isRawMasterExpanded, setIsRawMasterExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('settings_raw_master_expanded');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleProductMaster = () => {
+    setIsProductMasterExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('settings_product_master_expanded', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const toggleRawMaster = () => {
+    setIsRawMasterExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('settings_raw_master_expanded', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const handleSavePreset = (e: React.FormEvent) => {
     e.preventDefault();
@@ -923,129 +964,173 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         {/* Product Management Section */}
         <div className="border-t border-slate-100 pt-4 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div>
-              <h4 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
-                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
-                <span>ကုန်ပစ္စည်းစာရင်း စိတ်ကြိုက် ပြင်ဆင်/ဖျက်ခြင်း (Product Master)</span>
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                ကုန်ပစ္စည်းတစ်ခုချင်းစီ၏ အမည်၊ စျေးနှုန်း၊ အမျိုးအစားများကို ပြင်ဆင်နိုင်သည်
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenAddProduct}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs self-start sm:self-auto"
+            <div
+              className="cursor-pointer select-none flex items-center gap-2"
+              onClick={toggleProductMaster}
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>ပစ္စည်းသစ်ထည့်မည်</span>
-            </button>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900">
+                    ကုန်ပစ္စည်းစီမံခြင်း (Product Master)
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {products.length} မျိုး
+                  </span>
+                  <span className="text-slate-400 hover:text-slate-600 p-0.5">
+                    {isProductMasterExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {isProductMasterExpanded
+                    ? 'ကုန်ပစ္စည်းတစ်ခုချင်းစီ၏ အမည်၊ စျေးနှုန်း၊ အမျိုးအစားများကို ပြင်ဆင်နိုင်သည်'
+                    : 'စာရင်းဝှက်ထားပါသည် (ဖွင့်ကြည့်ရန် နှိပ်ပါ)'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={toggleProductMaster}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                {isProductMasterExpanded ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ဝှက်မည်</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ဖော်မည်</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenAddProduct}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>ပစ္စည်းသစ်ထည့်မည်</span>
+              </button>
+            </div>
           </div>
 
-          {/* Search and Category Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-center gap-2">
-            <div className="relative flex-1 w-full">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="ကုန်ပစ္စည်း အမည် သို့မဟုတ် အမျိုးအစား ရှာဖွေပါ..."
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
-              />
-              {productSearch && (
-                <button
-                  type="button"
-                  onClick={() => setProductSearch('')}
-                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+          {isProductMasterExpanded && (
+            <>
+              {/* Search and Category Filter Bar */}
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="ကုန်ပစ္စည်း အမည် သို့မဟုတ် အမျိုးအစား ရှာဖွေပါ..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                  {productSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProductSearch('')}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                  <select
+                    value={productCategoryFilter}
+                    onChange={(e) => setProductCategoryFilter(e.target.value)}
+                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 cursor-pointer w-full sm:w-auto"
+                  >
+                    <option value="all">အမျိုးအစား အားလုံး</option>
+                    {Array.from(new Set(products.map((p) => p.category || 'အထွေထွေ'))).map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Product Items Table / Cards */}
+              <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
+                {filteredProductsForSetting.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400">
+                    ရှာဖွေမှုနှင့် ကိုက်ညီသော ကုန်ပစ္စည်း မရှိပါ
+                  </div>
+                ) : (
+                  filteredProductsForSetting.map((prod) => {
+                    const stock = inventoryStockMap.get(prod.id) ?? prod.currentStock ?? 0;
+                    return (
+                      <div
+                        key={prod.id}
+                        className="p-3 hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900">{prod.name}</span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                              {prod.category}
+                            </span>
+                            {stock <= (prod.minStockAlert || 10) && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                လက်ကျန်နည်း
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                            <span>ဝယ်စျေး: <strong className="text-slate-800">{formatMMK(prod.defaultPrice || 0)}</strong></span>
+                            <span>•</span>
+                            <span>လက်ကားစျေး: <strong className="text-emerald-700">{formatMMK(prod.defaultWholesalePrice || prod.defaultPrice || 0)}</strong></span>
+                            <span>•</span>
+                            <span>လက်ကျန်: <strong className="text-slate-800">{formatNumberOnly(stock)} {prod.unit || 'ထည်'}</strong></span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditProduct(prod)}
+                            className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                          >
+                            <Edit3 className="w-3 h-3 text-slate-500" />
+                            <span>ပြင်မည်</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`"${prod.name}" ကုန်ပစ္စည်းကို ဖျက်ရန် သေချာပါသလား?`)) {
+                                if (onDeleteProduct) {
+                                onDeleteProduct(prod.id);
+                              }
+                            }
+                          }}
+                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                          title="ဖျက်မည်"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-500" />
+                          <span>ဖျက်</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
-
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              <select
-                value={productCategoryFilter}
-                onChange={(e) => setProductCategoryFilter(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 cursor-pointer w-full sm:w-auto"
-              >
-                <option value="all">အမျိုးအစား အားလုံး</option>
-                {Array.from(new Set(products.map((p) => p.category || 'အထွေထွေ'))).map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Product Items Table / Cards */}
-          <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
-            {filteredProductsForSetting.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-400">
-                ရှာဖွေမှုနှင့် ကိုက်ညီသော ကုန်ပစ္စည်း မရှိပါ
-              </div>
-            ) : (
-              filteredProductsForSetting.map((prod) => {
-                const stock = inventoryStockMap.get(prod.id) ?? prod.currentStock ?? 0;
-                return (
-                  <div
-                    key={prod.id}
-                    className="p-3 hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors text-xs"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900">{prod.name}</span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          {prod.category}
-                        </span>
-                        {stock <= (prod.minStockAlert || 10) && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                            လက်ကျန်နည်း
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                        <span>ဝယ်စျေး: <strong className="text-slate-800">{formatMMK(prod.defaultPrice || 0)}</strong></span>
-                        <span>•</span>
-                        <span>လက်ကားစျေး: <strong className="text-emerald-700">{formatMMK(prod.defaultWholesalePrice || prod.defaultPrice || 0)}</strong></span>
-                        <span>•</span>
-                        <span>လက်ကျန်: <strong className="text-slate-800">{formatNumberOnly(stock)} {prod.unit || 'ထည်'}</strong></span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditProduct(prod)}
-                        className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                      >
-                        <Edit3 className="w-3 h-3 text-slate-500" />
-                        <span>ပြင်မည်</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`"${prod.name}" ကုန်ပစ္စည်းကို ဖျက်ရန် သေချာပါသလား?`)) {
-                            if (onDeleteProduct) {
-                              onDeleteProduct(prod.id);
-                            }
-                          }
-                        }}
-                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors"
-                        title="ဖျက်မည်"
-                      >
-                        <Trash2 className="w-3 h-3 text-rose-500" />
-                        <span>ဖျက်</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+          </>
+        )}
+      </div>
       </div>
 
       {/* ================= APP LOCK & PASSWORD KEY RESET CARD ================= */}
@@ -2122,19 +2207,57 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         </div>
       </div>
 
-      {/* ================= RAW MATERIAL PRESETS MANAGEMENT ================= */}
+      {/* ================= RAW MASTER (RAW MATERIAL PRESETS) MANAGEMENT ================= */}
       <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div>
-            <h3 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
+          <div
+            className="cursor-pointer select-none flex items-center gap-2"
+            onClick={toggleRawMaster}
+          >
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
               <Layers className="w-4 h-4 text-amber-600" />
-              <span>ဝါး၊ ကြိမ်နှင့် ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားများ စိတ်ကြိုက်စီမံခြင်း</span>
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              ကုန်ပစ္စည်းပေးသွင်းသူများထံ ကုန်ကြမ်းကြိုထုတ်ပေးရာတွင် drop-down ၌ အမြန်ရွေးချယ်နိုင်သော ကုန်ကြမ်းအမည်များ၊ ယူနစ်နှင့် ပေါက်ဈေးများကို စိတ်ကြိုက်ထည့်သွင်း/ဖျက်ပယ်နိုင်ပါသည်
-            </p>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                  ကုန်ကြမ်းစီမံခြင်း (Raw Master)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                  {rawMaterialPresets.length} မျိုး
+                </span>
+                <span className="text-slate-400 hover:text-slate-600 p-0.5">
+                  {isRawMasterExpanded ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {isRawMasterExpanded
+                  ? 'ဝါး၊ ကြိမ်နှင့် ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားများ စိတ်ကြိုက်စီမံနိုင်ပါသည်'
+                  : 'စာရင်းဝှက်ထားပါသည် (ဖွင့်ကြည့်ရန် နှိပ်ပါ)'}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleRawMaster}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              {isRawMasterExpanded ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ဝှက်မည်</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ဖော်မည်</span>
+                </>
+              )}
+            </button>
             <button
               type="button"
               onClick={handleResetPresetsToDefault}
@@ -2153,80 +2276,84 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </div>
         </div>
 
-        {/* Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {[
-            { id: 'all', label: 'အားလုံး', count: rawMaterialPresets.length },
-            { id: 'BAMBOO', label: 'ဝါးကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'BAMBOO').length },
-            { id: 'RATTAN', label: 'ကြိမ်ကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'RATTAN').length },
-            { id: 'CASH_ADVANCE', label: 'ငွေကြိုယူ', count: rawMaterialPresets.filter((p) => p.category === 'CASH_ADVANCE').length },
-            { id: 'OTHER', label: 'အခြားကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'OTHER').length },
-          ].map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setPresetCategoryFilter(cat.id)}
-              className={`px-3 py-1 text-xs rounded-full font-bold cursor-pointer transition-colors shrink-0 ${
-                presetCategoryFilter === cat.id
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {cat.label} ({cat.count})
-            </button>
-          ))}
-        </div>
-
-        {/* Presets List Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-          {rawMaterialPresets
-            .filter((p) => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
-            .map((preset) => {
-              const badgeColor =
-                preset.category === 'BAMBOO'
-                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                  : preset.category === 'RATTAN'
-                  ? 'bg-amber-100 text-amber-800 border-amber-200'
-                  : preset.category === 'CASH_ADVANCE'
-                  ? 'bg-blue-100 text-blue-800 border-blue-200'
-                  : 'bg-slate-100 text-slate-800 border-slate-200';
-
-              return (
-                <div
-                  key={preset.id}
-                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex items-center justify-between gap-2 transition-all"
+        {isRawMasterExpanded && (
+          <>
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {[
+                { id: 'all', label: 'အားလုံး', count: rawMaterialPresets.length },
+                { id: 'BAMBOO', label: 'ဝါးကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'BAMBOO').length },
+                { id: 'RATTAN', label: 'ကြိမ်ကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'RATTAN').length },
+                { id: 'CASH_ADVANCE', label: 'ငွေကြိုယူ', count: rawMaterialPresets.filter((p) => p.category === 'CASH_ADVANCE').length },
+                { id: 'OTHER', label: 'အခြားကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'OTHER').length },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setPresetCategoryFilter(cat.id)}
+                  className={`px-3 py-1 text-xs rounded-full font-bold cursor-pointer transition-colors shrink-0 ${
+                    presetCategoryFilter === cat.id
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeColor}`}>
-                        {preset.categoryLabel || preset.category}
-                      </span>
-                    </div>
-                    <h4 className="font-bold text-xs text-slate-900 truncate">{preset.name}</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      ယူနစ်: <span className="font-semibold text-slate-700">{preset.defaultUnit}</span>
-                      {preset.category !== 'CASH_ADVANCE' && (
-                        <>
-                          {' '}• ပေါက်ဈေး:{' '}
-                          <span className="font-bold text-slate-900">
-                            {formatNumberOnly(preset.defaultUnitPrice)} ကျပ်
+                  {cat.label} ({cat.count})
+                </button>
+              ))}
+            </div>
+
+            {/* Presets List Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {rawMaterialPresets
+                .filter((p) => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
+                .map((preset) => {
+                  const badgeColor =
+                    preset.category === 'BAMBOO'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : preset.category === 'RATTAN'
+                      ? 'bg-amber-100 text-amber-800 border-amber-200'
+                      : preset.category === 'CASH_ADVANCE'
+                      ? 'bg-blue-100 text-blue-800 border-blue-200'
+                      : 'bg-slate-100 text-slate-800 border-slate-200';
+
+                  return (
+                    <div
+                      key={preset.id}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex items-center justify-between gap-2 transition-all"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeColor}`}>
+                            {preset.categoryLabel || preset.category}
                           </span>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePreset(preset.id, preset.name)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                    title="ဖျက်မည်"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })}
-        </div>
+                        </div>
+                        <h4 className="font-bold text-xs text-slate-900 truncate">{preset.name}</h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          ယူနစ်: <span className="font-semibold text-slate-700">{preset.defaultUnit}</span>
+                          {preset.category !== 'CASH_ADVANCE' && (
+                            <>
+                              {' '}• ပေါက်ဈေး:{' '}
+                              <span className="font-bold text-slate-900">
+                                {formatNumberOnly(preset.defaultUnitPrice)} ကျပ်
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePreset(preset.id, preset.name)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="ဖျက်မည်"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ================= DATA MANAGEMENT & SETUP OPTIONS ================= */}

@@ -109,6 +109,20 @@ export interface RawMaterialPreset {
   isCustom?: boolean;
 }
 
+export interface RawMaterialStockStat {
+  id: string;
+  name: string;
+  category: string;
+  categoryLabel: string;
+  defaultUnit: string;
+  unitPrice: number;
+  totalInflow: number; // Purchased from merchants / suppliers
+  totalOutflow: number; // Issued to suppliers as advance + sold directly
+  currentStock: number; // Inflow - Outflow
+  estimatedValuation: number; // currentStock * unitPrice
+  status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+}
+
 export interface RawMaterialItem {
   id?: string;
   productId?: string;

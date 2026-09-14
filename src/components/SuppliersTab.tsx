@@ -39,6 +39,7 @@ interface SuppliersTabProps {
   onAddSupplier: (supplier: Supplier) => void;
   onUpdateSupplier: (supplier: Supplier) => void;
   onOpenNewEntryWithSupplier: (supplierId: string) => void;
+  onOpenNewSaleForSupplier?: (supplier: Supplier) => void;
   onViewSupplierLedger: (supplier: Supplier) => void;
   onDeleteSupplier?: (supplierId: string) => void;
   onAddTransaction?: (tx: TransactionRecord) => void;
@@ -54,6 +55,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
   onAddSupplier,
   onUpdateSupplier,
   onOpenNewEntryWithSupplier,
+  onOpenNewSaleForSupplier,
   onViewSupplierLedger,
   onDeleteSupplier,
   onAddTransaction,
@@ -654,14 +656,27 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                   <History className="w-3.5 h-3.5 text-emerald-600" />
                   <span>စာရင်းချုပ် ({supplierTxCount})</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenNewEntryWithSupplier(supplier.id)}
-                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                >
-                  <ArrowDownLeft className="w-3.5 h-3.5" />
-                  <span>ကုန်သိမ်းမည်</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {onOpenNewSaleForSupplier && (
+                    <button
+                      type="button"
+                      title="ဤကုန်သွင်းသူထံ ပစ္စည်း/ကုန်ကြမ်း ရောင်းချမှု စာရင်းဖွင့်ရန် (အပြန်အလှန်အရောင်းအဝယ်)"
+                      onClick={() => onOpenNewSaleForSupplier(supplier)}
+                      className="px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      <span>အရောင်းဖွင့်</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpenNewEntryWithSupplier(supplier.id)}
+                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                  >
+                    <ArrowDownLeft className="w-3.5 h-3.5" />
+                    <span>ကုန်သိမ်းမည်</span>
+                  </button>
+                </div>
               </div>
             </div>
           );

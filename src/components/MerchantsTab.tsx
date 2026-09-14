@@ -26,6 +26,7 @@ import {
   TrendingUp,
   CheckCircle2,
   FileSpreadsheet,
+  Boxes,
 } from 'lucide-react';
 
 interface MerchantsTabProps {
@@ -34,6 +35,7 @@ interface MerchantsTabProps {
   onAddMerchant: (merchant: Merchant) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
   onOpenNewSaleForMerchant: (merchantId: string) => void;
+  onOpenNewPurchaseForMerchant?: (merchantId: string) => void;
   onViewMerchantHistory: (merchant: Merchant) => void;
   onDeleteMerchant?: (merchantId: string) => void;
   onOpenDeletedHistory?: () => void;
@@ -47,6 +49,7 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
   onAddMerchant,
   onUpdateMerchant,
   onOpenNewSaleForMerchant,
+  onOpenNewPurchaseForMerchant,
   onViewMerchantHistory,
   onDeleteMerchant,
   onOpenDeletedHistory,
@@ -526,19 +529,32 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => onViewMerchantHistory(merchant)}
-                  className="px-2.5 py-1.5 text-slate-700 hover:bg-slate-100 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  className="px-2 py-1.5 text-slate-700 hover:bg-slate-100 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                 >
                   <History className="w-3.5 h-3.5 text-blue-600" />
-                  <span>အရောင်းမှတ်တမ်း ({merchantSalesCount})</span>
+                  <span>မှတ်တမ်း ({merchantSalesCount})</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenNewSaleForMerchant(merchant.id)}
-                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                >
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>အရောင်းဖွင့်</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {onOpenNewPurchaseForMerchant && (
+                    <button
+                      type="button"
+                      title="ကုန်သယ်ထံမှ ကုန်ကြမ်း/ပစ္စည်း ပြန်လည်ဝယ်ယူမှု စာရင်းဖွင့်ရန် (အပြန်အလှန်အရောင်းအဝယ်)"
+                      onClick={() => onOpenNewPurchaseForMerchant(merchant.id)}
+                      className="px-2 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                    >
+                      <Boxes className="w-3.5 h-3.5" />
+                      <span>အဝယ်ဖွင့်</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpenNewSaleForMerchant(merchant.id)}
+                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span>အရောင်းဖွင့်</span>
+                  </button>
+                </div>
               </div>
             </div>
           );

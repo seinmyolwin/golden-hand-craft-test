@@ -6,11 +6,14 @@ import {
   StockAdjustmentRecord,
   PeerTradeRecord,
   MerchantPurchaseRecord,
+  RawMaterialPreset,
+  RawMaterialStockStat,
 } from '../types';
 import {
   formatMMK,
   formatNumberOnly,
   computeAllProductsStock,
+  computeRawMaterialsStock,
   ProductStockStats,
   exportInventoryCSV,
   getTodayDateString,
@@ -41,6 +44,7 @@ import {
   History,
   TrendingUp,
   FileSpreadsheet,
+  Boxes,
 } from 'lucide-react';
 
 interface InventoryTabProps {
@@ -50,6 +54,7 @@ interface InventoryTabProps {
   stockAdjustments: StockAdjustmentRecord[];
   peerTrades?: PeerTradeRecord[];
   merchantPurchases?: MerchantPurchaseRecord[];
+  rawMaterialPresets?: RawMaterialPreset[];
   onUpdateProduct?: (product: Product) => void;
   onAddProduct?: (product: Product) => void;
   onAddStockAdjustment?: (adjustment: StockAdjustmentRecord) => void;
@@ -58,7 +63,7 @@ interface InventoryTabProps {
   onOpenNewSupplierCollection?: () => void;
 }
 
-export type MaterialSectionType = 'ALL' | 'FINISHED' | 'BAMBOO' | 'RATTAN';
+export type MaterialSectionType = 'ALL' | 'FINISHED' | 'BAMBOO' | 'RATTAN' | 'RAW_MATERIALS';
 
 export const getProductMaterialType = (product: { name: string; category?: string }): 'FINISHED' | 'BAMBOO' | 'RATTAN' => {
   const name = (product.name || '').toLowerCase();
@@ -75,6 +80,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
   stockAdjustments = [],
   peerTrades = [],
   merchantPurchases = [],
+  rawMaterialPresets = [],
   onUpdateProduct,
   onAddProduct,
   onAddStockAdjustment,
@@ -108,6 +114,25 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
       peerTrades || []
     );
   }, [products, transactions, sales, stockAdjustments, peerTrades]);
+
+  // Compute Raw Material Stock from Inflows and Outflows
+  const rawMaterialStocks: RawMaterialStockStat[] = useMemo(() => {
+    return computeRawMaterialsStock(
+      rawMaterialPresets || [],
+      merchantPurchases || [],
+      transactions || [],
+      sales || [],
+      stockAdjustments || []
+    );
+  }, [rawMaterialPresets, merchantPurchases, transactions, sales, stockAdjustments]);
+
+  const rawMaterialsTotalValuation = useMemo(() => {
+    return rawMaterialStocks.reduce((sum, s) => sum + (s.estimatedValuation || 0), 0);
+  }, [rawMaterialStocks]);
+
+  const rawMaterialsTotalUnits = useMemo(() => {
+    return rawMaterialStocks.reduce((sum, s) => sum + (s.currentStock || 0), 0);
+  }, [rawMaterialStocks]);
 
   const summaryMetrics = useMemo(() => {
     let totalItemsStock = 0;
@@ -199,8 +224,17 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
         capital: rattanCapital,
         items: rattanItems,
       },
+      rawMaterials: {
+        type: 'RAW_MATERIALS' as const,
+        label: 'ကုန်ကြမ်းပစ္စည်းများ',
+        subLabel: 'ဝါးလုံး၊ ကြိမ်လုံး၊ ကော်၊ ဆေး စသည်',
+        itemsCount: rawMaterialStocks.length,
+        units: rawMaterialsTotalUnits,
+        capital: rawMaterialsTotalValuation,
+        items: rawMaterialStocks,
+      },
     };
-  }, [allStockStats]);
+  }, [allStockStats, rawMaterialStocks, rawMaterialsTotalUnits, rawMaterialsTotalValuation]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -209,6 +243,19 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     });
     return Array.from(set);
   }, [products]);
+
+  const filteredRawMaterials = useMemo(() => {
+    return rawMaterialStocks.filter((stat) => {
+      const matchesSearch =
+        stat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (stat.categoryLabel || '').toLowerCase().includes(searchQuery.toLowerCase());
+      let matchesStatus = true;
+      if (statusFilter === 'in_stock') matchesStatus = stat.status === 'IN_STOCK';
+      if (statusFilter === 'low_stock') matchesStatus = stat.status === 'LOW_STOCK';
+      if (statusFilter === 'out_of_stock') matchesStatus = stat.status === 'OUT_OF_STOCK';
+      return matchesSearch && matchesStatus;
+    });
+  }, [rawMaterialStocks, searchQuery, statusFilter]);
 
   const filteredStock = useMemo(() => {
     return allStockStats.filter((stat) => {
@@ -472,6 +519,81 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
     );
   };
 
+  const renderRawMaterialCard = (stat: RawMaterialStockStat) => {
+    const isLow = stat.status === 'LOW_STOCK';
+    const isOut = stat.status === 'OUT_OF_STOCK';
+
+    return (
+      <div
+        key={stat.id}
+        className={`bg-white rounded-xl border p-4 shadow-2xs transition-all hover:shadow-xs flex flex-col justify-between ${
+          isOut
+            ? 'border-rose-300 bg-rose-50/20'
+            : isLow
+            ? 'border-amber-300 bg-amber-50/20'
+            : 'border-slate-200'
+        }`}
+      >
+        <div>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                {stat.categoryLabel || 'ကုန်ကြမ်း'}
+              </span>
+              <h4 className="font-bold text-slate-850 text-sm mt-1.5 line-clamp-1">{stat.name}</h4>
+            </div>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                isOut
+                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                  : isLow
+                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+              }`}
+            >
+              {isOut ? 'ကုန်နေပါသည်' : isLow ? 'လက်ကျန်နည်း' : 'လက်ကျန်ရှိ'}
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs">
+            <div>
+              <span className="text-[10px] text-slate-500 block">ဝယ်ယူရရှိမှု (+):</span>
+              <span className="font-bold text-slate-700">
+                {formatNumberOnly(stat.totalInflow)} {stat.defaultUnit}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-slate-500 block">ထုတ်ပေး/ရောင်းချ (-):</span>
+              <span className="font-bold text-slate-700">
+                {formatNumberOnly(stat.totalOutflow)} {stat.defaultUnit}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] text-slate-400 block font-medium">လက်ကျန် (Stock)</span>
+            <span
+              className={`text-lg font-black ${
+                isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-slate-900'
+              }`}
+            >
+              {formatNumberOnly(stat.currentStock)}{' '}
+              <span className="text-xs font-normal text-slate-500">{stat.defaultUnit}</span>
+            </span>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] text-slate-400 block font-medium">ခန့်မှန်းတန်ဖိုး</span>
+            <span className="text-sm font-bold text-emerald-700">
+              {formatMMK(stat.estimatedValuation)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const handleExportAllLedgerSummary = () => {
     const summaries = calculateAllProductsStockLedgerSummaries(
       products || [],
@@ -566,7 +688,7 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider bg-emerald-950/80 border border-emerald-600/40 px-2.5 py-0.5 rounded-full">
-                လက်ကျန်အရင်းတန်ဖိုး (Total Capital)
+                လက်ကျန်အရင်းတန်ဖိုး စုစုပေါင်း (Total Capital)
               </span>
               {selectedMaterialGroup !== 'ALL' && (
                 <button
@@ -579,9 +701,9 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
               )}
             </div>
             <div className="text-2xl sm:text-3xl font-black text-white mt-1.5 flex items-baseline gap-2 flex-wrap">
-              <span>{formatMMK(summaryMetrics.totalProcurementValue)}</span>
+              <span>{formatMMK(summaryMetrics.totalProcurementValue + rawMaterialsTotalValuation)}</span>
               <span className="text-xs sm:text-sm font-normal text-slate-300">
-                (ပစ္စည်း {allStockStats.length} မျိုး၊ စုစုပေါင်း {formatNumberOnly(summaryMetrics.totalItemsStock)} ထည်)
+                (ကုန်ချော {formatMMK(summaryMetrics.totalProcurementValue)} + ကုန်ကြမ်း {formatMMK(rawMaterialsTotalValuation)})
               </span>
             </div>
           </div>
@@ -593,9 +715,9 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
           </div>
         </div>
 
-        {/* 3 Interactive Material Category Cards */}
+        {/* 4 Interactive Material Category Cards */}
         <div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {/* Finished Goods Card */}
             <button
               type="button"
@@ -694,6 +816,40 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
                 </div>
               </div>
             </button>
+
+            {/* Raw Material Inventory Card */}
+            <button
+              type="button"
+              onClick={() => setSelectedMaterialGroup(selectedMaterialGroup === 'RAW_MATERIALS' ? 'ALL' : 'RAW_MATERIALS')}
+              className={`p-3.5 rounded-xl text-left border transition-all cursor-pointer relative overflow-hidden group ${
+                selectedMaterialGroup === 'RAW_MATERIALS'
+                  ? 'bg-amber-950/90 border-amber-400 ring-2 ring-amber-500/50 shadow-md'
+                  : 'bg-slate-800/70 hover:bg-slate-800 border-slate-700/80'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-1.5">
+                <div>
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Boxes className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{groupCalculations.rawMaterials.label}</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {groupCalculations.rawMaterials.subLabel}
+                  </span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-slate-700 text-slate-300">
+                  {groupCalculations.rawMaterials.itemsCount} မျိုး
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <div>
+                  <span className="text-[10px] text-amber-400 block font-medium">အရင်းတန်ဖိုး</span>
+                  <span className="text-lg sm:text-xl font-black text-white">
+                    {formatMMK(groupCalculations.rawMaterials.capital)}
+                  </span>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -744,6 +900,17 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
             }`}
           >
             ကြိမ်ထည် ({groupCalculations.rattan.itemsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedMaterialGroup('RAW_MATERIALS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
+              selectedMaterialGroup === 'RAW_MATERIALS'
+                ? 'bg-amber-800 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            ကုန်ကြမ်း ({groupCalculations.rawMaterials.itemsCount})
           </button>
         </div>
 
@@ -855,6 +1022,48 @@ export const InventoryTab: React.FC<InventoryTabProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {rattanFilteredItems.map((stat) => renderProductCard(stat))}
               </div>
+            </div>
+          )}
+
+          {filteredRawMaterials.length > 0 && (
+            <div className="space-y-3">
+              <div className="bg-gradient-to-r from-amber-100/70 via-amber-50 to-white p-3 rounded-xl border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+                  <Boxes className="w-4 h-4 text-amber-700" />
+                  <span>ကုန်ကြမ်းသိုလှောင်မှု စာရင်း (Raw Materials Stock) ({filteredRawMaterials.length} မျိုး)</span>
+                </h3>
+                <span className="text-xs sm:text-sm font-black text-amber-950">
+                  ခန့်မှန်းတန်ဖိုး: {formatMMK(rawMaterialsTotalValuation)}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filteredRawMaterials.map((stat) => renderRawMaterialCard(stat))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : selectedMaterialGroup === 'RAW_MATERIALS' ? (
+        <div className="space-y-3">
+          <div className="bg-gradient-to-r from-amber-100/70 via-amber-50 to-white p-3 rounded-xl border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+              <Boxes className="w-4 h-4 text-amber-700" />
+              <span>ကုန်ကြမ်းသိုလှောင်မှု စာရင်း ({filteredRawMaterials.length} မျိုး)</span>
+            </h3>
+            <span className="text-xs sm:text-sm font-black text-amber-950">
+              စုစုပေါင်းတန်ဖိုး: {formatMMK(rawMaterialsTotalValuation)}
+            </span>
+          </div>
+          {filteredRawMaterials.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <Boxes className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800 mb-1">ကုန်ကြမ်းပစ္စည်း မရှိသေးပါ သို့မဟုတ် ရှာမတွေ့ပါ</h3>
+              <p className="text-xs text-slate-500">ကုန်ကြမ်းစီမံခြင်း (Raw Master) တွင် ကုန်ကြမ်းအမျိုးအစားများ စီမံနိုင်ပါသည်။</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredRawMaterials.map((stat) => renderRawMaterialCard(stat))}
             </div>
           )}
         </div>

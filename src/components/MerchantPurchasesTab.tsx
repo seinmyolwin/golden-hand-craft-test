@@ -1,15 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   MerchantPurchaseRecord,
   CollectionItem,
   Merchant,
   Product,
+  RawMaterialPreset,
 } from '../types';
 import {
   formatMMK,
   getTodayDateString,
   getCurrentTimeString,
   parseBilingualNumber,
+  DEFAULT_RAW_MATERIAL_PRESETS,
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
@@ -35,6 +37,8 @@ interface MerchantPurchasesTabProps {
   purchases: MerchantPurchaseRecord[];
   merchants: Merchant[];
   products: Product[];
+  rawMaterialPresets?: RawMaterialPreset[];
+  initialMerchantId?: string;
   selectedDate: string;
   onSavePurchase: (purchase: MerchantPurchaseRecord) => void;
   onDeletePurchase: (id: string) => void;
@@ -44,6 +48,8 @@ interface MerchantPurchasesTabProps {
 export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   purchases = [],
   merchants = [],
+  rawMaterialPresets = [],
+  initialMerchantId,
   selectedDate,
   onSavePurchase,
   onDeletePurchase,
@@ -66,33 +72,49 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Filter valid presets excluding cash advance
+  const activeRawPresets = useMemo(() => {
+    const list = rawMaterialPresets && rawMaterialPresets.length > 0 ? rawMaterialPresets : DEFAULT_RAW_MATERIAL_PRESETS;
+    return list.filter((p) => p && p.category !== 'CASH_ADVANCE');
+  }, [rawMaterialPresets]);
+
   // Items for new purchase
   const [items, setItems] = useState<
     { id: string; materialName: string; quantity: string; unit: string; unitPrice: string }[]
   >([
-    { id: '1', materialName: 'ဝါးပိုးဝါး (ဝါးလုံး)', quantity: '100', unit: 'လုံး', unitPrice: '3500' },
+    {
+      id: '1',
+      materialName: activeRawPresets[0]?.name || 'ဝါးပိုးဝါး (ဝါးလုံး)',
+      quantity: '100',
+      unit: activeRawPresets[0]?.defaultUnit || 'လုံး',
+      unitPrice: String(activeRawPresets[0]?.defaultUnitPrice || 3500),
+    },
   ]);
 
-  const rawPresets = [
-    { name: 'ဝါးပိုးဝါး (ဝါးလုံး)', unit: 'လုံး', price: 3500 },
-    { name: 'တင်းဝါး (ဝါးလုံး)', unit: 'လုံး', price: 2800 },
-    { name: 'ဝါးနှီးစိပ် (စည်း)', unit: 'စည်း', price: 4500 },
-    { name: 'ကြိမ်လုံး (စည်း)', unit: 'စည်း', price: 12000 },
-    { name: 'ကြိမ်ကြိုး (ခွေ)', unit: 'ခွေ', price: 8500 },
-    { name: 'သစ်သားကော် / ကပ်ဆေး', unit: 'ပုလင်း', price: 6000 },
-    { name: 'အရောင်တင်ဆီ / သုတ်ဆေး', unit: 'ပုလင်း', price: 8000 },
-    { name: 'သဲစက္ကူ (ကော်ပတ်)', unit: 'ချပ်', price: 1500 },
-  ];
+  // Handle reciprocal purchase triggered from MerchantsTab
+  useEffect(() => {
+    if (initialMerchantId) {
+      setSelectedMerchantId(initialMerchantId);
+      const m = merchants.find((x) => x.id === initialMerchantId);
+      if (m) {
+        setSellerName(m.name);
+        setSellerPhone(m.phone || '');
+        setSellerAddress(m.town || m.address || '');
+      }
+      setIsNewModalOpen(true);
+    }
+  }, [initialMerchantId, merchants]);
 
   const handleAddItem = () => {
+    const defaultPreset = activeRawPresets[0];
     setItems([
       ...items,
       {
         id: generateStableId('item'),
-        materialName: '',
+        materialName: defaultPreset?.name || '',
         quantity: '1',
-        unit: 'လုံး',
-        unitPrice: '1000',
+        unit: defaultPreset?.defaultUnit || 'လုံး',
+        unitPrice: String(defaultPreset?.defaultUnitPrice || 1000),
       },
     ]);
   };
@@ -108,15 +130,16 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
     setItems(updated);
   };
 
-  const handleApplyPreset = (index: number, presetName: string) => {
-    const p = rawPresets.find((x) => x.name === presetName);
+  const handleApplyPreset = (index: number, presetIdentifier: string) => {
+    if (!presetIdentifier || presetIdentifier === '__CUSTOM__') return;
+    const p = activeRawPresets.find((x) => x.id === presetIdentifier || x.name === presetIdentifier);
     if (!p) return;
     const updated = [...items];
     updated[index] = {
       ...updated[index],
       materialName: p.name,
-      unit: p.unit,
-      unitPrice: String(p.price),
+      unit: p.defaultUnit || 'ခု',
+      unitPrice: String(p.defaultUnitPrice || 0),
     };
     setItems(updated);
   };
@@ -708,23 +731,42 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
                       <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
-                      <div className="flex-1">
+                      <div className="flex-1 space-y-1">
+                        <select
+                          value={activeRawPresets.some((p) => p.name === it.materialName) ? it.materialName : '__CUSTOM__'}
+                          onChange={(e) => {
+                            if (e.target.value === '__CUSTOM__') {
+                              handleItemChange(idx, 'materialName', '');
+                            } else {
+                              handleApplyPreset(idx, e.target.value);
+                            }
+                          }}
+                          className="w-full px-2 py-1 bg-amber-50/70 border border-amber-300 rounded text-xs font-semibold text-slate-800 focus:bg-white focus:ring-1 focus:ring-amber-500"
+                        >
+                          <option value="">-- ကုန်ကြမ်း ရွေးချယ်ပါ --</option>
+                          {Array.from(new Set(activeRawPresets.map((p) => p.categoryLabel || 'ကုန်ကြမ်း'))).map(
+                            (catLabel) => (
+                              <optgroup key={catLabel} label={`-- ${catLabel} --`}>
+                                {activeRawPresets
+                                  .filter((p) => (p.categoryLabel || 'ကုန်ကြမ်း') === catLabel)
+                                  .map((p) => (
+                                    <option key={p.id} value={p.name}>
+                                      {p.name} ({p.defaultUnit} လျှင် {p.defaultUnitPrice.toLocaleString()} ကျပ်)
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )
+                          )}
+                          <option value="__CUSTOM__">✏️ စာရင်းပြင်ပ ကုန်ကြမ်း အသစ်ရိုက်ထည့်မည်</option>
+                        </select>
                         <input
                           type="text"
                           required
                           placeholder="ကုန်ကြမ်းအမည် (ဥပမာ - ဝါးပိုးဝါး၊ ကြိမ်လုံး)"
                           value={it.materialName}
                           onChange={(e) => handleItemChange(idx, 'materialName', e.target.value)}
-                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded text-xs font-semibold focus:bg-white focus:ring-1 focus:ring-amber-500"
-                          list={`preset-materials-${idx}`}
+                          className="w-full px-2 py-1 bg-slate-50 border border-slate-300 rounded text-xs font-semibold focus:bg-white focus:ring-1 focus:ring-amber-500"
                         />
-                        <datalist id={`preset-materials-${idx}`}>
-                          {rawPresets.map((rp, rIdx) => (
-                            <option key={rIdx} value={rp.name}>
-                              {rp.name} ({rp.unit} လျှင် {rp.price} ကျပ်)
-                            </option>
-                          ))}
-                        </datalist>
                       </div>
 
                       {items.length > 1 && (
