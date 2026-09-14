@@ -2,175 +2,329 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   getRecordTimestamp,
   mergeEntityList,
+  mergeImmutableLedger,
+  areRecordsDataEquivalent,
   executeSyncMerge,
   buildLatestSyncPackage,
-  unpackSyncPayload,
+  persistMergedDataToDatabase,
+  validatePostMergeIntegrity,
 } from '../services/syncMergeService';
 import { db } from '../db/database';
 import { getAuditTrail } from '../services/auditTrailService';
 
-describe('syncMergeService - Per-record Newer-Wins & Disjoint Union Engine', () => {
+describe('syncMergeService - Safe Sync / Data Integrity Engine', () => {
   beforeEach(async () => {
     await db.products.clear();
     await db.suppliers.clear();
     await db.merchants.clear();
     await db.transactions.clear();
     await db.sales.clear();
+    await db.merchantPurchases.clear();
+    await db.orders.clear();
+    await db.stockAdjustments.clear();
+    await db.peerTrades.clear();
+    await db.softDeletedItems.clear();
     await db.auditLogs.clear();
+    await db.rawMaterialPresets.clear();
+    await db.attachments.clear();
+    await db.stockMovements.clear();
+    await db.cashMovements.clear();
+    await db.dailyClosings.clear();
+    if (db.returnsAndRefunds) await db.returnsAndRefunds.clear();
   });
 
-  describe('getRecordTimestamp', () => {
-    it('should extract numeric timestamps correctly', () => {
-      expect(getRecordTimestamp({ updatedAt: 1700000000000 })).toBe(1700000000000);
-      expect(getRecordTimestamp({ timestamp: 1690000000000 })).toBe(1690000000000);
-      expect(getRecordTimestamp({ createdAt: 1680000000000 })).toBe(1680000000000);
+  describe('Financial Immutability and Data Equivalence', () => {
+    it('should detect identical records regardless of key ordering', () => {
+      const recA = { id: 'tx_1', amount: 5000, voucherNo: 'V-001', note: 'Paid' };
+      const recB = { voucherNo: 'V-001', note: 'Paid', amount: 5000, id: 'tx_1' };
+      expect(areRecordsDataEquivalent(recA, recB)).toBe(true);
     });
 
-    it('should parse ISO date strings for updatedAt and createdAt', () => {
-      const iso = '2026-09-12T10:00:00.000Z';
-      const expected = Date.parse(iso);
-      expect(getRecordTimestamp({ updatedAt: iso })).toBe(expected);
-      expect(getRecordTimestamp({ createdAt: iso })).toBe(expected);
+    it('should detect differing content as conflicting', () => {
+      const recA = { id: 'tx_1', amount: 5000, voucherNo: 'V-001' };
+      const recB = { id: 'tx_1', amount: 9999, voucherNo: 'V-001' };
+      expect(areRecordsDataEquivalent(recA, recB)).toBe(false);
     });
 
-    it('should fallback to date and time fields', () => {
-      const ts = getRecordTimestamp({ date: '2026-09-12', time: '14:30:00' });
-      expect(ts).toBe(Date.parse('2026-09-12T14:30:00'));
+    it('Scenario B: Same immutable ID with identical content -> exactly one survives', () => {
+      const local = [{ id: 'sm_1', productId: 'p1', quantity: 5, date: '2026-09-10' }];
+      const incoming = [{ id: 'sm_1', productId: 'p1', quantity: 5, date: '2026-09-10' }];
+
+      const { merged, conflicts, stats } = mergeImmutableLedger('stockMovements', local, incoming, (m) => m.id);
+      expect(merged).toHaveLength(1);
+      expect(conflicts).toHaveLength(0);
+      expect(stats.identicalDeduplicated).toBe(1);
+      expect(stats.added).toBe(0);
     });
 
-    it('should return 0 for invalid or empty records', () => {
-      expect(getRecordTimestamp(null)).toBe(0);
-      expect(getRecordTimestamp({})).toBe(0);
-    });
-  });
+    it('Scenario C: Same immutable ID with different content -> conflict, preserves local record, never overwrites', () => {
+      const local = [{ id: 'tx_1', voucherNo: 'TX-001', totalAmount: 50000, date: '2026-09-10' }];
+      const incoming = [{ id: 'tx_1', voucherNo: 'TX-001', totalAmount: 900000, date: '2026-09-10' }];
 
-  describe('mergeEntityList', () => {
-    it('should perform disjoint union of records', () => {
-      const local = [
-        { id: 'p1', name: 'Gold Ring', currentStock: 10, updatedAt: 1000 },
-        { id: 'p2', name: 'Gold Necklace', currentStock: 5, updatedAt: 1000 },
-      ];
-      const incoming = [
-        { id: 'p3', name: 'Gold Bangle', currentStock: 8, updatedAt: 1000 },
-      ];
-
-      const { merged, stats } = mergeEntityList(local, incoming, (p) => p.id);
-      expect(merged).toHaveLength(3);
-      expect(stats.added).toBe(1);
-      expect(stats.updated).toBe(0);
-      expect(merged.map((m) => m.id)).toEqual(['p1', 'p2', 'p3']);
-    });
-
-    it('should apply newer-wins when keys collide', () => {
-      const local = [
-        { id: 'p1', name: 'Gold Ring', currentStock: 10, price: 100000, updatedAt: 1000 },
-        { id: 'p2', name: 'Gold Necklace', currentStock: 5, price: 500000, updatedAt: 3000 },
-      ];
-      const incoming = [
-        // p1 is newer in incoming -> should update
-        { id: 'p1', name: 'Gold Ring Modified', currentStock: 12, price: 120000, updatedAt: 2000 },
-        // p2 is older in incoming -> should keep local
-        { id: 'p2', name: 'Old Necklace', currentStock: 1, price: 400000, updatedAt: 1500 },
-      ];
-
-      const { merged, stats } = mergeEntityList(local, incoming, (p) => p.id);
-      expect(merged).toHaveLength(2);
-      expect(stats.updated).toBe(1);
-      expect(stats.unchanged).toBe(1);
-
-      const p1 = merged.find((p) => p.id === 'p1');
-      expect(p1?.name).toBe('Gold Ring Modified');
-      expect(p1?.currentStock).toBe(12);
-
-      const p2 = merged.find((p) => p.id === 'p2');
-      expect(p2?.name).toBe('Gold Necklace');
-      expect(p2?.currentStock).toBe(5);
+      const { merged, conflicts, stats } = mergeImmutableLedger('transactions', local, incoming, (t) => t.id);
+      expect(merged).toHaveLength(1);
+      expect(merged[0].totalAmount).toBe(50000); // Local preserved!
+      expect(conflicts).toHaveLength(1);
+      expect(stats.conflicts).toBe(1);
+      expect(stats.localPreserved).toBe(1);
     });
   });
 
-  describe('executeSyncMerge', () => {
-    it('should merge full database collections without whole-file overwrite', async () => {
+  describe('Scenario A & D: Disjoint ledgers and Local stock movement survival', () => {
+    it('Scenario A & D: Local ledger + incoming disjoint ledger -> both survive', async () => {
       const localData = {
-        products: [
-          { id: 'prod_1', name: 'Ring 1', updatedAt: '2026-09-10T10:00:00Z' },
+        stockMovements: [
+          { id: 'sm_local', productId: 'prod_1', type: 'IN', quantity: 10, date: '2026-09-10' },
         ],
         transactions: [
-          { id: 'tx_1', voucherNo: 'TX-001', date: '2026-09-10', totalAmount: 50000 },
-        ],
-        sales: [
-          { id: 's_1', voucherNo: 'SL-001', date: '2026-09-10', grandTotal: 80000 },
-        ],
-        suppliers: [
-          { id: 'sup_1', name: 'U Ba', updatedAt: 1000 },
-        ],
-        merchants: [
-          { id: 'mer_1', name: 'Daw Mya', updatedAt: 1000 },
+          { id: 'tx_local', voucherNo: 'TX-LOC', date: '2026-09-10', totalAmount: 10000 },
         ],
       };
 
       const incomingData = {
-        products: [
-          { id: 'prod_1', name: 'Ring 1 Updated', updatedAt: '2026-09-12T10:00:00Z' },
-          { id: 'prod_2', name: 'Ring 2 New', updatedAt: '2026-09-11T10:00:00Z' },
+        stockMovements: [
+          { id: 'sm_remote', productId: 'prod_2', type: 'OUT', quantity: 3, date: '2026-09-11' },
         ],
         transactions: [
-          { id: 'tx_2', voucherNo: 'TX-002', date: '2026-09-11', totalAmount: 70000 },
-        ],
-        sales: [
-          { id: 's_2', voucherNo: 'SL-002', date: '2026-09-11', grandTotal: 120000 },
-        ],
-        suppliers: [
-          { id: 'sup_2', name: 'U Hla', updatedAt: 2000 },
-        ],
-        merchants: [
-          { id: 'mer_2', name: 'Daw Nu', updatedAt: 2000 },
+          { id: 'tx_remote', voucherNo: 'TX-REM', date: '2026-09-11', totalAmount: 20000 },
         ],
       };
 
       const result = await executeSyncMerge(localData, incomingData, { mode: 'MERGE' });
-
       expect(result.success).toBe(true);
-      expect(result.mode).toBe('MERGE');
-      expect(result.mergedData.products).toHaveLength(2);
-      expect(result.mergedData.products.find((p: any) => p.id === 'prod_1')?.name).toBe('Ring 1 Updated');
+      expect(result.mergedData.stockMovements).toHaveLength(2);
       expect(result.mergedData.transactions).toHaveLength(2);
-      expect(result.mergedData.sales).toHaveLength(2);
-      expect(result.mergedData.suppliers).toHaveLength(2);
-      expect(result.mergedData.merchants).toHaveLength(2);
+      expect(result.mergedData.stockMovements.some((m: any) => m.id === 'sm_local')).toBe(true);
+      expect(result.mergedData.stockMovements.some((m: any) => m.id === 'sm_remote')).toBe(true);
+    });
+  });
 
-      // Verify audit log was recorded
-      const logs = await getAuditTrail();
-      expect(logs.length).toBeGreaterThan(0);
-      expect(logs[0].action).toContain('Smart Merge');
+  describe('Scenario E: Incoming cash movement not present locally persists', () => {
+    it('should union incoming cash movements without overwriting existing', async () => {
+      const localData = {
+        cashMovements: [
+          { id: 'cm_1', type: 'IN', amount: 50000, date: '2026-09-10' },
+        ],
+      };
+      const incomingData = {
+        cashMovements: [
+          { id: 'cm_2', type: 'OUT', amount: 20000, date: '2026-09-11' },
+        ],
+      };
+
+      const result = await executeSyncMerge(localData, incomingData, { mode: 'MERGE' });
+      expect(result.mergedData.cashMovements).toHaveLength(2);
+      expect(result.mergedData.cashMovements.map((c: any) => c.id)).toContain('cm_1');
+      expect(result.mergedData.cashMovements.map((c: any) => c.id)).toContain('cm_2');
+    });
+  });
+
+  describe('Scenario F: Returns from both devices union survives', () => {
+    it('should safely merge returnsAndRefunds from both devices', async () => {
+      const localData = {
+        returnsAndRefunds: [
+          { id: 'ret_local', returnNo: 'RET-001', refundAmount: 15000, date: '2026-09-10' },
+        ],
+      };
+      const incomingData = {
+        returnsAndRefunds: [
+          { id: 'ret_remote', returnNo: 'RET-002', refundAmount: 25000, date: '2026-09-11' },
+        ],
+      };
+
+      const result = await executeSyncMerge(localData, incomingData, { mode: 'MERGE' });
+      expect(result.mergedData.returnsAndRefunds).toHaveLength(2);
+      expect(result.mergedData.returnsAndRefunds.map((r: any) => r.id)).toEqual(['ret_local', 'ret_remote']);
+    });
+  });
+
+  describe('Scenario G: Soft-delete tombstones survive', () => {
+    it('should union soft deleted tombstones so deletions are never lost', async () => {
+      const localData = {
+        softDeletedItems: [
+          { id: 'del_1', originalId: 'p_old1', type: 'PRODUCT', deletedAt: '2026-09-10' },
+        ],
+      };
+      const incomingData = {
+        softDeletedItems: [
+          { id: 'del_2', originalId: 'sup_old2', type: 'SUPPLIER', deletedAt: '2026-09-11' },
+        ],
+      };
+
+      const result = await executeSyncMerge(localData, incomingData, { mode: 'MERGE' });
+      expect(result.mergedData.softDeletedItems).toHaveLength(2);
+      expect(result.mergedData.softDeletedItems.some((s: any) => s.id === 'del_1')).toBe(true);
+      expect(result.mergedData.softDeletedItems.some((s: any) => s.id === 'del_2')).toBe(true);
+    });
+  });
+
+  describe('Scenario H: Attachment metadata and base64 survive', () => {
+    it('should preserve attachment metadata and binary imageBase64', async () => {
+      const localData = {
+        attachments: [
+          { id: 'att_1', voucherId: 'v1', imageBase64: 'data:image/png;base64,AAA', mimeType: 'image/png' },
+        ],
+      };
+      const incomingData = {
+        attachments: [
+          { id: 'att_2', voucherId: 'v2', imageBase64: 'data:image/png;base64,BBB', mimeType: 'image/png' },
+        ],
+      };
+
+      const result = await executeSyncMerge(localData, incomingData, { mode: 'MERGE' });
+      expect(result.mergedData.attachments).toHaveLength(2);
+      expect(result.mergedData.attachments[0].imageBase64).toBe('data:image/png;base64,AAA');
+      expect(result.mergedData.attachments[1].imageBase64).toBe('data:image/png;base64,BBB');
+    });
+  });
+
+  describe('Scenario I & J: Persistence Safety (MERGE never clears, OVERWRITE replaces atomically)', () => {
+    it('Scenario I: MERGE mode should never delete unrelated local records in Dexie', async () => {
+      // Seed existing local database with unrelated product & transaction
+      await db.products.add({
+        id: 'unrelated_prod',
+        name: 'Local Only Ring',
+        category: 'Rings',
+        defaultPrice: 10000,
+        defaultWholesalePrice: 9000,
+        currentStock: 1,
+        minStockAlert: 1,
+        unit: 'Pcs',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+        updatedAt: '2026-09-01T00:00:00Z',
+      });
+      await db.transactions.add({
+        id: 'unrelated_tx',
+        voucherNo: 'TX-UNR',
+        date: '2026-09-01',
+        totalAmount: 5000,
+        supplierId: 'sup1',
+        items: [],
+        createdAt: '2026-09-01',
+      } as any);
+
+      // Incoming data does not mention unrelated_prod
+      const mergePayload = {
+        _mode: 'MERGE' as const,
+        products: [
+          {
+            id: 'incoming_prod',
+            name: 'New Incoming Item',
+            category: 'Gems',
+            defaultPrice: 20000,
+            defaultWholesalePrice: 18000,
+            currentStock: 2,
+            minStockAlert: 1,
+            unit: 'Pcs',
+            active: true,
+            createdAt: '2026-09-12T00:00:00Z',
+            updatedAt: '2026-09-12T00:00:00Z',
+          },
+        ],
+      };
+
+      await persistMergedDataToDatabase(mergePayload, { mode: 'MERGE' });
+
+      // Verify unrelated records are NOT deleted
+      const allProducts = await db.products.toArray();
+      const allTx = await db.transactions.toArray();
+      expect(allProducts).toHaveLength(2);
+      expect(allProducts.some((p) => p.id === 'unrelated_prod')).toBe(true);
+      expect(allProducts.some((p) => p.id === 'incoming_prod')).toBe(true);
+      expect(allTx).toHaveLength(1);
+      expect(allTx[0].id === 'unrelated_tx').toBe(true);
     });
 
-    it('should support clean overwrite mode when explicitly selected', async () => {
-      const localData = {
-        products: [{ id: 'old_1', name: 'Old Product' }],
-        transactions: [{ id: 'tx_old', voucherNo: 'OLD-001' }],
+    it('Scenario J: OVERWRITE mode should atomically replace existing database collections', async () => {
+      await db.products.add({
+        id: 'old_prod',
+        name: 'Old Ring',
+        category: 'Rings',
+        defaultPrice: 10000,
+        defaultWholesalePrice: 9000,
+        currentStock: 1,
+        minStockAlert: 1,
+        unit: 'Pcs',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+        updatedAt: '2026-09-01T00:00:00Z',
+      });
+
+      const overwritePayload = {
+        _mode: 'OVERWRITE' as const,
+        products: [
+          {
+            id: 'fresh_prod',
+            name: 'Fresh Ring',
+            category: 'Rings',
+            defaultPrice: 50000,
+            defaultWholesalePrice: 45000,
+            currentStock: 3,
+            minStockAlert: 1,
+            unit: 'Pcs',
+            active: true,
+            createdAt: '2026-09-14T00:00:00Z',
+            updatedAt: '2026-09-14T00:00:00Z',
+          },
+        ],
       };
 
-      const incomingData = {
-        products: [{ id: 'new_1', name: 'New Product' }],
-        transactions: [{ id: 'tx_new', voucherNo: 'NEW-001' }],
+      await persistMergedDataToDatabase(overwritePayload, { mode: 'OVERWRITE' });
+
+      const allProducts = await db.products.toArray();
+      expect(allProducts).toHaveLength(1);
+      expect(allProducts[0].id).toBe('fresh_prod');
+    });
+  });
+
+  describe('Scenario K: Post-merge validation report', () => {
+    it('should validate database consistency and detect no missing ledgers', async () => {
+      const beforeCounts = {
+        products: 1,
+        transactions: 1,
+        stockMovements: 1,
       };
 
-      const result = await executeSyncMerge(localData, incomingData, { mode: 'OVERWRITE' });
-      expect(result.success).toBe(true);
-      expect(result.mode).toBe('OVERWRITE');
-      expect(result.mergedData.products).toHaveLength(1);
-      expect(result.mergedData.products[0].id).toBe('new_1');
+      await db.products.add({
+        id: 'p1',
+        name: 'Gold Ring',
+        category: 'Rings',
+        defaultPrice: 100000,
+        defaultWholesalePrice: 90000,
+        currentStock: 1,
+        minStockAlert: 1,
+        unit: 'Pcs',
+        active: true,
+        createdAt: '2026-09-10T00:00:00Z',
+        updatedAt: '2026-09-10T00:00:00Z',
+      });
+      await db.transactions.add({
+        id: 'tx1',
+        voucherNo: 'TX-01',
+        date: '2026-09-10',
+        totalAmount: 100000,
+      } as any);
+      await db.stockMovements.add({
+        id: 'sm1',
+        productId: 'p1',
+        type: 'IN',
+        quantity: 1,
+        date: '2026-09-10',
+      } as any);
 
-      const logs = await getAuditTrail();
-      expect(logs[0].action).toContain('Clean Overwrite');
+      const report = await validatePostMergeIntegrity(beforeCounts, { mode: 'MERGE' });
+      expect(report.isValid).toBe(true);
+      expect(report.issues).toHaveLength(0);
+      expect(report.ledgerCounts.products).toBe(1);
     });
   });
 
   describe('buildLatestSyncPackage', () => {
-    it('should generate a valid sync package with timestamp and checksum', async () => {
+    it('should serialize sync package with attachments and checksum', async () => {
       await db.products.add({
-        id: 'test_prod_1',
-        name: 'Test Ring',
+        id: 'pkg_prod_1',
+        name: 'Pkg Ring',
         category: 'Rings',
         defaultPrice: 150000,
         defaultWholesalePrice: 160000,

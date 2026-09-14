@@ -9,6 +9,8 @@ interface SupplierLedgerModalProps {
   supplier: Supplier | null;
   transactions: TransactionRecord[];
   onViewVoucher: (tx: TransactionRecord) => void;
+  onOpenNewSaleForSupplier?: (supplier: Supplier) => void;
+  onOpenNewEntryWithSupplier?: (supplierId: string) => void;
 }
 
 export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
@@ -17,6 +19,8 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   supplier,
   transactions = [],
   onViewVoucher,
+  onOpenNewSaleForSupplier,
+  onOpenNewEntryWithSupplier,
 }) => {
   if (!isOpen || !supplier) return null;
 
@@ -75,31 +79,66 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
         </div>
 
         {/* Overview Stats */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs shrink-0">
-          <div className="p-2.5 bg-white rounded-xl border border-slate-200">
-            <span className="text-[10px] text-slate-500 block">လက်ကျန်အကြိုငွေ</span>
-            <span className={`text-base font-extrabold ${supplier.currentAdvanceBalance > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-              {formatMMK(supplier.currentAdvanceBalance)}
-            </span>
+        <div className="p-4 bg-slate-50 border-b border-slate-200 shrink-0 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-500 block">လက်ကျန်အကြိုငွေ</span>
+              <span className={`text-base font-extrabold ${supplier.currentAdvanceBalance > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                {formatMMK(supplier.currentAdvanceBalance)}
+              </span>
+            </div>
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-500 block">သိမ်းဆည်းပြီး ကုန်တန်ဖိုး</span>
+              <span className="text-base font-extrabold text-slate-900">
+                {formatMMK(summary.totalGoodsVal)}
+              </span>
+            </div>
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-500 block">အကြိုငွေမှ နုတ်ယူငွေ</span>
+              <span className="text-base font-extrabold text-emerald-700">
+                {formatMMK(summary.totalDeducted)}
+              </span>
+            </div>
+            <div className="p-2.5 bg-white rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-500 block">အသစ်ထုတ်အကြိုငွေ</span>
+              <span className="text-base font-extrabold text-amber-700">
+                {formatMMK(summary.totalNewAdvances)}
+              </span>
+            </div>
           </div>
-          <div className="p-2.5 bg-white rounded-xl border border-slate-200">
-            <span className="text-[10px] text-slate-500 block">သိမ်းဆည်းပြီး ကုန်တန်ဖိုး</span>
-            <span className="text-base font-extrabold text-slate-900">
-              {formatMMK(summary.totalGoodsVal)}
-            </span>
-          </div>
-          <div className="p-2.5 bg-white rounded-xl border border-slate-200">
-            <span className="text-[10px] text-slate-500 block">အကြိုငွေမှ နုတ်ယူငွေ</span>
-            <span className="text-base font-extrabold text-emerald-700">
-              {formatMMK(summary.totalDeducted)}
-            </span>
-          </div>
-          <div className="p-2.5 bg-white rounded-xl border border-slate-200">
-            <span className="text-[10px] text-slate-500 block">အသစ်ထုတ်အကြိုငွေ</span>
-            <span className="text-base font-extrabold text-amber-700">
-              {formatMMK(summary.totalNewAdvances)}
-            </span>
-          </div>
+
+          {(onOpenNewSaleForSupplier || onOpenNewEntryWithSupplier) && (
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
+              {onOpenNewSaleForSupplier && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenNewSaleForSupplier(supplier);
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                  title="ဤကုန်သွင်းသူထံ ပစ္စည်း/ကုန်ကြမ်း ရောင်းချမှု စာရင်းဖွင့်ရန်"
+                >
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <span>အရောင်းဖွင့်မည်</span>
+                </button>
+              )}
+              {onOpenNewEntryWithSupplier && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenNewEntryWithSupplier(supplier.id);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                  title="ဤကုန်သွင်းသူထံမှ ကုန်သိမ်းစာရင်း ဖွင့်ရန်"
+                >
+                  <ArrowDownLeft className="w-3.5 h-3.5" />
+                  <span>ကုန်သိမ်းမည်</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Transactions History */}

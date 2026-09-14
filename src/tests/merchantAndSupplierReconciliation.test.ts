@@ -218,4 +218,57 @@ describe('Phase 18 - Merchant & Supplier Balance Reconciliation', () => {
     expect(result.actualAdvanceBalance).toBe(100000);
     expect(result.difference).toBe(-50000);
   });
+
+  it('correctly handles mutual trade when sale is opened for a supplier (dual role)', () => {
+    const supplier: Supplier = {
+      id: 'supp_dual_01',
+      name: 'ဦးဘ မြန်မာ့ရိုးရာ',
+      phone: '0999988881',
+      village: 'ညောင်တုန်း',
+      initialAdvance: 150000,
+      advanceBalance: 150000,
+      currentAdvanceBalance: 150000,
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-01T00:00:00Z',
+    };
+
+    // When opening sale for supplier, an aligned merchant entity is linked
+    const linkedMerchant: Merchant = {
+      id: 'merch_dual_01',
+      name: supplier.name,
+      town: supplier.village,
+      phone: supplier.phone || '',
+      role: 'BOTH',
+      receivableBalance: 0,
+      currentReceivableBalance: 50000,
+      totalPurchasesValue: 80000,
+      totalPaidAmount: 30000,
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-01T00:00:00Z',
+    };
+
+    const sales: SaleRecord[] = [
+      {
+        id: 'sale_dual_1',
+        voucherNo: 'SALE-D-001',
+        merchantId: linkedMerchant.id,
+        merchantName: linkedMerchant.name,
+        merchantTown: linkedMerchant.town,
+        date: '2026-03-02',
+        time: '11:00',
+        grandTotal: 80000,
+        paidAmount: 30000,
+        cashPaidByMerchant: 30000,
+        remainingReceivableBalance: 50000,
+        status: 'COMPLETED',
+        items: [],
+      },
+    ];
+
+    const result = reconcileMerchantBalancePure(linkedMerchant, sales, [], []);
+    expect(result.status).toBe('MATCH');
+    expect(result.expectedReceivableBalance).toBe(50000);
+    expect(result.actualReceivableBalance).toBe(50000);
+    expect(result.totalSalesValue).toBe(80000);
+  });
 });

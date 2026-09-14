@@ -1921,8 +1921,11 @@ export default function App() {
   }, []);
 
   const handleOpenNewSaleForSupplier = useCallback(
-    (supId: string) => {
-      const supplier = suppliers.find((s) => s.id === supId);
+    (supplierOrId: Supplier | string) => {
+      const supplier =
+        typeof supplierOrId === 'string'
+          ? suppliers.find((s) => s.id === supplierOrId)
+          : supplierOrId;
       if (!supplier) return;
       const existingMerchant = merchants.find(
         (m) =>
@@ -2485,6 +2488,8 @@ export default function App() {
           supplier={ledgerSupplier}
           transactions={transactions}
           onViewVoucher={handleViewInboundVoucher}
+          onOpenNewSaleForSupplier={handleOpenNewSaleForSupplier}
+          onOpenNewEntryWithSupplier={handleOpenNewEntry}
         />
 
         <EditShopProfileModal

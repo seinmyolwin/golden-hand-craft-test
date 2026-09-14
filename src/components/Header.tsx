@@ -743,19 +743,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="whitespace-nowrap sm:hidden">စတင်မည်</span>
               </button>
             ) : null}
-
-            {/* Quick Collapse Header Arrow Button (မျှာလေး နှိပ်ပြီး Header ဝှက်မည်) */}
-            <button
-              id="header-collapse-quick-btn"
-              type="button"
-              onClick={handleToggleCollapse}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-950/90 hover:bg-emerald-900 active:scale-95 text-emerald-100 border border-emerald-500/50 cursor-pointer shadow-2xs transition-all shrink-0 hover:text-amber-200"
-              title="Header ဝှက်မည် (Click arrow to hide header)"
-              aria-label="Header ဝှက်မည်"
-            >
-              <ChevronUp className="w-4 h-4 text-amber-300 stroke-[2.5]" />
-              <span className="whitespace-nowrap font-bold hidden sm:inline">Header ဝှက်မည်</span>
-            </button>
           </div>
         </div>
 

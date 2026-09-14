@@ -31,6 +31,7 @@ import {
   executeSyncMerge,
   buildLatestSyncPackage,
   persistMergedDataToDatabase,
+  loadCompleteLocalData,
   SyncMergeMode,
   SyncMergeResult,
 } from '../services/syncMergeService';
@@ -355,46 +356,12 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
     setIsMerging(true);
 
     try {
-      const [
-        products,
-        suppliers,
-        merchants,
-        transactions,
-        sales,
-        merchantPurchases,
-        orders,
-        stockAdjustments,
-        peerTrades,
-      ] = await Promise.all([
-        db.products.toArray(),
-        db.suppliers.toArray(),
-        db.merchants.toArray(),
-        db.transactions.toArray(),
-        db.sales.toArray(),
-        db.merchantPurchases.toArray(),
-        db.orders.toArray(),
-        db.stockAdjustments.toArray(),
-        db.peerTrades.toArray(),
-      ]);
-      const shopSettingsRecord = await db.settings.get('shopSettings');
-
-      const localSnapshot = {
-        products,
-        suppliers,
-        merchants,
-        transactions,
-        sales,
-        merchantPurchases,
-        orders,
-        stockAdjustments,
-        peerTrades,
-        shopSettings: shopSettingsRecord?.value,
-      };
+      const localSnapshot = await loadCompleteLocalData();
 
       const mergeResult = await executeSyncMerge(localSnapshot, pendingIncomingPayload, { mode });
 
       if (mergeResult.success) {
-        await persistMergedDataToDatabase(mergeResult.mergedData);
+        await persistMergedDataToDatabase(mergeResult.mergedData, { mode });
         onImportData(mergeResult.mergedData, mode);
 
         // Auto-prepare Return Sync Package for the sending device
@@ -472,11 +439,11 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-extrabold">ဖုန်းအချင်းချင်း စာရင်းချိတ်ဆက်ခြင်း</h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-600/50 font-semibold">
-                  Offline Sync
+                  Offline QR / File Sync
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Wi-Fi / Hotspot ဖြင့် ဖုန်းနှစ်လုံး အပြန်အလှန် စာရင်းကူးယူ ပေါင်းစည်းခြင်း
+                အော့ဖ်လိုင်း QR / ဖိုင်ဖြင့် ဖုန်းနှစ်လုံး အပြန်အလှန် စာရင်းကူးယူ ပေါင်းစည်းခြင်း (Offline QR / File Transfer)
               </p>
             </div>
           </div>
@@ -500,7 +467,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
               <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             </span>
             <span className="font-semibold text-slate-700">
-              {isOnline ? 'Wi-Fi / Hotspot ချိတ်ဆက်မှု တွေ့ရှိပါသည်' : 'အော့ဖ်လိုင်းမုဒ် (Hotspot Direct Transfer)'}
+              {isOnline ? 'Wi-Fi / Hotspot ချိတ်ဆက်မှု တွေ့ရှိပါသည်' : 'အော့ဖ်လိုင်းမုဒ် (Offline QR / File Transfer)'}
             </span>
           </div>
           <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300 flex items-center gap-1">

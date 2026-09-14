@@ -51,14 +51,15 @@ export const SaleVoucherModal: React.FC<SaleVoucherModalProps> = ({
         }
         body, html {
           height: auto !important;
-          max-height: 100vh !important;
-          overflow: hidden !important;
+          max-height: none !important;
+          overflow: visible !important;
         }
         .voucher-printable-scope {
+          overflow: visible !important;
+        }
+        .voucher-printable-scope tr {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
-          page-break-after: avoid !important;
-          break-after: avoid !important;
         }
       }
     `;

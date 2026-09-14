@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { db } from '../db/database';
+import { executeSyncMerge, persistMergedDataToDatabase, buildLatestSyncPackage } from '../services/syncMergeService';
 import {
   encodeForQrTransfer,
   decodeQrChunks,
@@ -247,5 +249,151 @@ describe('Phase 21 — Chunked & Animated QR Transfer Tests', () => {
     }
 
     expect(session2Result).toEqual(session2Payload);
+  });
+
+  // Test 4: Duplicate frame → no duplicate count/record
+  it('4. Duplicate frame processing does not duplicate progress count or alter integrity', () => {
+    const payload = { test: 'duplicate frame guard', numbers: [1, 2, 3] };
+    const chunks = encodeForQrTransfer(payload, { chunkSize: 20 });
+    expect(chunks.length).toBeGreaterThan(1);
+
+    const receiver = new QrChunkReceiver();
+    // Feed frame 0 twice
+    receiver.processFrame(chunks[0]);
+    const progressAfter1st = receiver.getProgress();
+    receiver.processFrame(chunks[0]);
+    const progressAfterDup = receiver.getProgress();
+
+    expect(progressAfterDup.received).toBe(progressAfter1st.received);
+    expect(progressAfterDup.received).toBe(1);
+  });
+
+  // Test 5: Missing frame → clear incomplete status
+  it('5. Missing frame results in IN_PROGRESS status and does not prematurely complete', () => {
+    const payload = { test: 'missing frame test', items: Array.from({ length: 50 }, (_, i) => i) };
+    const chunks = encodeForQrTransfer(payload, { chunkSize: 50 });
+    expect(chunks.length).toBeGreaterThanOrEqual(3);
+
+    const receiver = new QrChunkReceiver();
+    // Feed only first 2 chunks out of N
+    const res1 = receiver.processFrame(chunks[0]);
+    const res2 = receiver.processFrame(chunks[1]);
+
+    expect(res1.status).toBe('IN_PROGRESS');
+    expect(res2.status).toBe('IN_PROGRESS');
+    expect(receiver.getProgress().received).toBe(2);
+    expect(receiver.getProgress().total).toBe(chunks.length);
+  });
+
+  // Test 8: Malformed frame & wrong totalChunks → rejected
+  it('8. Malformed frame headers or invalid chunk index are safely rejected', () => {
+    expect(parseQrFrame('NOT_SLY|data')).toBeNull();
+    expect(parseQrFrame('SLY|S1|abc|xyz|checksum|data')).toBeNull();
+    expect(parseQrFrame('SLY|S1|5|3|checksum|data')).toBeNull(); // chunkIndex > totalChunks
+    expect(parseQrFrame('')).toBeNull();
+  });
+
+  // Test 9 & 15: Very large dataset → calculates overLimit and recommends file transfer fallback
+  it('9 & 15. Very large dataset flags isOverLimit and guides fallback to file transfer', () => {
+    // Generate dataset large enough to exceed MAX_QR_CHUNKS_THRESHOLD (150 chunks)
+    const hugeDataset = {
+      sales: Array.from({ length: 15000 }, (_, i) => ({
+        id: `sale-${i}-${Date.now()}`,
+        amount: 50000 + i,
+        desc: `Stress test long transaction record #${i} with extended unique payload to exceed QR frame count`,
+      })),
+    };
+
+    const chunkAnalysis = calculateRequiredChunks(hugeDataset);
+    expect(chunkAnalysis.totalChunks).toBeGreaterThan(150);
+    expect(chunkAnalysis.isOverLimit).toBe(true);
+  });
+
+  // Test 10: Receiver timeout / reset clears internal map and state
+  it('10. Receiver reset clears all accumulated state and progress cleanly', () => {
+    const multiChunkPayload = { test: 'reset check', items: Array.from({ length: 100 }, (_, i) => `item-${i}`) };
+    const chunks = encodeForQrTransfer(multiChunkPayload, { chunkSize: 50 });
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+    const receiver = new QrChunkReceiver();
+    const res = receiver.processFrame(chunks[0]);
+    expect(res.status).toBe('IN_PROGRESS');
+    expect(receiver.getProgress().received).toBe(1);
+
+    receiver.reset();
+    const cleanProgress = receiver.getProgress();
+    expect(cleanProgress.received).toBe(0);
+    expect(cleanProgress.total).toBe(0);
+    expect(cleanProgress.sessionId).toBeNull();
+  });
+
+  // Test 11 & 14: QR scanning is strictly read-only and does not write to DB
+  it('11 & 14. Scanning or processing QR frames is strictly read-only (0 DB writes / 0 financial records created)', async () => {
+    const countBeforeSales = await db.sales.count();
+    const countBeforeTx = await db.transactions.count();
+    const countBeforeCash = await db.cashMovements.count();
+
+    const payload = {
+      shweLetYarSync: true,
+      sales: [{ id: 'SALE-SCANNED-1', grandTotal: 999999, date: '2026-09-14' }],
+      cashMovements: [{ id: 'CASH-SCANNED-1', amount: 999999, type: 'IN' }],
+    };
+
+    const chunks = encodeForQrTransfer(payload);
+    const receiver = new QrChunkReceiver();
+    for (const chunk of chunks) {
+      receiver.processFrame(chunk);
+    }
+
+    // Assert DB counts remained completely unchanged
+    expect(await db.sales.count()).toBe(countBeforeSales);
+    expect(await db.transactions.count()).toBe(countBeforeTx);
+    expect(await db.cashMovements.count()).toBe(countBeforeCash);
+  });
+
+  // Test 12 & 13: Payload checksum validated before merge & safe sync service execution
+  it('12 & 13. Merges valid QR payloads safely through executeSyncMerge with set-union integrity', async () => {
+    const syncPayload = {
+      version: '1.0.0',
+      shweLetYarSync: true,
+      shopSettings: { shopName: 'ရွှေလက်ရာ မန္တလေး' },
+      products: [
+        { id: 'PROD-QR-1', name: 'ဝါးခြင်း', salePrice: 5000, currentStock: 20, isDeleted: false },
+      ],
+      sales: [
+        { id: 'SALE-QR-1', voucherNo: 'SL-QR-001', grandTotal: 5000, date: '2026-09-14' },
+      ],
+      cashMovements: [
+        { id: 'CASH-QR-1', amount: 5000, type: 'IN', date: '2026-09-14' },
+      ],
+    };
+
+    const chunks = encodeForQrTransfer(syncPayload);
+    const receiver = new QrChunkReceiver();
+    let decodedData: any = null;
+
+    for (const chunk of chunks) {
+      const res = receiver.processFrame(chunk);
+      if (res.status === 'COMPLETE') {
+        decodedData = res.data;
+      }
+    }
+
+    expect(decodedData).not.toBeNull();
+    expect(decodedData.shweLetYarSync).toBe(true);
+
+    // Merge through safe sync merge service
+    const localPkg = await buildLatestSyncPackage();
+    const mergeResult = await executeSyncMerge(localPkg, decodedData, { mode: 'MERGE' });
+
+    expect(mergeResult.success).toBe(true);
+    expect(mergeResult.mergedData.products.some((p: any) => p.id === 'PROD-QR-1')).toBe(true);
+
+    // Persist to Dexie DB
+    await persistMergedDataToDatabase(mergeResult.mergedData, 'MERGE');
+
+    // Verify record in Dexie DB
+    const savedProd = await db.products.get('PROD-QR-1');
+    expect(savedProd?.name).toBe('ဝါးခြင်း');
   });
 });

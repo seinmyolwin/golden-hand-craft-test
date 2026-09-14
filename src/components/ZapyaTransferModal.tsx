@@ -22,6 +22,7 @@ import {
   executeSyncMerge,
   buildLatestSyncPackage,
   persistMergedDataToDatabase,
+  loadCompleteLocalData,
   SyncMergeMode,
   SyncMergeResult,
 } from '../services/syncMergeService';
@@ -148,46 +149,12 @@ export const ZapyaTransferModal: React.FC<ZapyaTransferModalProps> = ({
     setIsMerging(true);
 
     try {
-      const [
-        products,
-        suppliers,
-        merchants,
-        transactions,
-        sales,
-        merchantPurchases,
-        orders,
-        stockAdjustments,
-        peerTrades,
-      ] = await Promise.all([
-        db.products.toArray(),
-        db.suppliers.toArray(),
-        db.merchants.toArray(),
-        db.transactions.toArray(),
-        db.sales.toArray(),
-        db.merchantPurchases.toArray(),
-        db.orders.toArray(),
-        db.stockAdjustments.toArray(),
-        db.peerTrades.toArray(),
-      ]);
-      const shopSettingsRecord = await db.settings.get('shopSettings');
-
-      const localSnapshot = {
-        products,
-        suppliers,
-        merchants,
-        transactions,
-        sales,
-        merchantPurchases,
-        orders,
-        stockAdjustments,
-        peerTrades,
-        shopSettings: shopSettingsRecord?.value,
-      };
+      const localSnapshot = await loadCompleteLocalData();
 
       const mergeResult = await executeSyncMerge(localSnapshot, pendingIncomingPayload, { mode });
 
       if (mergeResult.success) {
-        await persistMergedDataToDatabase(mergeResult.mergedData);
+        await persistMergedDataToDatabase(mergeResult.mergedData, { mode });
 
         if (onImportData) {
           onImportData(mergeResult.mergedData, mode);
@@ -258,7 +225,7 @@ export const ZapyaTransferModal: React.FC<ZapyaTransferModalProps> = ({
               <span className={`relative inline-flex rounded-full h-2 w-2 ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
             </span>
             <span className="font-semibold text-slate-700 text-[11px]">
-              {isOnline ? 'Wi-Fi / Hotspot ချိတ်ဆက်မှု အဆင်သင့်' : 'အော့ဖ်လိုင်း Direct Transfer အဆင်သင့်'}
+              {isOnline ? 'Wi-Fi / Hotspot ချိတ်ဆက်မှု အဆင်သင့်' : 'အော့ဖ်လိုင်းမုဒ် (Offline QR / File Transfer)'}
             </span>
           </div>
           <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] border border-emerald-300 flex items-center gap-1">

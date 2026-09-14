@@ -459,6 +459,7 @@ export interface ShopSettings {
   ownerName?: string;
   phone?: string;
   address?: string;
+  logoUrl?: string;
   branchCode?: string;
   branchName?: string;
   defaultLandingTab?: string;
