@@ -1145,6 +1145,155 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </>
         )}
       </div>
+
+        {/* Raw Material Management Section (Raw Master) */}
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div
+              className="cursor-pointer select-none flex items-center gap-2"
+              onClick={toggleRawMaster}
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                <Layers className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900">
+                    ကုန်ကြမ်းစီမံခြင်း (Raw Master)
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    {rawMaterialPresets.length} မျိုး
+                  </span>
+                  <span className="text-slate-400 hover:text-slate-600 p-0.5">
+                    {isRawMasterExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {isRawMasterExpanded
+                    ? 'ဝါး၊ ကြိမ်နှင့် ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားများ စိတ်ကြိုက်စီမံနိုင်ပါသည်'
+                    : 'စာရင်းဝှက်ထားပါသည် (ဖွင့်ကြည့်ရန် နှိပ်ပါ)'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={toggleRawMaster}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                {isRawMasterExpanded ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ဝှက်မည်</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    <span>ဖော်မည်</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPresetsToDefault}
+                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg cursor-pointer transition-colors"
+              >
+                မူလအတိုင်း ပြန်ထားမည်
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddPresetOpen(true)}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>ကုန်ကြမ်းအသစ် ထည့်မည်</span>
+              </button>
+            </div>
+          </div>
+
+          {isRawMasterExpanded && (
+            <>
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {[
+                  { id: 'all', label: 'အားလုံး', count: rawMaterialPresets.length },
+                  { id: 'BAMBOO', label: 'ဝါးကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'BAMBOO').length },
+                  { id: 'RATTAN', label: 'ကြိမ်ကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'RATTAN').length },
+                  { id: 'CASH_ADVANCE', label: 'ငွေကြိုယူ', count: rawMaterialPresets.filter((p) => p.category === 'CASH_ADVANCE').length },
+                  { id: 'OTHER', label: 'အခြားကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'OTHER').length },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setPresetCategoryFilter(cat.id)}
+                    className={`px-3 py-1 text-xs rounded-full font-bold cursor-pointer transition-colors shrink-0 ${
+                      presetCategoryFilter === cat.id
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat.label} ({cat.count})
+                  </button>
+                ))}
+              </div>
+
+              {/* Presets List Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                {rawMaterialPresets
+                  .filter((p) => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
+                  .map((preset) => {
+                    const badgeColor =
+                      preset.category === 'BAMBOO'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                        : preset.category === 'RATTAN'
+                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : preset.category === 'CASH_ADVANCE'
+                        ? 'bg-blue-100 text-blue-800 border-blue-200'
+                        : 'bg-slate-100 text-slate-800 border-slate-200';
+
+                    return (
+                      <div
+                        key={preset.id}
+                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex items-center justify-between gap-2 transition-all"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeColor}`}>
+                              {preset.categoryLabel || preset.category}
+                            </span>
+                          </div>
+                          <h4 className="font-bold text-xs text-slate-900 truncate">{preset.name}</h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            ယူနစ်: <span className="font-semibold text-slate-700">{preset.defaultUnit}</span>
+                            {preset.category !== 'CASH_ADVANCE' && (
+                              <>
+                                {' '}• ပေါက်ဈေး:{' '}
+                                <span className="font-bold text-slate-900">
+                                  {formatNumberOnly(preset.defaultUnitPrice)} ကျပ်
+                                </span>
+                              </>
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePreset(preset.id, preset.name)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="ဖျက်မည်"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ================= APP LOCK & PASSWORD KEY RESET CARD ================= */}
@@ -2219,155 +2368,6 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             <span className="text-[11px] text-slate-500 block">Sales ({sales.length} စောင်)</span>
           </button>
         </div>
-      </div>
-
-      {/* ================= RAW MASTER (RAW MATERIAL PRESETS) MANAGEMENT ================= */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
-          <div
-            className="cursor-pointer select-none flex items-center gap-2"
-            onClick={toggleRawMaster}
-          >
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
-              <Layers className="w-4 h-4 text-amber-600" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-xs sm:text-sm text-slate-900">
-                  ကုန်ကြမ်းစီမံခြင်း (Raw Master)
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                  {rawMaterialPresets.length} မျိုး
-                </span>
-                <span className="text-slate-400 hover:text-slate-600 p-0.5">
-                  {isRawMasterExpanded ? (
-                    <ChevronUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {isRawMasterExpanded
-                  ? 'ဝါး၊ ကြိမ်နှင့် ကုန်ကြမ်းကြိုထုတ် အမျိုးအစားများ စိတ်ကြိုက်စီမံနိုင်ပါသည်'
-                  : 'စာရင်းဝှက်ထားပါသည် (ဖွင့်ကြည့်ရန် နှိပ်ပါ)'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={toggleRawMaster}
-              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              {isRawMasterExpanded ? (
-                <>
-                  <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                  <span>ဝှက်မည်</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3.5 h-3.5 text-slate-500" />
-                  <span>ဖော်မည်</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handleResetPresetsToDefault}
-              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg cursor-pointer transition-colors"
-            >
-              မူလအတိုင်း ပြန်ထားမည်
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsAddPresetOpen(true)}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg flex items-center gap-1 shadow-xs cursor-pointer transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>ကုန်ကြမ်းအသစ် ထည့်မည်</span>
-            </button>
-          </div>
-        </div>
-
-        {isRawMasterExpanded && (
-          <>
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {[
-                { id: 'all', label: 'အားလုံး', count: rawMaterialPresets.length },
-                { id: 'BAMBOO', label: 'ဝါးကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'BAMBOO').length },
-                { id: 'RATTAN', label: 'ကြိမ်ကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'RATTAN').length },
-                { id: 'CASH_ADVANCE', label: 'ငွေကြိုယူ', count: rawMaterialPresets.filter((p) => p.category === 'CASH_ADVANCE').length },
-                { id: 'OTHER', label: 'အခြားကုန်ကြမ်း', count: rawMaterialPresets.filter((p) => p.category === 'OTHER').length },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setPresetCategoryFilter(cat.id)}
-                  className={`px-3 py-1 text-xs rounded-full font-bold cursor-pointer transition-colors shrink-0 ${
-                    presetCategoryFilter === cat.id
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {cat.label} ({cat.count})
-                </button>
-              ))}
-            </div>
-
-            {/* Presets List Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-              {rawMaterialPresets
-                .filter((p) => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
-                .map((preset) => {
-                  const badgeColor =
-                    preset.category === 'BAMBOO'
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                      : preset.category === 'RATTAN'
-                      ? 'bg-amber-100 text-amber-800 border-amber-200'
-                      : preset.category === 'CASH_ADVANCE'
-                      ? 'bg-blue-100 text-blue-800 border-blue-200'
-                      : 'bg-slate-100 text-slate-800 border-slate-200';
-
-                  return (
-                    <div
-                      key={preset.id}
-                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex items-center justify-between gap-2 transition-all"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badgeColor}`}>
-                            {preset.categoryLabel || preset.category}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-xs text-slate-900 truncate">{preset.name}</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          ယူနစ်: <span className="font-semibold text-slate-700">{preset.defaultUnit}</span>
-                          {preset.category !== 'CASH_ADVANCE' && (
-                            <>
-                              {' '}• ပေါက်ဈေး:{' '}
-                              <span className="font-bold text-slate-900">
-                                {formatNumberOnly(preset.defaultUnitPrice)} ကျပ်
-                              </span>
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePreset(preset.id, preset.name)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="ဖျက်မည်"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-            </div>
-          </>
-        )}
       </div>
 
       {/* ================= DATA MANAGEMENT & SETUP OPTIONS ================= */}
