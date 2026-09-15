@@ -1050,7 +1050,7 @@ export async function executeProcessSaleAtomicInternal(
   let merchant: Merchant | undefined;
   if (sale.merchantId && sale.merchantId !== '__NEW__') {
     merchant = await database.merchants.get(sale.merchantId);
-    if (!merchant && !sale.merchantName?.trim()) {
+    if (!merchant) {
       throw new EntityNotFoundError('Merchant', sale.merchantId);
     }
   }

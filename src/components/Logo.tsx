@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-const DEFAULT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="108" fill="%23064e3b"/><circle cx="256" cy="212" r="80" fill="%23fef08a"/><text x="256" y="430" font-size="70" font-weight="bold" fill="%23ffffff" text-anchor="middle" font-family="sans-serif">ရွှေလက်ရာ</text></svg>`;
+const DEFAULT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><radialGradient id="bg" cx="50%" cy="45%" r="65%"><stop offset="0%" stop-color="%23064e3b"/><stop offset="65%" stop-color="%23022c22"/><stop offset="100%" stop-color="%23021c15"/></radialGradient><linearGradient id="text" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23ffffff"/><stop offset="40%" stop-color="%23fef08a"/><stop offset="80%" stop-color="%23f59e0b"/><stop offset="100%" stop-color="%23d97706"/></linearGradient><linearGradient id="star" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23ffffff"/><stop offset="30%" stop-color="%23fed75b"/><stop offset="100%" stop-color="%23b45309"/></linearGradient></defs><rect width="512" height="512" rx="108" fill="url(%23bg)"/><path d="M 256 90 C 282 140 314 172 360 186 C 314 200 282 232 256 282 C 230 232 198 200 152 186 C 198 172 230 140 256 90 Z" fill="url(%23star)"/><circle cx="256" cy="186" r="16" fill="%23fff176"/><text x="256" y="365" text-anchor="middle" font-family="'Padauk', 'Noto Sans Myanmar', 'Pyidaungsu', 'Myanmar3', sans-serif" font-size="56" font-weight="900" fill="url(%23text)">ရွှေလက်ရာ</text></svg>`;
 const DEFAULT_LOGO_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(DEFAULT_LOGO_SVG)}`;
 
 interface LogoProps {
@@ -20,6 +20,8 @@ export const Logo: React.FC<LogoProps> = ({
   logoUrl,
   onClick,
 }) => {
+  const [imgError, setImgError] = useState(false);
+
   const getDimensionClass = () => {
     if (typeof size === 'number') {
       return '';
@@ -43,7 +45,8 @@ export const Logo: React.FC<LogoProps> = ({
   };
 
   const style = typeof size === 'number' ? { width: `${size}px`, height: `${size}px` } : undefined;
-  const imageSrc = logoUrl || DEFAULT_LOGO_DATA_URL;
+  const primarySrc = logoUrl || '/logo.svg';
+  const imageSrc = imgError ? DEFAULT_LOGO_DATA_URL : primarySrc;
 
   return (
     <div
@@ -56,6 +59,7 @@ export const Logo: React.FC<LogoProps> = ({
         src={imageSrc}
         alt={alt}
         referrerPolicy="no-referrer"
+        onError={() => setImgError(true)}
         className="w-full h-full object-cover rounded-xl"
       />
     </div>

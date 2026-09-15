@@ -20,6 +20,9 @@ if (typeof globalThis.localStorage === 'undefined') {
   (globalThis as any).localStorage = localStorageMock;
   (globalThis as any).window = globalThis;
 }
+if (typeof globalThis.navigator === 'undefined') {
+  (globalThis as any).navigator = { onLine: true };
+}
 
 describe('Production Offline PWA Audit & Offline Capability Test Suite', () => {
   beforeEach(async () => {
