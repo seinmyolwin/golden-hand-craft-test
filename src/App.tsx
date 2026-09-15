@@ -861,6 +861,7 @@ export default function App() {
             return {
               ...s,
               currentAdvanceBalance: saved.remainingAdvanceBalance,
+              payableBalance: (s.payableBalance || 0) + (saved.netPayable || 0),
               totalGoodsValueDelivered: (s.totalGoodsValueDelivered || 0) + (saved.totalGoodsValue || 0),
               totalAdvanceGiven: (s.totalAdvanceGiven || 0) + (saved.newAdvanceTaken || 0),
               lastSettledDate: saved.date,
@@ -2474,6 +2475,7 @@ export default function App() {
           onClose={() => setIsNewEntryModalOpen(false)}
           suppliers={suppliers}
           products={products}
+          existingTransactions={transactions}
           initialSupplierId={initialEntrySupplierId}
           selectedDate={selectedDate}
           onSave={handleSaveTransaction}
@@ -2490,6 +2492,7 @@ export default function App() {
           initialMerchantId={initialSaleMerchantId}
           selectedDate={selectedDate}
           inventoryStock={inventoryStock}
+          existingSales={sales}
           onSave={handleSaveSale}
           onAddNewMerchant={handleAddMerchant}
         />

@@ -141,8 +141,7 @@ export async function recordAuditEvent(
       if (typeof table.get === 'function') {
         const existing = await table.get(entry.id);
         if (existing) {
-          const salt = Math.random().toString(36).substring(2, 8);
-          entry = { ...entry, id: `${generateStableId('audit')}_${Date.now()}_${salt}` };
+          entry = { ...entry, id: `${generateStableId('audit')}_${Date.now()}` };
           attempt++;
           continue;
         }
@@ -156,10 +155,8 @@ export async function recordAuditEvent(
         console.error('Failed to record immutable audit event after retries:', err);
         throw err;
       }
-      // Re-generate ID with timestamp and random salt to guarantee uniqueness
-      const salt = Math.random().toString(36).substring(2, 8);
-      const uniqueId = `${generateStableId('audit')}_${Date.now()}_${salt}`;
-      entry = { ...entry, id: uniqueId };
+      // Re-generate ID with stable generator to guarantee uniqueness
+      entry = { ...entry, id: `${generateStableId('audit')}_${Date.now()}` };
     }
   }
 

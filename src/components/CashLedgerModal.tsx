@@ -17,10 +17,12 @@ import {
   exportDailyClosingHistoryCSV,
   getPreviousClosingCash,
 } from '../services/dailyClosingService';
-import { cashMovementRepo, dailyClosingRepo } from '../repositories';
+import { cashMovementRepo, dailyClosingRepo, supplierRepo } from '../repositories';
 import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { generateStableId } from '../utils/idGenerator';
 import {
   X,
+  Plus,
   Wallet,
   ArrowDownLeft,
   ArrowUpRight,
@@ -79,6 +81,97 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
   const [isPerformingClosing, setIsPerformingClosing] = useState<boolean>(false);
   const [closingError, setClosingError] = useState<string | null>(null);
   const [closingSuccess, setClosingSuccess] = useState<string | null>(null);
+
+  // New Cash Movement State
+  const [isAddMovementOpen, setIsAddMovementOpen] = useState<boolean>(false);
+  const [newMovType, setNewMovType] = useState<CashMovementType>('EXPENSE');
+  const [newMovAmount, setNewMovAmount] = useState<string>('');
+  const [newMovDescription, setNewMovDescription] = useState<string>('');
+  const [newMovCounterpart, setNewMovCounterpart] = useState<string>('');
+  const [newMovDate, setNewMovDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [newMovNotes, setNewMovNotes] = useState<string>('');
+  const [isSavingMovement, setIsSavingMovement] = useState<boolean>(false);
+
+  const handleSaveMovement = async () => {
+    const amt = parseFloat(newMovAmount);
+    if (!amt || amt <= 0 || isNaN(amt)) {
+      alert('ကျေးဇူးပြု၍ တရားဝင် ငွေပမာဏ ရိုက်ထည့်ပါ');
+      return;
+    }
+    if (!newMovDescription.trim()) {
+      alert('ကျေးဇူးပြု၍ အကြောင်းအရာ ရိုက်ထည့်ပါ');
+      return;
+    }
+
+    setIsSavingMovement(true);
+    try {
+      const isOut = newMovType === 'EXPENSE' || newMovType === 'OWNER_DRAW' || newMovType === 'PURCHASE_PAYOUT' || newMovType === 'SUPPLIER_PAYOUT';
+      const dir: 'IN' | 'OUT' = isOut ? 'OUT' : 'IN';
+      const signed = isOut ? -Math.abs(amt) : Math.abs(amt);
+      const now = new Date().toISOString();
+      const movId = generateStableId('cm');
+
+      await cashMovementRepo.recordMovement({
+        id: movId,
+        amount: Math.abs(amt),
+        direction: dir,
+        signedAmount: signed,
+        type: newMovType,
+        typeLabelMy: getCashMovementTypeLabel(newMovType),
+        referenceType:
+          newMovType === 'OPENING_FLOAT'
+            ? 'OPENING'
+            : newMovType === 'EXPENSE'
+            ? 'EXPENSE'
+            : newMovType === 'INCOME'
+            ? 'INCOME'
+            : 'MANUAL_ADJUSTMENT',
+        referenceId: movId,
+        referenceVoucherNo: `CASH-${newMovDate.replace(/-/g, '')}-${movId.slice(-4).toUpperCase()}`,
+        counterpartName: newMovCounterpart.trim() || undefined,
+        description: newMovDescription.trim(),
+        transactionDate: newMovDate,
+        transactionTime: now.slice(11, 16),
+        notes: newMovNotes.trim() || undefined,
+        status: 'COMPLETED',
+        schemaVersion: 1,
+        idempotencyKey: generateStableId(`ik_${movId}`),
+        createdAt: now,
+      });
+
+      if (newMovType === 'SUPPLIER_PAYOUT' && newMovCounterpart) {
+        try {
+          const suppliers = await supplierRepo.getAll();
+          const sup = suppliers.find(
+            (s) =>
+              s.name.toLowerCase().includes(newMovCounterpart.toLowerCase()) ||
+              newMovCounterpart.toLowerCase().includes(s.name.toLowerCase())
+          );
+          if (sup) {
+            const currentPayable = sup.payableBalance || 0;
+            const updatedPayable = Math.max(0, currentPayable - Math.abs(amt));
+            await supplierRepo.update(sup.id, {
+              payableBalance: updatedPayable,
+            });
+          }
+        } catch (supErr) {
+          console.warn('Could not update supplier payable balance:', supErr);
+        }
+      }
+
+      setIsAddMovementOpen(false);
+      setNewMovAmount('');
+      setNewMovDescription('');
+      setNewMovCounterpart('');
+      setNewMovNotes('');
+      await loadData();
+      onRefreshData?.();
+    } catch (err: any) {
+      alert(`ငွေစာရင်းသွင်းရာတွင် အမှားဖြစ်ပေါ်ပါသည်: ${err?.message || err}`);
+    } finally {
+      setIsSavingMovement(false);
+    }
+  };
 
   // Load cash movements and closings from DB
   const loadData = async () => {
@@ -371,6 +464,14 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
                     <option value="IN">ငွေအဝင်သာ (Cash In)</option>
                     <option value="OUT">ငွေအထွက်သာ (Cash Out)</option>
                   </select>
+
+                  <button
+                    onClick={() => setIsAddMovementOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    ငွေစာရင်းသွင်း / အသုံးစရိတ်
+                  </button>
 
                   <button
                     onClick={handleExportLedgerCSV}
@@ -748,6 +849,129 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* New Cash Movement Modal */}
+      {isAddMovementOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-blue-600" />
+                ငွေစာရင်းသွင်းခြင်း / အသုံးစရိတ်
+              </h3>
+              <button
+                onClick={() => setIsAddMovementOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  အမျိုးအစား ရွေးချယ်ပါ
+                </label>
+                <select
+                  value={newMovType}
+                  onChange={(e) => setNewMovType(e.target.value as any)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 cursor-pointer"
+                >
+                  <option value="EXPENSE">ဆိုင်အသုံးစရိတ် (Expense - ငွေအထွက်)</option>
+                  <option value="SUPPLIER_PAYOUT">ကုန်သွင်းသူသို့ ကုန်ဖိုးပေးချေခြင်း (Supplier Payout - ငွေအထွက်)</option>
+                  <option value="OPENING_FLOAT">အဖွင့်ငွေ (Opening Cash Float - စတင်ငွေလက်ကျန်)</option>
+                  <option value="INCOME">အထွေထွေဝင်ငွေ (Other Income - ငွေအဝင်)</option>
+                  <option value="CAPITAL_INJECTION">အရင်းထပ်ထည့်ငွေ (Capital Injection - ငွေအဝင်)</option>
+                  <option value="OWNER_DRAW">ဆိုင်ရှင်ထုတ်ယူငွေ (Owner Draw - ငွေအထွက်)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  ငွေပမာဏ (ကျပ်) *
+                </label>
+                <input
+                  type="number"
+                  placeholder="ဥပမာ - ၂၀,၀၀၀"
+                  value={newMovAmount}
+                  onChange={(e) => setNewMovAmount(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  အကြောင်းအရာ / ခေါင်းစဉ် *
+                </label>
+                <input
+                  type="text"
+                  placeholder="ဥပမာ - သယ်ယူပို့ဆောင်ရေးနှင့် ကားခ"
+                  value={newMovDescription}
+                  onChange={(e) => setNewMovDescription(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    ဆက်စပ်သူ (ရှိလျှင်)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ဥပမာ - ကားသမား"
+                    value={newMovCounterpart}
+                    onChange={(e) => setNewMovCounterpart(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    ရက်စွဲ *
+                  </label>
+                  <input
+                    type="date"
+                    value={newMovDate}
+                    onChange={(e) => setNewMovDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  မှတ်ချက် (အပိုဆောင်း)
+                </label>
+                <input
+                  type="text"
+                  placeholder="မှတ်ချက်များ ရေးသားပါ"
+                  value={newMovNotes}
+                  onChange={(e) => setNewMovNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMovementOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer"
+                >
+                  မလုပ်တော့ပါ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMovement}
+                  disabled={isSavingMovement}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  {isSavingMovement ? 'သိမ်းဆည်းနေပါသည်...' : 'စာရင်းသွင်းမည်'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

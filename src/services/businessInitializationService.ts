@@ -475,9 +475,15 @@ export async function cleanupDemoDataForGoLive(options?: {
     (p) => !demoProductIds.has(p.id) || (p as any).isUserCreated === true
   );
 
-  // If the owner has opening position products, preserve them
+  // Guard against re-running Go-Live on an already active business
   const initRecord = await targetDb.settings.get('businessInitialization');
-  const openingPosition = (initRecord?.value as BusinessInitializationRecord)?.openingPosition;
+  const currentInit = initRecord?.value as BusinessInitializationRecord | undefined;
+  if (currentInit?.state === 'ACTIVE') {
+    throw new Error('စီးပွားရေးလုပ်ငန်း စာရင်းဖွင့်ခြင်း (Go-Live) သည် ACTIVE ဖြစ်ပြီးဖြစ်သဖြင့် ထပ်မံလုပ်ဆောင်၍ မရပါ');
+  }
+
+  // If the owner has opening position products, preserve them
+  const openingPosition = currentInit?.openingPosition;
   if (openingPosition?.finishedGoods && openingPosition.finishedGoods.length > 0) {
     const openingProductIds = new Set(openingPosition.finishedGoods.map((fg) => fg.productId));
     currentProducts.forEach((p) => {

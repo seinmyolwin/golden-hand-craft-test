@@ -42,19 +42,13 @@ export function generateCryptoSalt(byteLength: number = 16): string {
       ? globalThis.crypto
       : undefined;
 
-  if (cryptoObj) {
-    const array = new Uint8Array(byteLength);
-    cryptoObj.getRandomValues(array);
-    return Array.from(array)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+  if (!cryptoObj) {
+    throw new Error('Web Crypto API is required for cryptographic operations but is unavailable. Fail-closed for security.');
   }
-  // Fallback for non-browser/test environments without crypto.getRandomValues
-  const fallback = new Uint8Array(byteLength);
-  for (let i = 0; i < byteLength; i++) {
-    fallback[i] = Math.floor(Math.random() * 256);
-  }
-  return Array.from(fallback)
+
+  const array = new Uint8Array(byteLength);
+  cryptoObj.getRandomValues(array);
+  return Array.from(array)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
@@ -171,20 +165,17 @@ export function generateSecureRecoveryKey(): string {
       ? globalThis.crypto
       : undefined;
 
+  if (!cryptoObj) {
+    throw new Error('Web Crypto API is required for secure emergency recovery key generation.');
+  }
+
   let p1 = '';
   let p2 = '';
-  if (cryptoObj) {
-    const buf = new Uint8Array(8);
-    cryptoObj.getRandomValues(buf);
-    for (let i = 0; i < 4; i++) {
-      p1 += chars[buf[i] % chars.length];
-      p2 += chars[buf[i + 4] % chars.length];
-    }
-  } else {
-    for (let i = 0; i < 4; i++) {
-      p1 += chars[Math.floor(Math.random() * 256) % chars.length];
-      p2 += chars[Math.floor(Math.random() * 256) % chars.length];
-    }
+  const buf = new Uint8Array(8);
+  cryptoObj.getRandomValues(buf);
+  for (let i = 0; i < 4; i++) {
+    p1 += chars[buf[i] % chars.length];
+    p2 += chars[buf[i + 4] % chars.length];
   }
   return `SLY-${p1}-${p2}`;
 }

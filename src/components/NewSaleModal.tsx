@@ -6,7 +6,6 @@ import {
   getTodayDateString,
   getCurrentTimeString,
   findPotentialDuplicateSale,
-  getStoredSales,
   parseBilingualNumber,
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
@@ -37,6 +36,7 @@ interface NewSaleModalProps {
   initialMerchantId?: string;
   selectedDate: string;
   inventoryStock?: any[];
+  existingSales?: SaleRecord[];
   onSave: (sale: SaleRecord) => void;
   onAddNewMerchant?: (merchant: Merchant) => void;
 }
@@ -50,6 +50,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   initialMerchantId,
   selectedDate,
   inventoryStock = [],
+  existingSales = [],
   onSave,
   onAddNewMerchant,
 }) => {
@@ -232,7 +233,6 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
 
     // Duplicate Sale Check
-    const existingSales = getStoredSales();
     const finalMerchantId = merchantId === '__NEW__' ? '__NEW__' : currentMerchant.id;
     const finalMerchantName = merchantId === '__NEW__' ? newMerchantName.trim() : currentMerchant.name;
     const finalMerchantTown = merchantId === '__NEW__' ? (newMerchantTown.trim() || 'အထွေထွေ') : currentMerchant.town;

@@ -50,7 +50,13 @@ export function validateAttachmentFile(file: File | Blob, options?: { maxSizeMB?
   // If type is empty (common in some mobile uploads), check if it's a valid Blob or skip strict mime check if Blob has size
   if (file.type) {
     const typeLower = file.type.toLowerCase();
-    const isAllowed = allowed.some((t) => typeLower === t.toLowerCase() || typeLower.startsWith('image/'));
+    const isAllowed = allowed.some((t) => {
+      const allowedLower = t.toLowerCase();
+      if (allowedLower.endsWith('/*')) {
+        return typeLower.startsWith(allowedLower.slice(0, -1));
+      }
+      return typeLower === allowedLower;
+    });
     if (!isAllowed) {
       throw new Error('မမှန်ကန်သော ဖိုင်အမျိုးအစားဖြစ်ပါသည်။ ဓာတ်ပုံ ပုံရိပ်များကိုသာ တင်ခွင့်ပြုပါသည်။ (Invalid file type. Only image files are allowed)');
     }

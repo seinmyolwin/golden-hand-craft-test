@@ -6,7 +6,6 @@ import {
   getTodayDateString,
   getCurrentTimeString,
   findPotentialDuplicateTransaction,
-  getStoredTransactions,
   parseBilingualNumber,
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
@@ -35,6 +34,7 @@ interface NewEntryModalProps {
   onClose: () => void;
   suppliers: Supplier[];
   products: Product[];
+  existingTransactions?: TransactionRecord[];
   initialSupplierId?: string;
   selectedDate: string;
   onSave: (record: TransactionRecord) => void;
@@ -47,6 +47,7 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
   onClose,
   suppliers = [],
   products = [],
+  existingTransactions = [],
   initialSupplierId,
   selectedDate,
   onSave,
@@ -68,6 +69,7 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
 
   const [newAdvanceTaken, setNewAdvanceTaken] = useState<number>(0);
   const [newAdvanceReason, setNewAdvanceReason] = useState<string>('');
+  const [paymentMode, setPaymentMode] = useState<'CASH' | 'CREDIT'>('CASH');
   const [notes, setNotes] = useState<string>('');
   const [attachmentPhotos, setAttachmentPhotos] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -104,7 +106,9 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
 
   // Advance deduction logic
   const advanceDeducted = Math.min(previousAdvanceBalance, totalGoodsValue);
-  const netCashPaidToSupplier = Math.max(0, totalGoodsValue - advanceDeducted);
+  const netCalculatedGoodsDue = Math.max(0, totalGoodsValue - advanceDeducted);
+  const netCashPaidToSupplier = paymentMode === 'CREDIT' ? 0 : netCalculatedGoodsDue;
+  const supplierPayableAmount = paymentMode === 'CREDIT' ? netCalculatedGoodsDue : 0;
   const remainingAdvanceBalance = previousAdvanceBalance - advanceDeducted + newAdvanceTaken;
 
   if (!isOpen) return null;
@@ -166,7 +170,7 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
     }
 
     // Duplicate Entry Protection
-    const existingTxs = getStoredTransactions();
+    const existingTxs = existingTransactions;
     const finalSupplierId = supplierId === '__NEW__' ? '__NEW__' : currentSupplier.id;
     const finalSupplierName = supplierId === '__NEW__' ? newSupplierName.trim() : currentSupplier.name;
     const finalSupplierVillage = supplierId === '__NEW__' ? (newSupplierVillage.trim() || 'အထွေထွေ') : currentSupplier.village;
@@ -218,6 +222,8 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
       newAdvanceReason: newAdvanceReason.trim(),
       cashPaidToSupplier: netCashPaidToSupplier,
       netCashPaidToSupplier,
+      netPayable: supplierPayableAmount,
+      paymentMethod: paymentMode,
       remainingAdvanceBalance,
       notes: notes.trim(),
       attachmentPhotos,
@@ -461,6 +467,38 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
             </div>
           </div>
 
+          {/* Payment Mode Selector */}
+          <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="font-bold text-slate-800 text-xs block">ငွေရှင်းပေးချေမှု ပုံစံ</span>
+              <span className="text-[11px] text-slate-500">လက်ငင်းငွေချေ သို့မဟုတ် အကြွေးထားရှိခြင်း</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMode('CASH')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  paymentMode === 'CASH'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                }`}
+              >
+                လက်ငင်းငွေချေ (CASH)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMode('CREDIT')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  paymentMode === 'CREDIT'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-300'
+                }`}
+              >
+                အကြွေးထားမည် (CREDIT / PAYABLE)
+              </button>
+            </div>
+          </div>
+
           {/* Summary Calculation */}
           <div className="p-3 bg-slate-900 text-white rounded-xl space-y-2">
             <div className="flex justify-between text-xs">
@@ -471,12 +509,17 @@ export const NewEntryModal: React.FC<NewEntryModalProps> = ({
               <span className="text-slate-400">အကြိုငွေမှ နုတ်ယူငွေ:</span>
               <strong className="text-slate-200">{formatMMK(advanceDeducted)}</strong>
             </div>
-            {netCashPaidToSupplier > 0 && (
+            {paymentMode === 'CREDIT' ? (
+              <div className="flex justify-between text-xs font-bold text-rose-400">
+                <span>ပေးသွင်းသူသို့ ပေးရန်ကျန် (Payable):</span>
+                <span>{formatMMK(supplierPayableAmount)}</span>
+              </div>
+            ) : netCashPaidToSupplier > 0 ? (
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400">ကုန်ပစ္စည်းပေးသွင်းသူသို့ လက်ငင်းရှင်းပေးငွေ:</span>
                 <strong className="text-blue-300">{formatMMK(netCashPaidToSupplier)}</strong>
               </div>
-            )}
+            ) : null}
             <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-sm font-bold">
               <span>ကျန်ရှိမည့် အကြိုငွေစာရင်း:</span>
               <span className={`text-base font-black ${remainingAdvanceBalance > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>

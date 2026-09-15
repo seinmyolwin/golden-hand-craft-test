@@ -234,10 +234,24 @@ function safeRemoveSessionStorage(key: string): void {
 }
 
 function generateSessionToken(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto
+      ? window.crypto
+      : typeof globalThis !== 'undefined' && globalThis.crypto
+      ? globalThis.crypto
+      : undefined;
+
+  if (cryptoObj) {
+    if (typeof cryptoObj.randomUUID === 'function') {
+      return cryptoObj.randomUUID();
+    }
+    if (typeof cryptoObj.getRandomValues === 'function') {
+      const buf = new Uint8Array(16);
+      cryptoObj.getRandomValues(buf);
+      return 'st_' + Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
   }
-  return 'st_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+  throw new Error('Web Crypto API is required for secure session token generation.');
 }
 
 /**
