@@ -84,15 +84,16 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
 
+    const list = merchants || [];
     if (merchantId === '__NEW__') {
       return;
     }
-    if (initialMerchantId && merchants.some((m) => m.id === initialMerchantId)) {
+    if (initialMerchantId && list.some((m) => m && m.id === initialMerchantId)) {
       setMerchantId(initialMerchantId);
-    } else if (merchantId && merchants.some((m) => m.id === merchantId)) {
+    } else if (merchantId && list.some((m) => m && m.id === merchantId)) {
       // current merchant is already valid
-    } else if (merchants.length > 0) {
-      setMerchantId(merchants[0].id);
+    } else if (list.length > 0 && list[0]?.id) {
+      setMerchantId(list[0].id);
     } else {
       setMerchantId('');
     }
@@ -100,13 +101,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   // Ensure default items have valid products
   useEffect(() => {
-    if (isOpen && items.length === 0 && products.length > 0) {
-      const firstProd = products[0];
+    const prodList = products || [];
+    if (isOpen && items.length === 0 && prodList.length > 0 && prodList[0]?.id) {
+      const firstProd = prodList[0];
       setItems([
         {
           productId: firstProd.id,
           quantity: 10,
-          unitPrice: firstProd.defaultWholesalePrice || Math.round(firstProd.defaultPrice * 1.25),
+          unitPrice: firstProd.defaultWholesalePrice || Math.round((firstProd.defaultPrice || 1000) * 1.25),
         },
       ]);
     }
@@ -125,17 +127,19 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         updatedAt: '',
       };
     }
-    return merchants.find((m) => m.id === merchantId);
+    return (merchants || []).find((m) => m && m.id === merchantId);
   }, [merchants, merchantId, newMerchantName, newMerchantTown, newMerchantPhone]);
 
   const filteredMerchants = useMemo(() => {
-    if (!merchantSearch.trim()) return merchants;
+    const list = merchants || [];
+    if (!merchantSearch.trim()) return list;
     const q = merchantSearch.toLowerCase().trim();
-    return merchants.filter(
+    return list.filter(
       (m) =>
-        (m.name || '').toLowerCase().includes(q) ||
-        (m.town || '').toLowerCase().includes(q) ||
-        (m.phone || '').includes(q)
+        m &&
+        ((m.name || '').toLowerCase().includes(q) ||
+          (m.town || '').toLowerCase().includes(q) ||
+          (m.phone || '').includes(q))
     );
   }, [merchants, merchantSearch]);
 

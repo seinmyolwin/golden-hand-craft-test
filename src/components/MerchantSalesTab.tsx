@@ -56,10 +56,10 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
   const towns = useMemo(() => {
     const set = new Set<string>();
     (merchants || []).forEach((m) => {
-      if (m && m.town) set.add(m.town);
+      if (m && typeof m.town === 'string' && m.town.trim()) set.add(m.town.trim());
     });
     (sales || []).forEach((s) => {
-      if (s && s.merchantTown) set.add(s.merchantTown);
+      if (s && typeof s.merchantTown === 'string' && s.merchantTown.trim()) set.add(s.merchantTown.trim());
     });
     return Array.from(set);
   }, [merchants, sales]);
@@ -67,12 +67,14 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
   const filteredSales = useMemo(() => {
     return (sales || []).filter((s) => {
       if (!s) return false;
+      const q = (searchQuery || '').toLowerCase().trim();
       const matchesSearch =
-        (s.merchantName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.merchantTown || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.voucherNo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.items || []).some((it) => (it?.productName || '').toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesTown = selectedTown === 'all' || s.merchantTown === selectedTown;
+        !q ||
+        (s.merchantName || '').toLowerCase().includes(q) ||
+        (s.merchantTown || '').toLowerCase().includes(q) ||
+        (s.voucherNo || '').toLowerCase().includes(q) ||
+        (s.items || []).some((it) => (it?.productName || '').toLowerCase().includes(q));
+      const matchesTown = selectedTown === 'all' || (s.merchantTown || '') === selectedTown;
       let matchesDate = true;
       if (dateFilter === 'today') {
         matchesDate = s.date === getTodayDateString();
@@ -91,10 +93,10 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
 
     (filteredSales || []).forEach((s) => {
       if (!s) return;
-      totalSalesRevenue += s.grandTotal || 0;
-      totalCashReceived += s.cashPaidByMerchant || 0;
-      totalOutstandingReceivable += s.remainingReceivableBalance || 0;
-      totalPiecesSold += s.totalItemsCount || 0;
+      totalSalesRevenue += Number(s.grandTotal) || 0;
+      totalCashReceived += Number(s.cashPaidByMerchant) || 0;
+      totalOutstandingReceivable += Number(s.remainingReceivableBalance) || 0;
+      totalPiecesSold += Number(s.totalItemsCount) || 0;
     });
 
     return {
@@ -119,7 +121,7 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 ကုန်သည်အရောင်းနှင့် ဘောင်ချာများ
                 <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-700/50">
-                  {sales.length} စောင်
+                  {(sales || []).length} စောင်
                 </span>
               </h2>
               <p className="text-xs text-slate-300">
@@ -207,11 +209,11 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
           </div>
           <div className="text-lg sm:text-xl font-extrabold text-rose-800 truncate">
             {formatMMK(
-              merchants.reduce((sum, m) => sum + (m.currentReceivableBalance || 0), 0)
+              (merchants || []).reduce((sum, m) => sum + (Number(m?.currentReceivableBalance) || 0), 0)
             )}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            အကြွေးကျန်ရှိသူ {merchants.filter((m) => m.currentReceivableBalance > 0).length} ဦး
+            အကြွေးကျန်ရှိသူ {(merchants || []).filter((m) => m && (m.currentReceivableBalance || 0) > 0).length} ဦး
           </p>
         </div>
       </div>
@@ -305,17 +307,17 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
         ) : (
           filteredSales.map((sale) => (
             <div
-              key={sale.id}
+              key={sale.id || sale.voucherNo}
               className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs hover:border-blue-300 transition-all space-y-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 font-extrabold rounded text-xs">
-                    {sale.voucherNo}
+                    {sale.voucherNo || '-'}
                   </span>
                   <div className="text-xs text-slate-500 flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-slate-400" />
-                    {sale.date} • {sale.time}
+                    {sale.date || '-'} {sale.time ? `• ${sale.time}` : ''}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -343,44 +345,46 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
               <div className="p-2.5 bg-slate-50 rounded-lg flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs shrink-0">
-                    {sale.merchantName.charAt(0)}
+                    {(sale.merchantName || '?').charAt(0)}
                   </div>
                   <div>
                     <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                      {sale.merchantName}
-                      <span className="text-[11px] px-2 py-0.5 bg-white border border-slate-200 text-blue-700 rounded-full font-bold">
-                        <MapPin className="w-3 h-3 inline mr-0.5" />
-                        {sale.merchantTown}
-                      </span>
+                      {sale.merchantName || 'အထွေထွေ ကုန်သည်'}
+                      {sale.merchantTown && (
+                        <span className="text-[11px] px-2 py-0.5 bg-white border border-slate-200 text-blue-700 rounded-full font-bold">
+                          <MapPin className="w-3 h-3 inline mr-0.5" />
+                          {sale.merchantTown}
+                        </span>
+                      )}
                     </h4>
                   </div>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-slate-500 block">ကျသင့်ငွေ စုစုပေါင်း</span>
                   <span className="text-base font-extrabold text-blue-900">
-                    {formatMMK(sale.grandTotal)}
+                    {formatMMK(sale.grandTotal || 0)}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-1.5 text-xs">
                 <div className="text-[11px] text-slate-500 font-medium">
-                  ကုန်ပစ္စည်းများ ({sale.totalItemsCount} ထည်)
+                  ကုန်ပစ္စည်းများ ({sale.totalItemsCount || (sale.items || []).length} ထည်)
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5">
-                  {sale.items.map((item, idx) => (
+                  {(sale.items || []).map((item, idx) => (
                     <div
                       key={idx}
                       className="p-2 bg-slate-100/70 rounded-lg flex items-center justify-between text-xs"
                     >
                       <div className="font-bold text-slate-800">
-                        {item.productName}
+                        {item?.productName || 'ကုန်ပစ္စည်း'}
                         <span className="text-slate-500 font-normal ml-1">
-                          ({item.quantity} {item.unit})
+                          ({item?.quantity || 0} {item?.unit || 'ခု'})
                         </span>
                       </div>
                       <div className="font-semibold text-slate-900">
-                        {formatNumberOnly(item.subtotal)} Ks
+                        {formatNumberOnly(item?.subtotal || (item?.quantity || 0) * (item?.unitPrice || 0))} Ks
                       </div>
                     </div>
                   ))}
@@ -391,18 +395,18 @@ export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
                 <div className="flex items-center gap-3">
                   <div className="text-slate-600">
                     ပေးငွေ:{' '}
-                    <strong className="text-emerald-700">{formatMMK(sale.cashPaidByMerchant)}</strong>
+                    <strong className="text-emerald-700">{formatMMK(sale.cashPaidByMerchant || 0)}</strong>
                   </div>
                   <div className="text-slate-600">
                     ရရန်ကျန်:{' '}
                     <strong
                       className={
-                        sale.remainingReceivableBalance > 0
+                        (sale.remainingReceivableBalance || 0) > 0
                           ? 'text-rose-700 font-bold'
                           : 'text-slate-800'
                       }
                     >
-                      {formatMMK(sale.remainingReceivableBalance)}
+                      {formatMMK(sale.remainingReceivableBalance || 0)}
                     </strong>
                   </div>
                 </div>

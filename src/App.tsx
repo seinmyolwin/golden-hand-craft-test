@@ -2306,17 +2306,19 @@ export default function App() {
           )}
 
           {normalizedTab === 'sales' && (
-            <MerchantSalesTab
-              sales={sales}
-              merchants={merchants}
-              products={products}
-              selectedDate={selectedDate}
-              inventoryStock={inventoryStock}
-              onOpenNewSale={() => handleOpenNewSale()}
-              onViewSaleVoucher={handleViewSaleVoucher}
-              onDeleteSale={handleDeleteSale}
-              onOpenReturnRefundModal={(sale) => handleOpenReturnRefundModal(sale)}
-            />
+            <ErrorBoundary isSection title="ကုန်သည်အရောင်း ကဏ္ဍ">
+              <MerchantSalesTab
+                sales={sales}
+                merchants={merchants}
+                products={products}
+                selectedDate={selectedDate}
+                inventoryStock={inventoryStock}
+                onOpenNewSale={() => handleOpenNewSale()}
+                onViewSaleVoucher={handleViewSaleVoucher}
+                onDeleteSale={handleDeleteSale}
+                onOpenReturnRefundModal={(sale) => handleOpenReturnRefundModal(sale)}
+              />
+            </ErrorBoundary>
           )}
 
           {normalizedTab === 'purchases' && (
