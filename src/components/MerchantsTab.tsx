@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Merchant, SaleRecord } from '../types';
 import {
   formatMMK,
@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   Boxes,
+  AlertCircle,
 } from 'lucide-react';
 
 interface MerchantsTabProps {
@@ -34,6 +35,13 @@ interface MerchantsTabProps {
   sales: SaleRecord[];
   onAddMerchant: (merchant: Merchant) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
+  onSettleMerchantPayment: (
+    merchantId: string,
+    amount: number,
+    paymentMethod: string,
+    notes: string,
+    clientRequestId: string
+  ) => Promise<void>;
   onOpenNewSaleForMerchant: (merchantId: string) => void;
   onOpenNewPurchaseForMerchant?: (merchantId: string) => void;
   onViewMerchantHistory: (merchant: Merchant) => void;
@@ -48,6 +56,7 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
   sales = [],
   onAddMerchant,
   onUpdateMerchant,
+  onSettleMerchantPayment,
   onOpenNewSaleForMerchant,
   onOpenNewPurchaseForMerchant,
   onViewMerchantHistory,
@@ -69,10 +78,13 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
     setDisplayLimit(36);
   }, [searchQuery, selectedTown, balanceFilter]);
 
+  const settlementRequestIdRef = useRef<string>(generateStableId('mset'));
   const [isSettleModalOpen, setIsSettleModalOpen] = useState<boolean>(false);
   const [settlingMerchant, setSettlingMerchant] = useState<Merchant | null>(null);
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [settleNotes, setSettleNotes] = useState<string>('');
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const [isSubmittingSettle, setIsSubmittingSettle] = useState<boolean>(false);
 
   const [name, setName] = useState<string>('');
   const [town, setTown] = useState<string>('မန္တလေး');
@@ -185,26 +197,32 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
     setIsAddModalOpen(false);
   };
 
-  const handleSaveSettlement = (e: React.FormEvent) => {
+  const handleSaveSettlement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settlingMerchant || settleAmount <= 0) return;
+    if (!settlingMerchant || settleAmount <= 0 || isSubmittingSettle) return;
 
-    const newReceivable = Math.max(0, (settlingMerchant.currentReceivableBalance || 0) - settleAmount);
-    const updatedMerchant: Merchant = {
-      ...settlingMerchant,
-      currentReceivableBalance: newReceivable,
-      totalPaidAmount: (settlingMerchant.totalPaidAmount || 0) + settleAmount,
-      notes: settleNotes.trim()
-        ? `${settlingMerchant.notes || ''} | [${getTodayDateString()} ကြွေးဆပ်: ${formatNumberOnly(settleAmount)}]`
-        : settlingMerchant.notes,
-      updatedAt: getTodayDateString(),
-    };
-
-    onUpdateMerchant(updatedMerchant);
-    setIsSettleModalOpen(false);
-    setSettlingMerchant(null);
-    setSettleAmount(0);
-    setSettleNotes('');
+    setIsSubmittingSettle(true);
+    setSettleError(null);
+    try {
+      await onSettleMerchantPayment(
+        settlingMerchant.id,
+        settleAmount,
+        'CASH',
+        settleNotes.trim(),
+        settlementRequestIdRef.current
+      );
+      settlementRequestIdRef.current = generateStableId('mset');
+      setIsSettleModalOpen(false);
+      setSettlingMerchant(null);
+      setSettleAmount(0);
+      setSettleNotes('');
+      setSettleError(null);
+    } catch (err: any) {
+      console.error('Merchant settlement payment failed:', err);
+      setSettleError(err.message || 'ငွေပေးချေမှု စာရင်းသွင်းခြင်း မအောင်မြင်ပါ');
+    } finally {
+      setIsSubmittingSettle(false);
+    }
   };
 
   return (
@@ -497,8 +515,11 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        settlementRequestIdRef.current = generateStableId('mset');
                         setSettlingMerchant(merchant);
                         setSettleAmount(merchant.currentReceivableBalance || 0);
+                        setSettleNotes('');
+                        setSettleError(null);
                         setIsSettleModalOpen(true);
                       }}
                       className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-bold shadow-xs cursor-pointer"
@@ -622,6 +643,12 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
               </button>
             </div>
             <form onSubmit={handleSaveSettlement} className="p-4 space-y-3.5 text-xs">
+              {settleError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex items-start gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="font-semibold">{settleError}</div>
+                </div>
+              )}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[11px] text-slate-500 block">ကုန်သည်အမည်</span>
                 <div className="text-base font-extrabold text-slate-900 mt-0.5">
@@ -662,16 +689,18 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
+                  disabled={isSubmittingSettle}
                   onClick={() => setIsSettleModalOpen(false)}
-                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors"
+                  className="px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer transition-colors disabled:opacity-50"
                 >
                   မလုပ်တော့ပါ
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors"
+                  disabled={isSubmittingSettle}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-colors disabled:opacity-50"
                 >
-                  ငွေလက်ခံပြီး စာရင်းသွင်းမည်
+                  {isSubmittingSettle ? 'စာရင်းသွင်းနေပါသည်...' : 'ငွေလက်ခံပြီး စာရင်းသွင်းမည်'}
                 </button>
               </div>
             </form>

@@ -1025,6 +1025,31 @@ export default function App() {
     }
   }, []);
 
+  const handleSettleMerchantPayment = useCallback(
+    async (
+      merchantId: string,
+      amount: number,
+      paymentMethod: string = 'CASH',
+      notes: string = '',
+      clientRequestId?: string
+    ) => {
+      const updatedMerchantWithAudit = await merchantRepo.recordMerchantPaymentAtomic(
+        merchantId,
+        amount,
+        paymentMethod,
+        notes,
+        clientRequestId
+      );
+      setMerchants((prev) =>
+        prev.map((item) => (item.id === merchantId ? updatedMerchantWithAudit : item))
+      );
+      if (updatedMerchantWithAudit.auditEntry) {
+        setAuditLogs((prev) => [updatedMerchantWithAudit.auditEntry!, ...prev.slice(0, 199)]);
+      }
+    },
+    []
+  );
+
   const handleDeleteMerchant = useCallback(async (merchantId: string) => {
     const m = merchants.find((item) => item.id === merchantId);
     if (!m) return;
@@ -2323,6 +2348,7 @@ export default function App() {
               sales={sales}
               onAddMerchant={handleAddMerchant}
               onUpdateMerchant={handleUpdateMerchant}
+              onSettleMerchantPayment={handleSettleMerchantPayment}
               onDeleteMerchant={handleDeleteMerchant}
               onOpenNewSaleForMerchant={(mId) => handleOpenNewSale(mId)}
               onViewMerchantHistory={() => {}}

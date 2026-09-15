@@ -251,8 +251,9 @@ export class MerchantRepository implements IMerchantRepository {
     merchantId: string,
     paymentAmount: number,
     paymentMethod: string = 'CASH',
-    notes?: string
-  ): Promise<Merchant> {
+    notes?: string,
+    clientRequestId?: string
+  ): Promise<Merchant & { auditEntry?: AuditLogEntry }> {
     if (paymentAmount <= 0) {
       throw new BusinessIntegrityError('ပေးဆပ်ငွေပမာဏသည် ၀ ထက် ကြီးရပါမည်', 'INVALID_AMOUNT');
     }
@@ -264,6 +265,15 @@ export class MerchantRepository implements IMerchantRepository {
         const merchant = await this.database.merchants.get(merchantId);
         if (!merchant) {
           throw new EntityNotFoundError('Merchant', merchantId);
+        }
+
+        const requestId = clientRequestId || generateStableId('mset');
+        const idempotencyKey = buildCashIdempotencyKey('MERCHANT_DEBT_COLLECTION_IN', merchant.id, requestId);
+
+        // Check if an existing cash movement already exists with this idempotency key
+        const existingCashMovement = await this.database.cashMovements.where('idempotencyKey').equals(idempotencyKey).first();
+        if (existingCashMovement) {
+          throw new IdempotencyConflictError(`ငွေပေးချေမှု တောင်းဆိုချက် (Request ID: ${requestId}) သည် ယခင်က လုပ်ဆောင်ပြီးဖြစ်ပါသည်`);
         }
 
         const now = new Date().toISOString();
@@ -281,7 +291,6 @@ export class MerchantRepository implements IMerchantRepository {
 
         // Record Cash Movement in Cash Ledger
         const cashId = generateStableId('csh');
-        const idempotencyKey = buildCashIdempotencyKey('MERCHANT_DEBT_COLLECTION_IN', merchant.id, Date.now().toString());
         await this.database.cashMovements.put({
           id: cashId,
           amount: Math.abs(paymentAmountMMK),

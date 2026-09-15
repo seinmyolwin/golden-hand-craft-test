@@ -52,8 +52,9 @@ export interface IMerchantRepository {
     merchantId: string,
     paymentAmount: number,
     paymentMethod?: string,
-    notes?: string
-  ): Promise<Merchant>;
+    notes?: string,
+    clientRequestId?: string
+  ): Promise<Merchant & { auditEntry?: AuditLogEntry }>;
   delete(id: string): Promise<void>;
   clear(): Promise<void>;
   count(): Promise<number>;
