@@ -193,6 +193,8 @@ export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
   ownerName: 'ဦးစိန်မျိုးလွင်',
   phone: '09-123456789',
   address: 'ပုဂံမြို့ဟောင်း၊ မန္တလေးတိုင်း',
+  soundEnabled: true,
+  soundTheme: 'BELL',
 };
 
 export const DEFAULT_RAW_MATERIAL_PRESETS: RawMaterialPreset[] = [

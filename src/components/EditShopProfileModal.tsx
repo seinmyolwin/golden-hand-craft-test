@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ShopSettings } from '../types';
-import { X, Store, Save, Phone, MapPin, Tag, Building, ShieldCheck, Sparkles, LayoutDashboard } from 'lucide-react';
+import { ShopSettings, NotificationSoundTheme } from '../types';
+import { X, Store, Save, Phone, MapPin, Tag, Building, ShieldCheck, Sparkles, LayoutDashboard, Volume2, VolumeX } from 'lucide-react';
+import { playNotificationSound } from '../utils/audio';
 
 interface EditShopProfileModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ export const EditShopProfileModal: React.FC<EditShopProfileModalProps> = ({
   const [branchCode, setBranchCode] = useState(shopSettings.branchCode || 'BR-01');
   const [branchName, setBranchName] = useState(shopSettings.branchName || 'ရွှေလက်ရာ ပင်မဆိုင်');
   const [defaultLandingTab, setDefaultLandingTab] = useState(shopSettings.defaultLandingTab || 'daily');
+  const [soundEnabled, setSoundEnabled] = useState(shopSettings.soundEnabled ?? true);
+  const [soundTheme, setSoundTheme] = useState<NotificationSoundTheme>(shopSettings.soundTheme || 'BELL');
   const [isLiveConfirmed, setIsLiveConfirmed] = useState(shopSettings.isLiveConfirmed ?? false);
   const [hideSampleDataButtons, setHideSampleDataButtons] = useState(shopSettings.hideSampleDataButtons ?? false);
 
@@ -40,6 +43,8 @@ export const EditShopProfileModal: React.FC<EditShopProfileModalProps> = ({
       branchCode: branchCode.trim(),
       branchName: branchName.trim(),
       defaultLandingTab,
+      soundEnabled,
+      soundTheme,
       isLiveConfirmed,
       hideSampleDataButtons: isLiveConfirmed ? true : hideSampleDataButtons,
     });
@@ -154,6 +159,110 @@ export const EditShopProfileModal: React.FC<EditShopProfileModalProps> = ({
                 <option value="reports">📈 ဘဏ္ဍာရေး အစီရင်ခံစာနှင့် အနှစ်ချုပ် (Reports & Financials)</option>
               </select>
             </div>
+          </div>
+
+          {/* Notification Sound Settings Section */}
+          <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-3 mt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
+                {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-600" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
+                <span>စာရင်းသွင်းမှု အတည်ပြု အသံစနစ် (Notification Sound)</span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={soundEnabled}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setSoundEnabled(enabled);
+                    if (enabled) playNotificationSound(soundTheme, true);
+                  }}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                />
+                <span className="text-xs font-bold text-emerald-900">
+                  {soundEnabled ? 'ဖွင့်ထားသည် (On)' : 'ပိတ်ထားသည် (Off)'}
+                </span>
+              </label>
+            </div>
+
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              ကုန်သိမ်း၊ အရောင်း၊ အော်ဒါ၊ ကုန်စရင်းညှိ သွင်းယူမှု အတည်ဖြစ်ပါက အသံမြည်၍ အသိပေးမည်ဖြစ်ရာ နှစ်ခါထပ်သွင်းမိခြင်းမှ ကာကွယ်ပေးပါသည်။
+            </p>
+
+            {soundEnabled && (
+              <div className="space-y-2 pt-2 border-t border-emerald-200/80">
+                <label className="block text-slate-700 font-bold text-[11px]">အသံအမျိုးအစား ရွေးချယ်ရန် (Sound Effect)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSoundTheme('BELL');
+                      playNotificationSound('BELL', true);
+                    }}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all flex items-center justify-between ${
+                      soundTheme === 'BELL'
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs">🔔 အသံ ၁</div>
+                      <div className="text-[10px] opacity-80">ခေါင်းလောင်းသံ (Crisp Bell)</div>
+                    </div>
+                    {soundTheme === 'BELL' && <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSoundTheme('CHIME');
+                      playNotificationSound('CHIME', true);
+                    }}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all flex items-center justify-between ${
+                      soundTheme === 'CHIME'
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs">🎵 အသံ ၂</div>
+                      <div className="text-[10px] opacity-80">ငြိမ့်ညောင်းသံ (Musical Chime)</div>
+                    </div>
+                    {soundTheme === 'CHIME' && <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSoundTheme('DIGITAL');
+                      playNotificationSound('DIGITAL', true);
+                    }}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all flex items-center justify-between ${
+                      soundTheme === 'DIGITAL'
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs">⚡ အသံ ၃</div>
+                      <div className="text-[10px] opacity-80">ဒီဂျစ်တယ် (Modern Beep)</div>
+                    </div>
+                    {soundTheme === 'DIGITAL' && <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => playNotificationSound(soundTheme, true)}
+                    className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100 hover:bg-emerald-200 px-2.5 py-1 rounded-lg border border-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>အသံစမ်းသပ်နားထောင်မည် (Test Sound)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Business Confirmation & Auto-Disabling Sample Data */}

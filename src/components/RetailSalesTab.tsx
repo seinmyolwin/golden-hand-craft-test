@@ -17,6 +17,7 @@ import {
 import { generateStableId } from '../utils/idGenerator';
 import { saleRepo, productRepo } from '../repositories';
 import { recordAuditEvent } from '../services/auditTrailService';
+import { playNotificationSound } from '../utils/audio';
 import {
   ShoppingCart,
   QrCode,
@@ -340,6 +341,9 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
 
       // Atomic Repository Execution (Guarantees ACID transactions across sales, stock, and audit)
       await saleRepo.saveSaleAtomic(newSaleRecord);
+
+      // Play success notification sound
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
 
       setLastCompletedSale(newSaleRecord);
       if (onSaleCompleted) {

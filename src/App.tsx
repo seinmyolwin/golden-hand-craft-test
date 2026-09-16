@@ -59,6 +59,7 @@ import {
   getCurrentTimeString,
 } from './utils/storage';
 import { generateStableId, generateVoucherNo } from './utils/idGenerator';
+import { playNotificationSound } from './utils/audio';
 import { CURRENT_APP_VERSION } from './constants/version';
 
 import { AlertTriangle } from 'lucide-react';
@@ -852,6 +853,8 @@ export default function App() {
       // Execute Atomic ACID transaction in Dexie
       const saved = await transactionRepo.saveInboundAtomic(record);
 
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
+
       setTransactions((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
 
       // Update Supplier's Advance Balance
@@ -900,6 +903,8 @@ export default function App() {
     try {
       // Execute Atomic ACID transaction in Dexie
       const saved = await saleRepo.saveSaleAtomic(sale);
+
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
 
       setSales((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
 
@@ -1041,6 +1046,7 @@ export default function App() {
         notes,
         clientRequestId
       );
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
       setMerchants((prev) =>
         prev.map((item) => (item.id === merchantId ? updatedMerchantWithAudit : item))
       );
@@ -1122,6 +1128,7 @@ export default function App() {
   const handleAddOrder = useCallback(async (ord: MerchantOrder) => {
     setOrders((prev) => [ord, ...prev]);
     orderRepo.save(ord).catch((err) => console.error('Order save error:', err));
+    playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
     try {
       const entry = await recordAuditEvent({
         action: 'အော်ဒါ အသစ်ရေးသွင်းခြင်း',
@@ -1187,6 +1194,7 @@ export default function App() {
 
     try {
       const updatedOrder = await orderRepo.completeOrderAtomic(order.id, newSale);
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
       setOrders((prev) => prev.map((o) => (o.id === order.id ? updatedOrder : o)));
       const refreshedSales = await saleRepo.getAll();
       const refreshedProducts = await productRepo.getAll();
@@ -1220,6 +1228,7 @@ export default function App() {
   const handleAddPeerTrade = useCallback(async (trade: PeerTradeRecord) => {
     try {
       const saved = await peerTradeRepo.saveTradeAtomic(trade);
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
       setPeerTrades((prev) => [saved, ...prev.filter((t) => t.id !== saved.id)]);
       const refreshedProducts = await productRepo.getAll();
       if (refreshedProducts.length > 0) setProducts(refreshedProducts);
@@ -1618,6 +1627,7 @@ export default function App() {
   const handleSaveMerchantPurchase = useCallback(async (record: MerchantPurchaseRecord) => {
     try {
       const saved = await purchaseRepo.savePurchaseAtomic(record);
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
       setMerchantPurchases((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
       const refreshedMerchants = await merchantRepo.getAll();
       if (refreshedMerchants.length > 0) setMerchants(refreshedMerchants);
@@ -1989,6 +1999,7 @@ export default function App() {
   const handleAddStockAdjustment = useCallback(async (adj: StockAdjustmentRecord) => {
     try {
       const saved = await stockAdjustmentRepo.saveAdjustmentAtomic(adj);
+      playNotificationSound(shopSettings?.soundTheme, shopSettings?.soundEnabled ?? true);
       setStockAdjustments((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
       const refreshedProducts = await productRepo.getAll();
       if (refreshedProducts.length > 0) setProducts(refreshedProducts);

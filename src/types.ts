@@ -453,6 +453,8 @@ export interface DailySummary {
   itemCounts: { [productId: string]: { name: string; count: number; unit: string; totalValue: number } };
 }
 
+export type NotificationSoundTheme = 'BELL' | 'CHIME' | 'DIGITAL' | string;
+
 export interface ShopSettings {
   shopName: string;
   tagline?: string;
@@ -463,6 +465,8 @@ export interface ShopSettings {
   branchCode?: string;
   branchName?: string;
   defaultLandingTab?: string;
+  soundEnabled?: boolean;
+  soundTheme?: NotificationSoundTheme;
   isLiveConfirmed?: boolean;
   hideSampleDataButtons?: boolean;
   thermalPrinterWidth?: '58mm' | '80mm';
