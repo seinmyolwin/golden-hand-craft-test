@@ -2646,6 +2646,7 @@ export default function App() {
           onClose={() => setIsDemoReloadGuardModalOpen(false)}
           onConfirmReload={handleExecuteDemoDataReload}
           appLockSettings={appLockSettings}
+          onUpdateAppLockSettings={handleUpdateAppLock}
         />
 
         <RevertLiveStatusModal
@@ -2653,6 +2654,7 @@ export default function App() {
           onClose={() => setIsRevertLiveStatusOpen(false)}
           onConfirmRevert={handleConfirmRevertLive}
           appLockSettings={appLockSettings}
+          onUpdateAppLockSettings={handleUpdateAppLock}
           shopSettings={shopSettings}
         />
 

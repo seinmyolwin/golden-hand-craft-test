@@ -616,19 +616,27 @@ export async function executeGoLive(options: ExecuteGoLiveOptions): Promise<{
   const nowIso = new Date().toISOString();
   const today = getTodayDateString();
 
+  // 0. Check if business is already ACTIVE/Live
+  const isAlreadyLive = await checkIsBusinessLive(targetDb);
+  if (isAlreadyLive) {
+    throw new Error('လက်ရှိစနစ်သည် Go-Live (ACTIVE) အဖြစ် စတင်အသုံးပြုနေပြီး ဖြစ်ပါသည်။ အစပျိုးစာရင်းအား ထပ်မံပြင်ဆင်ခွင့်မရှိပါ');
+  }
+
   // 1. Enforce Double-Confirmation
   if (!options.doubleConfirmed) {
     throw new Error('လက်တွေ့စတင်အသုံးပြုရန် သဘောတူညီချက် (Double-confirm) ကို အမှန်ခြစ်ပေးရန် လိုအပ်ပါသည်');
   }
 
-  // 2. Enforce Owner PIN verification if Owner PIN is configured
+  // 2. Enforce Owner PIN verification - mandatory PIN setup or verification
   const hasConfiguredPin = Boolean(
     options.appLockSettings?.pinHash ||
       options.appLockSettings?.passcode ||
       options.appLockSettings?.pin
   );
 
-  if (hasConfiguredPin) {
+  if (!hasConfiguredPin) {
+    throw new Error('ဆိုင်ရှင် PIN စကားဝှက် သတ်မှတ်ထားခြင်း မရှိပါ။ လုပ်ဆောင်ချက် မပြုလုပ်မီ ဆိုင်ရှင် PIN သတ်မှတ်ပါ');
+  } else {
     if (!options.pin || !options.pin.trim()) {
       throw new Error('ဆိုင်ရှင် PIN စကားဝှက် ရိုက်ထည့်ပေးရန် လိုအပ်ပါသည်');
     }
@@ -859,14 +867,16 @@ export async function authorizeDemoDataReload(options: {
     );
   }
 
-  // Require Owner PIN if PIN is configured
+  // Require Owner PIN - mandatory PIN setup or verification
   const hasConfiguredPin = Boolean(
     options.appLockSettings?.pinHash ||
       options.appLockSettings?.passcode ||
       options.appLockSettings?.pin
   );
 
-  if (hasConfiguredPin) {
+  if (!hasConfiguredPin) {
+    throw new Error('ဆိုင်ရှင် PIN စကားဝှက် သတ်မှတ်ထားခြင်း မရှိပါ။ လုပ်ဆောင်ချက် မပြုလုပ်မီ ဆိုင်ရှင် PIN သတ်မှတ်ပါ');
+  } else {
     if (!options.pin || !options.pin.trim()) {
       throw new Error('လက်တွေ့သုံး စနစ်တွင် နမူနာဒေတာ ပြန်ထည့်ရန် ဆိုင်ရှင် PIN ရိုက်ထည့်ရန် လိုအပ်ပါသည်');
     }

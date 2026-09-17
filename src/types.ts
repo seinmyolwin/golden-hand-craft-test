@@ -21,6 +21,8 @@ export interface Product {
   openingStock?: number; // Starting inventory count
   currentStock?: number; // Real-time available stock
   minStockAlert?: number; // Low stock alert threshold
+  avgCostPrice?: number; // Weighted average unit cost price in MMK
+  costPrice?: number; // Cost unit price
   active: boolean;
   notes?: string;
   createdAt?: string;
@@ -1099,6 +1101,8 @@ export interface EntityComparisonCount {
 export interface BackupValidationReport {
   isValid: boolean;
   isCorrupted: boolean;
+  isEncrypted?: boolean;
+  rawEncryptedPayload?: any;
   formatVersion: string;
   detectedSchemaVersion: number;
   checksumValid: boolean;

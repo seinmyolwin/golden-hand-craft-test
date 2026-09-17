@@ -57,6 +57,11 @@ import { generateStableId } from '../utils/idGenerator';
 import { masterDataService } from './masterDataService';
 import { safeJsonParse, deepSanitizeUntrustedObject } from '../utils/security';
 import {
+  encryptBackupPayload,
+  decryptBackupPayload,
+  EncryptedBackupEnvelope,
+} from './cryptoSecurity';
+import {
   APP_VERSION,
   CURRENT_APP_VERSION,
   BACKUP_FORMAT_VERSION,
@@ -103,7 +108,18 @@ export async function computeChecksum(content: string): Promise<string> {
 export async function createCompleteBackup(options?: {
   customNotes?: string;
   shopSettings?: ShopSettings;
-}): Promise<VersionedBackupFile> {
+  passphrase?: undefined;
+}): Promise<VersionedBackupFile>;
+export async function createCompleteBackup(options: {
+  customNotes?: string;
+  shopSettings?: ShopSettings;
+  passphrase: string;
+}): Promise<EncryptedBackupEnvelope>;
+export async function createCompleteBackup(options?: {
+  customNotes?: string;
+  shopSettings?: ShopSettings;
+  passphrase?: string;
+}): Promise<VersionedBackupFile | EncryptedBackupEnvelope> {
   await enforcePermission('BACKUP_EXPORT', 'ဒေတာ မိတ္တူ ထုတ်ယူခြင်း (Export Backup)');
   // 1. Fetch all datasets from Dexie IndexedDB tables
   const [
@@ -277,7 +293,7 @@ export async function createCompleteBackup(options?: {
   const dataPayloadString = JSON.stringify(data);
   const checksum = await computeChecksum(dataPayloadString);
 
-  return {
+  const backupFile: VersionedBackupFile = {
     formatVersion: CURRENT_BACKUP_FORMAT_VERSION,
     appVersion: CURRENT_APP_VERSION,
     exportedAt: new Date().toISOString(),
@@ -286,18 +302,28 @@ export async function createCompleteBackup(options?: {
     metadata,
     data,
   };
+
+  if (options?.passphrase && options.passphrase.trim()) {
+    const serialized = JSON.stringify(backupFile);
+    return await encryptBackupPayload(serialized, options.passphrase.trim());
+  }
+
+  return backupFile;
 }
 
 /**
  * Exports and downloads the backup file to disk with filename formatting
  */
 export async function downloadBackupFile(
-  backup: VersionedBackupFile,
+  backup: VersionedBackupFile | EncryptedBackupEnvelope,
   useLocationPicker: boolean = false
 ): Promise<{ success: boolean; method: 'picker' | 'download'; fileName: string }> {
-  const shopNameClean = (backup.metadata.shopName || 'ShweLetYar')
-    .trim()
-    .replace(/[^a-zA-Z0-9_\u1000-\u109F]/g, '_');
+  let shopNameClean = 'ShweLetYar';
+  if ('metadata' in backup && backup.metadata?.shopName) {
+    shopNameClean = (backup.metadata.shopName || 'ShweLetYar')
+      .trim()
+      .replace(/[^a-zA-Z0-9_\u1000-\u109F]/g, '_');
+  }
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
@@ -508,11 +534,33 @@ export function normalizeRawBackup(raw: any): {
 /**
  * Validates the backup JSON with deep schema, data type, integrity, and comparison checks
  */
-export async function validateBackupFile(rawJsonStringOrObject: string | any): Promise<BackupValidationReport> {
+export async function validateBackupFile(
+  rawJsonStringOrObject: string | any,
+  passphrase?: string
+): Promise<BackupValidationReport> {
   const errors: BackupValidationError[] = [];
   const warnings: BackupValidationWarning[] = [];
 
+  const emptyCounts = {
+    products: 0,
+    suppliers: 0,
+    merchants: 0,
+    transactions: 0,
+    sales: 0,
+    merchantPurchases: 0,
+    orders: 0,
+    stockAdjustments: 0,
+    peerTrades: 0,
+    softDeletedItems: 0,
+    auditLogs: 0,
+    rawMaterialPresets: 0,
+    attachments: 0,
+    returnsAndRefunds: 0,
+  };
+
   let parsedObj: any;
+  const originalRaw = rawJsonStringOrObject;
+
   if (typeof rawJsonStringOrObject === 'string') {
     try {
       parsedObj = safeJsonParse(rawJsonStringOrObject);
@@ -536,26 +584,69 @@ export async function validateBackupFile(rawJsonStringOrObject: string | any): P
           },
         ],
         warnings: [],
-        counts: {
-          products: 0,
-          suppliers: 0,
-          merchants: 0,
-          transactions: 0,
-          sales: 0,
-          merchantPurchases: 0,
-          orders: 0,
-          stockAdjustments: 0,
-          peerTrades: 0,
-          softDeletedItems: 0,
-          auditLogs: 0,
-          rawMaterialPresets: 0,
-          attachments: 0,
-          returnsAndRefunds: 0,
-        },
+        counts: emptyCounts,
       };
     }
   } else {
     parsedObj = deepSanitizeUntrustedObject(rawJsonStringOrObject);
+  }
+
+  // Handle encrypted backup payload envelope
+  if (parsedObj && typeof parsedObj === 'object' && parsedObj.encrypted === true) {
+    if (!passphrase || !passphrase.trim()) {
+      return {
+        isValid: false,
+        isCorrupted: false,
+        isEncrypted: true,
+        rawEncryptedPayload: originalRaw,
+        formatVersion: 'AES-GCM',
+        detectedSchemaVersion: 0,
+        checksumValid: false,
+        exportedAt: '',
+        shopName: '',
+        appName: '',
+        totalRecords: 0,
+        errors: [
+          {
+            field: 'ENCRYPTION',
+            message: 'စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်',
+            code: 'ENCRYPTED_BACKUP_PASSPHRASE_REQUIRED',
+            severity: 'FATAL',
+          },
+        ],
+        warnings: [],
+        counts: emptyCounts,
+      };
+    }
+
+    try {
+      const decryptedJsonStr = await decryptBackupPayload(parsedObj, passphrase.trim());
+      parsedObj = safeJsonParse(decryptedJsonStr);
+    } catch {
+      return {
+        isValid: false,
+        isCorrupted: true,
+        isEncrypted: true,
+        rawEncryptedPayload: originalRaw,
+        formatVersion: 'AES-GCM',
+        detectedSchemaVersion: 0,
+        checksumValid: false,
+        exportedAt: '',
+        shopName: '',
+        appName: '',
+        totalRecords: 0,
+        errors: [
+          {
+            field: 'DECRYPTION',
+            message: 'စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်',
+            code: 'DECRYPTION_FAILED',
+            severity: 'FATAL',
+          },
+        ],
+        warnings: [],
+        counts: emptyCounts,
+      };
+    }
   }
 
   if (!parsedObj || typeof parsedObj !== 'object') {
@@ -1996,3 +2087,84 @@ export async function clearAllRecoverySnapshots(): Promise<void> {
   await enforcePermission('BACKUP_RESTORE', 'အရန်သိမ်းဆည်းမှုများ အားလုံး ရှင်းလင်းခြင်း');
   await db.recoverySnapshots.clear();
 }
+
+/**
+ * Convenience wrapper for generating backup payload (encrypted or plain)
+ */
+export async function exportBackupPayload(options?: {
+  customNotes?: string;
+  shopSettings?: ShopSettings;
+  passphrase?: string;
+}): Promise<VersionedBackupFile | EncryptedBackupEnvelope> {
+  if (options?.passphrase) {
+    return createCompleteBackup({ ...options, passphrase: options.passphrase });
+  }
+  return createCompleteBackup(options as any);
+}
+
+/**
+ * Exports complete Dexie DB backup as a JSON string (encrypted if passphrase provided)
+ */
+export async function exportDatabaseJSON(passphrase?: string): Promise<string> {
+  const payload = await exportBackupPayload({ passphrase });
+  return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * Imports and parses a backup JSON string (decrypting if encrypted)
+ */
+export async function importDatabaseJSON(
+  jsonString: string,
+  passphrase?: string
+): Promise<VersionedBackupFile> {
+  let parsed: any;
+  try {
+    parsed = safeJsonParse(jsonString);
+  } catch {
+    throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+  }
+
+  if (parsed && typeof parsed === 'object' && parsed.encrypted === true) {
+    if (!passphrase || !passphrase.trim()) {
+      throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+    }
+    const decryptedStr = await decryptBackupPayload(parsed, passphrase.trim());
+    try {
+      return safeJsonParse(decryptedStr);
+    } catch {
+      throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+    }
+  }
+
+  return parsed;
+}
+
+/**
+ * Restores DB from raw JSON payload or object, supporting encrypted payloads
+ */
+export async function restoreFromBackupPayload(
+  payload: any,
+  mode: 'OVERWRITE' | 'SMART_MERGE' = 'SMART_MERGE',
+  passphrase?: string
+): Promise<{ success: boolean; message: string }> {
+  let finalObj = payload;
+  if (typeof payload === 'string') {
+    finalObj = await importDatabaseJSON(payload, passphrase);
+  } else if (payload && typeof payload === 'object' && payload.encrypted === true) {
+    if (!passphrase || !passphrase.trim()) {
+      throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+    }
+    const decryptedStr = await decryptBackupPayload(payload, passphrase.trim());
+    finalObj = safeJsonParse(decryptedStr);
+  }
+
+  const report = await validateBackupFile(finalObj, passphrase);
+  if (!report.isValid) {
+    throw new Error(
+      report.errors[0]?.message || 'စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်'
+    );
+  }
+
+  return executeSafeRestore(report, mode);
+}
+

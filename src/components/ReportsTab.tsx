@@ -100,12 +100,22 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     let salesRevenue = 0;
     let salesCashReceived = 0;
     let salesCreditIssued = 0;
+    let totalCogs = 0;
 
     (filteredSales || []).forEach((s) => {
       goodsSoldCount += s.totalItemsCount || 0;
       salesRevenue += s.grandTotal || 0;
       salesCashReceived += s.cashPaidByMerchant || 0;
       salesCreditIssued += s.remainingReceivableBalance || 0;
+
+      (s.items || []).forEach((item) => {
+        let itemCost = item.costPrice;
+        if (itemCost === undefined || itemCost === null || isNaN(itemCost) || itemCost <= 0) {
+          const prod = (products || []).find((p) => p.id === item.productId);
+          itemCost = prod?.avgCostPrice ?? prod?.costPrice ?? prod?.defaultPrice ?? 0;
+        }
+        totalCogs += (item.quantity || 0) * itemCost;
+      });
     });
 
     let rawMaterialTotalValue = 0;
@@ -141,7 +151,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     const netSalesRevenue = salesRevenue - totalSalesReturnValue;
     const netSalesCashReceived = salesCashReceived - totalSalesCashRefunded;
     const netProcurementCost = (goodsCollectedValue + rawMaterialTotalValue) - totalPurchaseReturnValue;
-    const netProfitEstimated = netSalesRevenue - netProcurementCost;
+    const grossProfit = netSalesRevenue - totalCogs;
+    const netProfitEstimated = grossProfit;
     const netCashFlow = netSalesCashReceived - cashPaidToSuppliers - (rawMaterialCashPaid - totalPurchaseCashRecovered);
 
     return {
@@ -162,6 +173,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
       totalSalesCashRefunded,
       totalPurchaseReturnValue,
       totalPurchaseCashRecovered,
+      totalCogs,
+      grossProfit,
       netSalesRevenue,
       netSalesCashReceived,
       netProcurementCost,
@@ -237,40 +250,40 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
-            <span className="font-semibold">ကုန်ကြမ်းဝယ်ယူစရိတ်</span>
+            <span className="font-semibold">ရောင်းကုန် မူလအရင်း (COGS)</span>
             <Boxes className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-lg sm:text-xl font-extrabold text-amber-900 truncate">
-            {formatMMK(stats.rawMaterialTotalValue)}
+            {formatMMK(stats.totalCogs)}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            ဝါး/ကြိမ် အပါအဝင် ကုန်ကြမ်းဝယ်ယူငွေ
+            ရောင်းချပြီး ကုန်ပစ္စည်းများ၏ မူလဝယ်ရင်း
           </p>
         </div>
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
-            <span className="font-semibold">စုစုပေါင်း အရင်းကုန်ကျငွေ</span>
-            <ArrowDownLeft className="w-4 h-4 text-rose-600" />
+            <span className="font-semibold">အကြမ်းဖျင်းအမြတ် (Gross Profit)</span>
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-lg sm:text-xl font-extrabold text-slate-900 truncate">
-            {formatMMK(stats.totalProcurementCost)}
+          <div className={`text-lg sm:text-xl font-extrabold truncate ${stats.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {formatMMK(stats.grossProfit)}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            (ကုန်သိမ်း {formatMMK(stats.goodsCollectedValue)} + ကုန်ကြမ်း)
+            အရောင်းရငွေ - ရောင်းကုန်မူလအရင်း
           </p>
         </div>
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
-            <span className="font-semibold">ခန့်မှန်း အကြမ်းဖျင်းအမြတ်</span>
+            <span className="font-semibold">အသားတင်အမြတ် (Net Profit)</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
           <div className={`text-lg sm:text-xl font-extrabold truncate ${stats.netProfitEstimated >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
             {formatMMK(stats.netProfitEstimated)}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            အရောင်းရငွေ - စုစုပေါင်းကုန်ကျငွေ
+            အကြမ်းဖျင်းအမြတ် - လုပ်ငန်းစရိတ်
           </p>
         </div>
       </div>

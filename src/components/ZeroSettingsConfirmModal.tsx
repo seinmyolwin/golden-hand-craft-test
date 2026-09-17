@@ -652,20 +652,20 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
     try {
       let finalPin = ownerPin.trim();
 
-      // If PIN not configured, initialize new Owner PIN (6 digits, default 123456)
+      // If PIN not configured, initialize new Owner PIN (6 digits mandatory)
       if (!hasConfiguredPin) {
-        const pinToSet = newSetupPin || '123456';
-        if (pinToSet.length < 6) {
-          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၆ လုံး (ဥပမာ - 123456) ဖြစ်ရပါမည်');
+        if (!newSetupPin || newSetupPin.trim().length < 6) {
+          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၆ လုံး ရိုက်ထည့်ရန် လိုအပ်ပါသည်');
           setIsSubmitting(false);
           return;
         }
-        if (newSetupPin && newSetupPin !== confirmSetupPin) {
+        if (newSetupPin !== confirmSetupPin) {
           setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
           setIsSubmitting(false);
           return;
         }
 
+        const pinToSet = newSetupPin.trim();
         const pinCreds = await derivePinCredentials(pinToSet);
         const recKey = generateSecureRecoveryKey();
         const recCreds = await deriveRecoveryCredentials(recKey);
@@ -691,14 +691,14 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
         finalPin = pinToSet;
       } else {
         if (!finalPin) {
-          setErrorMsg('ဆိုင်ရှင် PIN (၆ လုံး ဥပမာ - 123456) ရိုက်ထည့်ပေးပါ');
+          setErrorMsg('ဆိုင်ရှင် PIN (၆ လုံး) ရိုက်ထည့်ပေးပါ');
           setIsSubmitting(false);
           return;
         }
 
         const isValid = await verifyOwnerPin(finalPin, appLockSettings);
         if (!isValid) {
-          setErrorMsg('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ (မူလစကားဝှက်မှာ 123456 ဖြစ်ပါသည်)');
+          setErrorMsg('ဆိုင်ရှင် PIN မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ');
           setIsSubmitting(false);
           return;
         }
@@ -1957,7 +1957,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
                         maxLength={6}
-                        placeholder="ဥပမာ - 123456"
+                        placeholder="၆ လုံး ရိုက်ထည့်ပါ"
                         value={ownerPin}
                         onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-sm tracking-widest focus:outline-none focus:border-amber-400"
@@ -1972,7 +1972,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      စကားဝှက်မပြောင်းရသေးပါက ပုံသေ <strong>123456</strong> ကို ရိုက်ထည့်ပါ။
+                      သတ်မှတ်ထားသော ဆိုင်ရှင် PIN (၆ လုံး) ကို ရိုက်ထည့်ပါ။
                     </p>
                   </div>
                 ) : (
@@ -1986,7 +1986,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
                         maxLength={6}
-                        placeholder="ဥပမာ - 123456"
+                        placeholder="၆ လုံး သတ်မှတ်ပါ"
                         value={newSetupPin}
                         onChange={(e) => setNewSetupPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"
@@ -2002,7 +2002,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                         type={showPin ? 'text' : 'password'}
                         inputMode="numeric"
                         maxLength={6}
-                        placeholder="ဥပမာ - 123456"
+                        placeholder="၆ လုံး ထပ်မံရိုက်ပါ"
                         value={confirmSetupPin}
                         onChange={(e) => setConfirmSetupPin(e.target.value.replace(/\D/g, ''))}
                         className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"

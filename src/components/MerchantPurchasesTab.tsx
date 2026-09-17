@@ -14,6 +14,7 @@ import {
   DEFAULT_RAW_MATERIAL_PRESETS,
 } from '../utils/storage';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
+import { PrintPortal } from './PrintPortal';
 import {
   Boxes,
   Plus,
@@ -920,105 +921,114 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
       )}
 
       {/* Voucher Modal */}
-      {selectedVoucher && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white text-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col">
-            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Printer className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-sm">ကုန်ကြမ်းဝယ်ယူမှု ဘောင်ချာ</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedVoucher(null)}
-                className="w-6 h-6 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center cursor-pointer"
-              >
-                ✕
-              </button>
+      {selectedVoucher && (() => {
+        const voucherPaper = (
+          <div className="p-5 text-xs space-y-4 voucher-printable-scope bg-white text-slate-900">
+            <div className="text-center border-b border-slate-200 pb-3">
+              <h2 className="text-base font-black text-slate-900">ရွှေလက်ရာ - ကုန်ကြမ်းဝယ်ယူမှု ပြေစာ</h2>
+              <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                ဘောင်ချာနံပါတ်: {selectedVoucher.purchaseNo} • ရက်စွဲ: {selectedVoucher.date} {selectedVoucher.time}
+              </p>
             </div>
 
-            <div className="p-5 text-xs space-y-4 voucher-printable-scope">
-              <div className="text-center border-b border-slate-200 pb-3">
-                <h2 className="text-base font-black text-slate-900">ရွှေလက်ရာ - ကုန်ကြမ်းဝယ်ယူမှု ပြေစာ</h2>
-                <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  ဘောင်ချာနံပါတ်: {selectedVoucher.purchaseNo} • ရက်စွဲ: {selectedVoucher.date} {selectedVoucher.time}
-                </p>
+            <div className="flex justify-between text-xs">
+              <div>
+                <span className="text-slate-500">ရောင်းချသူ: </span>
+                <span className="font-bold text-slate-900">{selectedVoucher.merchantName}</span>
               </div>
-
-              <div className="flex justify-between text-xs">
+              {selectedVoucher.sellerPhone && (
                 <div>
-                  <span className="text-slate-500">ရောင်းချသူ: </span>
-                  <span className="font-bold text-slate-900">{selectedVoucher.merchantName}</span>
+                  <span className="text-slate-500">ဖုန်း: </span>
+                  <span className="font-mono font-bold text-slate-900">{selectedVoucher.sellerPhone}</span>
                 </div>
-                {selectedVoucher.sellerPhone && (
-                  <div>
-                    <span className="text-slate-500">ဖုန်း: </span>
-                    <span className="font-mono font-bold text-slate-900">{selectedVoucher.sellerPhone}</span>
-                  </div>
-                )}
-              </div>
+              )}
+            </div>
 
-              <table className="w-full text-xs text-left border-t border-b border-slate-200 py-1">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-500 font-bold">
-                    <th className="py-1">ပစ္စည်းအမည်</th>
-                    <th className="py-1 text-center">ဦးရေ</th>
-                    <th className="py-1 text-right">နှုန်း</th>
-                    <th className="py-1 text-right">ကျသင့်ငွေ</th>
+            <table className="w-full text-xs text-left border-t border-b border-slate-200 py-1">
+              <thead>
+                <tr className="border-b border-slate-100 text-slate-500 font-bold">
+                  <th className="py-1">ပစ္စည်းအမည်</th>
+                  <th className="py-1 text-center">ဦးရေ</th>
+                  <th className="py-1 text-right">နှုန်း</th>
+                  <th className="py-1 text-right">ကျသင့်ငွေ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {selectedVoucher.items.map((it, idx) => (
+                  <tr key={idx}>
+                    <td className="py-1 font-medium">{it.productName}</td>
+                    <td className="py-1 text-center font-mono">{it.quantity} {it.unit}</td>
+                    <td className="py-1 text-right font-mono">{formatMMK(it.unitPrice)}</td>
+                    <td className="py-1 text-right font-mono font-bold">{formatMMK(it.subtotal)}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedVoucher.items.map((it, idx) => (
-                    <tr key={idx}>
-                      <td className="py-1 font-medium">{it.productName}</td>
-                      <td className="py-1 text-center font-mono">{it.quantity} {it.unit}</td>
-                      <td className="py-1 text-right font-mono">{formatMMK(it.unitPrice)}</td>
-                      <td className="py-1 text-right font-mono font-bold">{formatMMK(it.subtotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
 
-              <div className="space-y-1 text-right text-xs">
-                <div>
-                  <span className="text-slate-500 mr-2">စုစုပေါင်းကျသင့်ငွေ:</span>
-                  <span className="font-bold font-mono text-sm">{formatMMK(selectedVoucher.totalAmount)}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 mr-2">ပေးချေငွေ:</span>
-                  <span className="font-bold font-mono text-emerald-700">{formatMMK(selectedVoucher.paidAmount)}</span>
-                </div>
-                {selectedVoucher.remainingPayableBalance > 0 && (
-                  <div>
-                    <span className="text-rose-600 mr-2 font-bold">ပေးရန်ကျန်ငွေ:</span>
-                    <span className="font-bold font-mono text-rose-700">
-                      {formatMMK(selectedVoucher.remainingPayableBalance)}
-                    </span>
-                  </div>
-                )}
+            <div className="space-y-1 text-right text-xs">
+              <div>
+                <span className="text-slate-500 mr-2">စုစုပေါင်းကျသင့်ငွေ:</span>
+                <span className="font-bold font-mono text-sm">{formatMMK(selectedVoucher.totalAmount)}</span>
               </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 print-hidden">
-              <button
-                type="button"
-                onClick={() => setSelectedVoucher(null)}
-                className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                ပိတ်မည်
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>ပရင့်ထုတ်မည်</span>
-              </button>
+              <div>
+                <span className="text-slate-500 mr-2">ပေးချေငွေ:</span>
+                <span className="font-bold font-mono text-emerald-700">{formatMMK(selectedVoucher.paidAmount)}</span>
+              </div>
+              {selectedVoucher.remainingPayableBalance > 0 && (
+                <div>
+                  <span className="text-rose-600 mr-2 font-bold">ပေးရန်ကျန်ငွေ:</span>
+                  <span className="font-bold font-mono text-rose-700">
+                    {formatMMK(selectedVoucher.remainingPayableBalance)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+
+        return (
+          <>
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 print:hidden">
+              <div className="bg-white text-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col">
+                <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between print:hidden">
+                  <div className="flex items-center gap-2">
+                    <Printer className="w-4 h-4 text-amber-400" />
+                    <span className="font-bold text-sm">ကုန်ကြမ်းဝယ်ယူမှု ဘောင်ချာ</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVoucher(null)}
+                    className="w-6 h-6 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {voucherPaper}
+
+                <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVoucher(null)}
+                    className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    ပိတ်မည်
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>ပရင့်ထုတ်မည်</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <PrintPortal>{voucherPaper}</PrintPortal>
+          </>
+        );
+      })()}
     </div>
   );
 };

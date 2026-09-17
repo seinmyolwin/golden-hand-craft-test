@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { exportAllDataJSON, exportDailyCollectionCSV, exportMerchantSalesCSV } from '../utils/storage';
-import { X, Download, Upload, Shield, CheckCircle2, FileText, Database } from 'lucide-react';
+import { X, Download, Upload, Shield, CheckCircle2, FileText, Database, Lock } from 'lucide-react';
+import { decryptBackupPayload } from '../services/cryptoSecurity';
 
 interface BackupSaveModalProps {
   isOpen: boolean;
@@ -15,6 +16,9 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingData, setPendingData] = React.useState<any | null>(null);
+  const [exportPassphrase, setExportPassphrase] = React.useState<string>('');
+  const [importPassphrase, setImportPassphrase] = React.useState<string>('');
+  const [decryptError, setDecryptError] = React.useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -22,6 +26,8 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setDecryptError(null);
+    setImportPassphrase('');
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -32,24 +38,49 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
       }
     };
     reader.readAsText(file);
-    // Reset file input so user can re-select same file if needed
     e.target.value = '';
   };
 
-  const handleConfirmMerge = () => {
-    if (!pendingData) return;
-    onImportBackup(pendingData, 'MERGE');
+  const getDecryptedData = async (): Promise<any | null> => {
+    if (!pendingData) return null;
+    if (pendingData.encrypted === true) {
+      if (!importPassphrase.trim()) {
+        setDecryptError('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+        return null;
+      }
+      try {
+        const jsonStr = await decryptBackupPayload(pendingData, importPassphrase.trim());
+        const parsed = JSON.parse(jsonStr);
+        setDecryptError(null);
+        return parsed;
+      } catch {
+        setDecryptError('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+        return null;
+      }
+    }
+    return pendingData;
+  };
+
+  const handleConfirmMerge = async () => {
+    const dataToImport = await getDecryptedData();
+    if (!dataToImport) return;
+    onImportBackup(dataToImport, 'MERGE');
     setPendingData(null);
     onClose();
   };
 
-  const handleConfirmOverwrite = () => {
-    if (!pendingData) return;
+  const handleConfirmOverwrite = async () => {
+    const dataToImport = await getDecryptedData();
+    if (!dataToImport) return;
     if (confirm('သတိပေးချက် - လက်ရှိစာရင်းများအားလုံးကို အစားထိုးမည်မှာ သေချာပါသလား?')) {
-      onImportBackup(pendingData, 'OVERWRITE');
+      onImportBackup(dataToImport, 'OVERWRITE');
       setPendingData(null);
       onClose();
     }
+  };
+
+  const handleExportJSON = async () => {
+    await exportAllDataJSON(exportPassphrase);
   };
 
   return (
@@ -75,9 +106,23 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
           </p>
 
           <div className="space-y-2">
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <span>ဒေတာ စကားဝှက် (မဖြစ်မနေ မဟုတ်ပါ)</span>
+              </label>
+              <input
+                type="password"
+                value={exportPassphrase}
+                onChange={(e) => setExportPassphrase(e.target.value)}
+                placeholder="ကာကွယ်ရန် စကားဝှက် ရိုက်ထည့်ပါ (Option)"
+                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+
             <button
               type="button"
-              onClick={exportAllDataJSON}
+              onClick={handleExportJSON}
               className="w-full p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl flex items-center justify-between font-bold text-emerald-900 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2">
@@ -125,6 +170,28 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
                   </p>
                 </div>
               </div>
+
+              {pendingData.encrypted === true && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                  <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>ဤဖိုင်သည် စကားဝှက်ဖြင့် ကာကွယ်ထားပါသည်:</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={importPassphrase}
+                    onChange={(e) => {
+                      setImportPassphrase(e.target.value);
+                      setDecryptError(null);
+                    }}
+                    placeholder="ဒေတာ စကားဝှက် ရိုက်ထည့်ပါ"
+                    className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                  {decryptError && (
+                    <p className="text-[11px] font-bold text-rose-600 mt-1">{decryptError}</p>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2 pt-1">
                 <button

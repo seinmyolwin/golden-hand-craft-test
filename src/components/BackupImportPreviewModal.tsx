@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ShieldCheck,
@@ -15,9 +15,10 @@ import {
   AlertCircle,
   HelpCircle,
   Clock,
+  Lock,
 } from 'lucide-react';
 import { BackupValidationReport } from '../types';
-import { executeSafeRestore } from '../services/backupService';
+import { executeSafeRestore, validateBackupFile } from '../services/backupService';
 
 interface BackupImportPreviewModalProps {
   isOpen: boolean;
@@ -37,8 +38,43 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [showWarnings, setShowWarnings] = useState(false);
+  const [currentReport, setCurrentReport] = useState<BackupValidationReport | null>(report);
+  const [passphrase, setPassphrase] = useState('');
+  const [decryptError, setDecryptError] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
 
-  if (!isOpen || !report) return null;
+  useEffect(() => {
+    setCurrentReport(report);
+    setPassphrase('');
+    setDecryptError(null);
+  }, [report]);
+
+  if (!isOpen || !currentReport) return null;
+
+  const handleDecrypt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentReport?.rawEncryptedPayload) return;
+    if (!passphrase.trim()) {
+      setDecryptError('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+      return;
+    }
+    setIsDecrypting(true);
+    setDecryptError(null);
+    try {
+      const newReport = await validateBackupFile(currentReport.rawEncryptedPayload, passphrase.trim());
+      if (!newReport.isValid && newReport.isEncrypted) {
+        setDecryptError(
+          newReport.errors[0]?.message || 'စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်'
+        );
+      } else {
+        setCurrentReport(newReport);
+      }
+    } catch {
+      setDecryptError('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
 
   const handleRestore = async (mode: 'OVERWRITE' | 'SMART_MERGE') => {
     if (mode === 'OVERWRITE') {
@@ -52,7 +88,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
     setRestoreError(null);
 
     try {
-      const result = await executeSafeRestore(report, mode);
+      const result = await executeSafeRestore(currentReport, mode);
       setIsRestoring(false);
       onRestoreSuccess({ message: result.message, mode });
       onClose();
@@ -62,8 +98,8 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
     }
   };
 
-  const hasFatalErrors = report.errors.some((e) => e.severity === 'FATAL');
-  const hasWarnings = report.warnings.length > 0;
+  const hasFatalErrors = currentReport.errors.some((e) => e.severity === 'FATAL');
+  const hasWarnings = currentReport.warnings.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -99,7 +135,42 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
         {/* Modal Scrollable Body */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
           {/* Integrity & Validation Status Banner */}
-          {hasFatalErrors ? (
+          {currentReport.isEncrypted ? (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+              <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
+                <Lock className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>ဤ မိတ္တူဖိုင်သည် စကားဝှက်ဖြင့် ကာကွယ်ထားပါသည်</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                အချက်အလက်များ ကြည့်ရှုစစ်ဆေးရန်နှင့် စာရင်းပြန်သွင်းရန်အတွက် ထုတ်ယူစဉ်က သတ်မှတ်ခဲ့သော စကားဝှက်ကို ရိုက်ထည့်ပေးပါ-
+              </p>
+              <form onSubmit={handleDecrypt} className="space-y-2.5 pt-1">
+                <div>
+                  <input
+                    type="password"
+                    value={passphrase}
+                    onChange={(e) => {
+                      setPassphrase(e.target.value);
+                      setDecryptError(null);
+                    }}
+                    placeholder="ဒေတာ စကားဝှက် ရိုက်ထည့်ပါ..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    autoFocus
+                  />
+                  {decryptError && (
+                    <p className="text-xs font-bold text-rose-600 mt-1.5">{decryptError}</p>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={isDecrypting}
+                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs cursor-pointer transition-colors shadow-2xs"
+                >
+                  {isDecrypting ? 'စကားဝှက် စစ်ဆေးနေပါသည်...' : 'စကားဝှက် အတည်ပြုမည် (Decrypt)'}
+                </button>
+              </form>
+            </div>
+          ) : hasFatalErrors ? (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-rose-900">
               <div className="flex items-center gap-2 font-bold text-rose-700 text-sm">
                 <AlertCircle className="w-5 h-5 shrink-0" />
@@ -109,7 +180,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
                 ဤဖိုင်သည် ပျက်စီးနေခြင်း သို့မဟုတ် ပုံစံမမှန်ကန်ခြင်းကြောင့် Restore လုပ်ဆောင်၍ မရပါ။
               </p>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-rose-800 pt-1 font-mono">
-                {report.errors.map((err, idx) => (
+                {currentReport.errors.map((err, idx) => (
                   <li key={idx}>
                     <span className="font-bold">[{err.field}]:</span> {err.message}
                   </li>
@@ -127,14 +198,14 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
                     ဒေတာဖွဲ့စည်းပုံ စစ်ဆေးမှု အောင်မြင်ပါသည် (Integrity Verified)
                   </h4>
                   <p className="text-[11px] text-emerald-800">
-                    {report.checksumValid
+                    {currentReport.checksumValid
                       ? 'ဖိုင်၏ Cryptographic Checksum နှင့် ဇယားများအားလုံး စံသတ်မှတ်ချက်အတိုင်း ကိုက်ညီပါသည်'
                       : 'ဇယားများနှင့် အမျိုးအစားများအားလုံး မှန်ကန်စွာ စစ်ဆေးပြီးပါပြီ'}
                   </p>
                 </div>
               </div>
               <span className="text-[10px] font-bold px-2 py-1 bg-emerald-100 text-emerald-900 rounded-lg border border-emerald-300 shrink-0">
-                Schema v{report.detectedSchemaVersion}
+                Schema v{currentReport.detectedSchemaVersion}
               </span>
             </div>
           )}
@@ -145,7 +216,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
               <Store className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />
               <div>
                 <span className="text-[10px] text-slate-500 font-bold block uppercase">ဆိုင်အမည် / ပိုင်ရှင်</span>
-                <span className="text-xs font-black text-slate-900">{report.shopName || 'မဖော်ပြထားပါ'}</span>
+                <span className="text-xs font-black text-slate-900">{currentReport.shopName || 'မဖော်ပြထားပါ'}</span>
               </div>
             </div>
 
@@ -154,18 +225,18 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
               <div>
                 <span className="text-[10px] text-slate-500 font-bold block uppercase">Export ပြုလုပ်ခဲ့သည့် ရက်စွဲ</span>
                 <span className="text-xs font-bold text-slate-800 font-mono">
-                  {report.exportedAt ? new Date(report.exportedAt).toLocaleString() : 'မသိရှိပါ'}
+                  {currentReport.exportedAt ? new Date(currentReport.exportedAt).toLocaleString() : 'မသိရှိပါ'}
                 </span>
               </div>
             </div>
 
-            {report.dateRange && (
+            {currentReport.dateRange && (
               <div className="sm:col-span-2 flex items-start gap-2.5 pt-1 border-t border-slate-200/60">
                 <Calendar className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />
                 <div>
                   <span className="text-[10px] text-slate-500 font-bold block uppercase">စာရင်းမှတ်တမ်း ကာလ (Date Range)</span>
                   <span className="text-xs font-bold text-slate-800 font-mono">
-                    {report.dateRange.earliest} မှ {report.dateRange.latest} အထိ
+                    {currentReport.dateRange.earliest} မှ {currentReport.dateRange.latest} အထိ
                   </span>
                 </div>
               </div>
@@ -182,56 +253,56 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်ပစ္စည်း</span>
-                <span className="text-sm font-black text-slate-900">{report.counts.products}</span>
+                <span className="text-sm font-black text-slate-900">{currentReport.counts.products}</span>
                 <span className="text-[9px] text-slate-400 block">Products</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်ကြမ်းပေးသွင်းသူ</span>
-                <span className="text-sm font-black text-emerald-700">{report.counts.suppliers}</span>
+                <span className="text-sm font-black text-emerald-700">{currentReport.counts.suppliers}</span>
                 <span className="text-[9px] text-slate-400 block">Suppliers</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်သည်စာရင်း</span>
-                <span className="text-sm font-black text-blue-700">{report.counts.merchants}</span>
+                <span className="text-sm font-black text-blue-700">{currentReport.counts.merchants}</span>
                 <span className="text-[9px] text-slate-400 block">Merchants</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်သိမ်းဘောင်ချာ</span>
-                <span className="text-sm font-black text-purple-700">{report.counts.transactions}</span>
+                <span className="text-sm font-black text-purple-700">{currentReport.counts.transactions}</span>
                 <span className="text-[9px] text-slate-400 block">Collections</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">အရောင်းဘောင်ချာ</span>
-                <span className="text-sm font-black text-amber-700">{report.counts.sales}</span>
+                <span className="text-sm font-black text-amber-700">{currentReport.counts.sales}</span>
                 <span className="text-[9px] text-slate-400 block">Sales Vouchers</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်သည်အော်ဒါ</span>
-                <span className="text-sm font-black text-indigo-700">{report.counts.orders}</span>
+                <span className="text-sm font-black text-indigo-700">{currentReport.counts.orders}</span>
                 <span className="text-[9px] text-slate-400 block">Orders</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">စတော့ညှိနှိုင်းမှု</span>
-                <span className="text-sm font-black text-slate-700">{report.counts.stockAdjustments}</span>
+                <span className="text-sm font-black text-slate-700">{currentReport.counts.stockAdjustments}</span>
                 <span className="text-[9px] text-slate-400 block">Adjustments</span>
               </div>
 
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <span className="text-[10px] text-slate-500 block font-semibold">ကုန်ကြမ်းသတ်မှတ်ချက်</span>
-                <span className="text-sm font-black text-slate-700">{report.counts.rawMaterialPresets}</span>
+                <span className="text-sm font-black text-slate-700">{currentReport.counts.rawMaterialPresets}</span>
                 <span className="text-[9px] text-slate-400 block">Presets</span>
               </div>
             </div>
           </div>
 
           {/* Live DB Comparison (if available) */}
-          {report.comparison && (
+          {currentReport.comparison && (
             <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
               <h4 className="font-bold text-blue-950 text-xs flex items-center justify-between">
                 <span>လက်ရှိစက်တွင်း ဒေတာဘေ့စ်နှင့် နှိုင်းယှဉ်ချက် (Live Database Comparison)</span>
@@ -240,37 +311,37 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">ကုန်ပစ္စည်း:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.products.inBackup} မျိုး (လက်ရှိ {report.comparison.products.inCurrentDb} မျိုး)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.products.inBackup} မျိုး (လက်ရှိ {currentReport.comparison.products.inCurrentDb} မျိုး)
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">ကုန်သွင်းသူ:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.suppliers.inBackup} ဦး (လက်ရှိ {report.comparison.suppliers.inCurrentDb} ဦး)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.suppliers.inBackup} ဦး (လက်ရှိ {currentReport.comparison.suppliers.inCurrentDb} ဦး)
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">ကုန်သည်:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.merchants.inBackup} ဦး (လက်ရှိ {report.comparison.merchants.inCurrentDb} ဦး)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.merchants.inBackup} ဦး (လက်ရှိ {currentReport.comparison.merchants.inCurrentDb} ဦး)
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">ကုန်သိမ်းဘောင်ချာ:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.transactions.inBackup} စောင် (လက်ရှိ {report.comparison.transactions.inCurrentDb} စောင်)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.transactions.inBackup} စောင် (လက်ရှိ {currentReport.comparison.transactions.inCurrentDb} စောင်)
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">အရောင်းဘောင်ချာ:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.sales.inBackup} စောင် (လက်ရှိ {report.comparison.sales.inCurrentDb} စောင်)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.sales.inBackup} စောင် (လက်ရှိ {currentReport.comparison.sales.inCurrentDb} စောင်)
                   </span>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-blue-100">
                   <span className="text-slate-600 block">အော်ဒါစာရင်း:</span>
                   <span className="font-bold text-blue-900">
-                    ဖိုင်ထဲတွင် {report.comparison.orders.inBackup} ခု (လက်ရှိ {report.comparison.orders.inCurrentDb} ခု)
+                    ဖိုင်ထဲတွင် {currentReport.comparison.orders.inBackup} ခု (လက်ရှိ {currentReport.comparison.orders.inCurrentDb} ခု)
                   </span>
                 </div>
               </div>
@@ -287,7 +358,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
               >
                 <div className="flex items-center gap-1.5 text-xs">
                   <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span>သတိပြုရန် အချက်များ ({report.warnings.length} ခု တွေ့ရှိရသည်)</span>
+                  <span>သတိပြုရန် အချက်များ ({currentReport.warnings.length} ခု တွေ့ရှိရသည်)</span>
                 </div>
                 <span className="text-[10px] text-amber-700 underline">
                   {showWarnings ? 'ခေါက်သိမ်းမည်' : 'အသေးစိတ် ကြည့်မည်'}
@@ -295,7 +366,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
               </button>
               {showWarnings && (
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-900 pt-1">
-                  {report.warnings.map((w, idx) => (
+                  {currentReport.warnings.map((w, idx) => (
                     <li key={idx}>
                       <span className="font-bold">[{w.field}]:</span> {w.message}
                     </li>
@@ -334,7 +405,7 @@ export const BackupImportPreviewModal: React.FC<BackupImportPreviewModalProps> =
             မလုပ်တော့ပါ (Cancel)
           </button>
 
-          {!hasFatalErrors && (
+          {!hasFatalErrors && !currentReport.isEncrypted && (
             <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-2">
               <button
                 type="button"

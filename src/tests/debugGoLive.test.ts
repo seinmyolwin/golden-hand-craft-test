@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/database';
 import { executeGoLive } from '../services/businessInitializationService';
+import { derivePinCredentials } from '../services/cryptoSecurity';
 import { getFullDemoData } from '../data/sampleDemoData';
 import { DEFAULT_APP_LOCK, DEFAULT_SHOP_SETTINGS, saveProducts, saveSuppliers, saveMerchants, saveTransactions, saveSales, saveOrders, savePeerTrades, saveStoredStockAdjustments, saveStoredMerchantPurchases, saveShopSettings } from '../utils/storage';
 import {
@@ -31,12 +32,20 @@ describe('Debug Go-Live Simulation', () => {
     await db.transactions.bulkAdd(demo.transactions);
     await db.sales.bulkAdd(demo.sales);
 
-    // Call executeGoLive with empty setup (user just goes through wizard with defaults)
+    // Call executeGoLive with derived PIN credentials (since PIN setup is mandatory)
+    const pinCreds = await derivePinCredentials('123456');
+    const lockSettings = {
+      ...DEFAULT_APP_LOCK,
+      isPinInitialized: true,
+      pinSalt: pinCreds.salt,
+      pinHash: pinCreds.hash,
+    };
+
     try {
       const goLiveResult = await executeGoLive({
-        pin: '',
+        pin: '123456',
         doubleConfirmed: true,
-        appLockSettings: { ...DEFAULT_APP_LOCK, isPinInitialized: false, pinHash: undefined },
+        appLockSettings: lockSettings,
         shopSettings: DEFAULT_SHOP_SETTINGS,
         businessName: 'ရွှေလက်ရာ',
         ownerName: '',

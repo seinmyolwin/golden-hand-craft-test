@@ -4,6 +4,7 @@ import { formatMMK, formatNumberOnly } from '../utils/storage';
 import { X, Printer, Truck, Phone, QrCode, Receipt, FileText } from 'lucide-react';
 import { Logo } from './Logo';
 import { ThermalReceiptData } from '../services/thermalPrinter';
+import { PrintPortal } from './PrintPortal';
 
 interface SaleVoucherModalProps {
   isOpen: boolean;
@@ -104,268 +105,277 @@ export const SaleVoucherModal: React.FC<SaleVoucherModalProps> = ({
     });
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white text-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-200 flex flex-col max-h-[96vh]">
-        {/* Actions Bar */}
-        <div className="px-3.5 py-2.5 bg-blue-950 text-white flex items-center justify-between shrink-0 print:hidden">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-blue-200">
-            <Truck className="w-4 h-4 text-blue-400" />
-            <span>အရောင်းဘောင်ချာ</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {onOpenThermalReceipt && (
-              <button
-                type="button"
-                onClick={handleThermalPrint}
-                className="px-2 py-1 bg-blue-900 hover:bg-blue-800 text-blue-100 rounded text-xs flex items-center gap-1 cursor-pointer transition-colors"
-                title="Bluetooth / Thermal POS ဖြတ်ပိုင်းထုတ်မည်"
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Thermal</span>
-              </button>
-            )}
-            {onOpenQR && (
-              <button
-                type="button"
-                onClick={() => onOpenQR(sale.voucherNo, sale)}
-                className="px-2 py-1 bg-blue-900 hover:bg-blue-800 text-blue-100 rounded text-xs flex items-center gap-1 cursor-pointer transition-colors"
-                title="QR Code ထုတ်ယူမည်"
-              >
-                <QrCode className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">QR</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print (၁ ရွက်)</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-7 h-7 rounded-full bg-blue-900 hover:bg-blue-800 text-blue-200 flex items-center justify-center cursor-pointer transition-colors ml-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+  const voucherPaper = (
+    <div
+      ref={printRef}
+      className={`voucher-printable-scope paper-${paperSize.toLowerCase()} p-4 sm:p-5 space-y-3 bg-white text-slate-900 flex-1 overflow-y-auto ${
+        paperSize === '58mm'
+          ? 'text-[10px] max-w-[54mm] w-full mx-auto'
+          : paperSize === '80mm'
+          ? 'text-[11px] max-w-[76mm] w-full mx-auto'
+          : paperSize === 'A5'
+          ? 'text-xs max-w-[138mm] w-full mx-auto'
+          : 'text-xs max-w-[192mm] w-full mx-auto'
+      }`}
+    >
+      {/* Header */}
+      <div className="text-center border-b border-dashed border-slate-300 pb-2.5 space-y-1">
+        <div className="flex items-center justify-center gap-2">
+          <Logo
+            size="sm"
+            className="w-7 h-7 rounded-xl shadow-xs shrink-0"
+            alt={shopName}
+            logoUrl={shopSettings?.logoUrl}
+          />
+          <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">{shopName}</h2>
         </div>
-
-        {/* Paper Size Selector (Print-friendly single page controls) */}
-        <div className="px-3.5 py-1.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs print:hidden">
-          <div className="flex items-center gap-1 text-slate-600 font-semibold">
-            <FileText className="w-3.5 h-3.5 text-slate-500" />
-            <span>စာရွက်ဆိုဒ်:</span>
-          </div>
-          <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300">
-            <button
-              type="button"
-              onClick={() => setPaperSize('A5')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                paperSize === 'A5' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="A5 စာရွက်တစ်ဝက် (အကြံပြုထားသော ဆိုဒ်)"
-            >
-              A5 (စာရွက်ဝက်)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaperSize('A4')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                paperSize === 'A4' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="A4 စာရွက်အပြည့်"
-            >
-              A4 (စာရွက်ကြီး)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaperSize('80mm')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                paperSize === '80mm' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="80mm Thermal POS ပရင်တာ"
-            >
-              80mm POS
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaperSize('58mm')}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
-                paperSize === '58mm' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="58mm အိတ်ဆောင် ပရင်တာ"
-            >
-              58mm POS
-            </button>
-          </div>
+        <p className="text-[11px] text-slate-600 font-medium">{tagline}</p>
+        <p className="text-[10px] text-slate-500">{address} • {phone}</p>
+        <div className="inline-block mt-0.5 px-2 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 rounded text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">
+          ကုန်သည်အရောင်းပြေစာ (SALES INVOICE)
         </div>
+      </div>
 
-        {/* Printable Voucher Paper */}
-        <div
-          ref={printRef}
-          className={`voucher-printable-scope paper-${paperSize.toLowerCase()} p-4 sm:p-5 space-y-3 bg-white text-slate-900 flex-1 overflow-y-auto ${
-            paperSize === '58mm'
-              ? 'text-[10px] max-w-[54mm] w-full mx-auto'
-              : paperSize === '80mm'
-              ? 'text-[11px] max-w-[76mm] w-full mx-auto'
-              : paperSize === 'A5'
-              ? 'text-xs max-w-[138mm] w-full mx-auto'
-              : 'text-xs max-w-[192mm] w-full mx-auto'
-          }`}
-        >
-          {/* Header */}
-          <div className="text-center border-b border-dashed border-slate-300 pb-2.5 space-y-1">
-            <div className="flex items-center justify-center gap-2">
-              <Logo
-                size="sm"
-                className="w-7 h-7 rounded-xl shadow-xs shrink-0"
-                alt={shopName}
-                logoUrl={shopSettings?.logoUrl}
-              />
-              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">{shopName}</h2>
-            </div>
-            <p className="text-[11px] text-slate-600 font-medium">{tagline}</p>
-            <p className="text-[10px] text-slate-500">{address} • {phone}</p>
-            <div className="inline-block mt-0.5 px-2 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 rounded text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">
-              ကုန်သည်အရောင်းပြေစာ (SALES INVOICE)
-            </div>
-          </div>
+      {/* Details */}
+      <div className="grid grid-cols-2 gap-1 text-[11px] border-b border-slate-200 pb-2">
+        <div>
+          <span className="text-slate-500">ဘောင်ချာ: </span>
+          <strong className="font-mono text-slate-800">{sale.voucherNo || '-'}</strong>
+        </div>
+        <div className="text-right">
+          <span className="text-slate-500">ရက်စွဲ: </span>
+          <strong className="text-slate-800">{sale.date || '-'} {sale.time ? `(${sale.time})` : ''}</strong>
+        </div>
+        <div>
+          <span className="text-slate-500">ဖောက်သည်/ကုန်သည်: </span>
+          <strong className="text-slate-900">{sale.merchantName || sale.customerName || 'အထွေထွေ ဖောက်သည်'}</strong>
+        </div>
+        <div className="text-right">
+          <span className="text-slate-500">မြို့နယ်: </span>
+          <strong className="text-slate-800">{sale.merchantTown || '-'}</strong>
+        </div>
+      </div>
 
-          {/* Details */}
-          <div className="grid grid-cols-2 gap-1 text-[11px] border-b border-slate-200 pb-2">
-            <div>
-              <span className="text-slate-500">ဘောင်ချာ: </span>
-              <strong className="font-mono text-slate-800">{sale.voucherNo || '-'}</strong>
-            </div>
-            <div className="text-right">
-              <span className="text-slate-500">ရက်စွဲ: </span>
-              <strong className="text-slate-800">{sale.date || '-'} {sale.time ? `(${sale.time})` : ''}</strong>
-            </div>
-            <div>
-              <span className="text-slate-500">ဖောက်သည်/ကုန်သည်: </span>
-              <strong className="text-slate-900">{sale.merchantName || sale.customerName || 'အထွေထွေ ဖောက်သည်'}</strong>
-            </div>
-            <div className="text-right">
-              <span className="text-slate-500">မြို့နယ်: </span>
-              <strong className="text-slate-800">{sale.merchantTown || '-'}</strong>
-            </div>
-          </div>
-
-          {/* Transport & Delivery Vehicle Contact Box */}
-          {(sale.deliveryVehicle || sale.driverOrContact || sale.driverPhone) && (
-            <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-lg text-[11px] space-y-1">
-              {sale.deliveryVehicle && (
-                <div className="flex items-center gap-1.5 text-blue-950 font-medium">
-                  <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  <span>တင်ပေးလိုက်သည့်ကား/ဂိတ်: <strong>{sale.deliveryVehicle}</strong></span>
-                </div>
-              )}
-              {(sale.driverOrContact || sale.driverPhone) && (
-                <div className="flex items-center gap-1.5 text-blue-950 font-medium">
-                  <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>
-                    ယာဉ်မောင်း/ဆက်သွယ်ရန်: <strong>{sale.driverOrContact || ''}</strong>
-                    {sale.driverPhone && <span className="ml-1 font-mono text-emerald-800">({sale.driverPhone})</span>}
-                  </span>
-                </div>
-              )}
+      {/* Transport & Delivery Vehicle Contact Box */}
+      {(sale.deliveryVehicle || sale.driverOrContact || sale.driverPhone) && (
+        <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-lg text-[11px] space-y-1">
+          {sale.deliveryVehicle && (
+            <div className="flex items-center gap-1.5 text-blue-950 font-medium">
+              <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>တင်ပေးလိုက်သည့်ကား/ဂိတ်: <strong>{sale.deliveryVehicle}</strong></span>
             </div>
           )}
-
-          {/* Items Table */}
-          <div>
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-300 text-[10px] text-slate-600 uppercase">
-                  <th className="py-1">ကုန်ပစ္စည်း</th>
-                  <th className="py-1 text-center">အရေအတွက်</th>
-                  <th className="py-1 text-right">စျေးနှုန်း</th>
-                  <th className="py-1 text-right">ကျသင့်ငွေ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {(sale.items || []).map((item, idx) => (
-                  <tr key={idx} className="py-1">
-                    <td className="py-1 font-semibold text-slate-900">{item.productName || item.name || '-'}</td>
-                    <td className="py-1 text-center font-bold text-slate-700">
-                      {item.quantity ?? 0} {item.unit || ''}
-                    </td>
-                    <td className="py-1 text-right text-slate-600">
-                      {formatNumberOnly(item.unitPrice ?? 0)}
-                    </td>
-                    <td className="py-1 text-right font-extrabold text-slate-900">
-                      {formatNumberOnly(item.subtotal ?? ((item.quantity ?? 0) * (item.unitPrice ?? 0)))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totals & Settlement */}
-          <div className="space-y-1.5 pt-2 border-t border-slate-300 text-xs">
-            {sale.totalGoodsValue !== undefined && sale.totalGoodsValue !== sale.grandTotal && (
-              <div className="flex justify-between text-slate-700 text-[11px]">
-                <span>ကုန်တန်ဖိုး စုစုပေါင်း:</span>
-                <span>{formatMMK(sale.totalGoodsValue ?? 0)}</span>
-              </div>
-            )}
-
-            {(sale.deliveryFee || 0) > 0 && (
-              <div className="flex justify-between text-slate-600 text-[11px]">
-                <span>ဂိတ်ပို့ခ/သယ်ယူခ:</span>
-                <span>+ {formatMMK(sale.deliveryFee ?? 0)}</span>
-              </div>
-            )}
-
-            {(sale.discount || 0) > 0 && (
-              <div className="flex justify-between text-rose-700 text-[11px] font-medium">
-                <span>လျှော့စျေး:</span>
-                <span>- {formatMMK(sale.discount ?? 0)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between font-bold text-slate-900">
-              <span>စုစုပေါင်း ကျသင့်ငွေ:</span>
-              <span className="text-base font-extrabold text-blue-900">{formatMMK(sale.grandTotal ?? 0)}</span>
-            </div>
-
-            <div className="flex justify-between text-emerald-800 text-[11px] font-semibold">
-              <span>လက်ငင်း/လွှဲငွေ ပေးချေပြီး:</span>
-              <span>- {formatMMK(sale.cashPaidByMerchant ?? 0)}</span>
-            </div>
-
-            <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between items-center text-sm font-black">
-              <span className="text-slate-900">ကျန်ရှိမည့် ရရန်ငွေ (အကြွေး):</span>
-              <span className={(sale.remainingReceivableBalance || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                {formatMMK(sale.remainingReceivableBalance ?? 0)}
+          {(sale.driverOrContact || sale.driverPhone) && (
+            <div className="flex items-center gap-1.5 text-blue-950 font-medium">
+              <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>
+                ယာဉ်မောင်း/ဆက်သွယ်ရန်: <strong>{sale.driverOrContact || ''}</strong>
+                {sale.driverPhone && <span className="ml-1 font-mono text-emerald-800">({sale.driverPhone})</span>}
               </span>
             </div>
+          )}
+        </div>
+      )}
 
-            {sale.notes && (
-              <div className="text-[10px] text-slate-500 italic pt-1">
-                မှတ်ချက်: {sale.notes}
-              </div>
-            )}
-          </div>
+      {/* Items Table */}
+      <div>
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-slate-300 text-[10px] text-slate-600 uppercase">
+              <th className="py-1">ကုန်ပစ္စည်း</th>
+              <th className="py-1 text-center">အရေအတွက်</th>
+              <th className="py-1 text-right">စျေးနှုန်း</th>
+              <th className="py-1 text-right">ကျသင့်ငွေ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-xs">
+            {(sale.items || []).map((item, idx) => (
+              <tr key={idx} className="py-1">
+                <td className="py-1 font-semibold text-slate-900">{item.productName || item.name || '-'}</td>
+                <td className="py-1 text-center font-bold text-slate-700">
+                  {item.quantity ?? 0} {item.unit || ''}
+                </td>
+                <td className="py-1 text-right text-slate-600">
+                  {formatNumberOnly(item.unitPrice ?? 0)}
+                </td>
+                <td className="py-1 text-right font-extrabold text-slate-900">
+                  {formatNumberOnly(item.subtotal ?? ((item.quantity ?? 0) * (item.unitPrice ?? 0)))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          {/* Signatures */}
-          <div className="pt-8 grid grid-cols-2 text-center text-[10px] text-slate-500">
-            <div>
-              <div className="w-24 border-b border-slate-300 mx-auto mb-1" />
-              <span>ဝယ်သူ ကုန်သည် လက်မှတ်</span>
-            </div>
-            <div>
-              <div className="w-24 border-b border-slate-300 mx-auto mb-1" />
-              <span>အရောင်းမန်နေဂျာ လက်မှတ်</span>
-            </div>
+      {/* Totals & Settlement */}
+      <div className="space-y-1.5 pt-2 border-t border-slate-300 text-xs">
+        {sale.totalGoodsValue !== undefined && sale.totalGoodsValue !== sale.grandTotal && (
+          <div className="flex justify-between text-slate-700 text-[11px]">
+            <span>ကုန်တန်ဖိုး စုစုပေါင်း:</span>
+            <span>{formatMMK(sale.totalGoodsValue ?? 0)}</span>
           </div>
+        )}
+
+        {(sale.deliveryFee || 0) > 0 && (
+          <div className="flex justify-between text-slate-600 text-[11px]">
+            <span>ဂိတ်ပို့ခ/သယ်ယူခ:</span>
+            <span>+ {formatMMK(sale.deliveryFee ?? 0)}</span>
+          </div>
+        )}
+
+        {(sale.discount || 0) > 0 && (
+          <div className="flex justify-between text-rose-700 text-[11px] font-medium">
+            <span>လျှော့စျေး:</span>
+            <span>- {formatMMK(sale.discount ?? 0)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between font-bold text-slate-900">
+          <span>စုစုပေါင်း ကျသင့်ငွေ:</span>
+          <span className="text-base font-extrabold text-blue-900">{formatMMK(sale.grandTotal ?? 0)}</span>
+        </div>
+
+        <div className="flex justify-between text-emerald-800 text-[11px] font-semibold">
+          <span>လက်ငင်း/လွှဲငွေ ပေးချေပြီး:</span>
+          <span>- {formatMMK(sale.cashPaidByMerchant ?? 0)}</span>
+        </div>
+
+        <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between items-center text-sm font-black">
+          <span className="text-slate-900">ကျန်ရှိမည့် ရရန်ငွေ (အကြွေး):</span>
+          <span className={(sale.remainingReceivableBalance || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+            {formatMMK(sale.remainingReceivableBalance ?? 0)}
+          </span>
+        </div>
+
+        {sale.notes && (
+          <div className="text-[10px] text-slate-500 italic pt-1">
+            မှတ်ချက်: {sale.notes}
+          </div>
+        )}
+      </div>
+
+      {/* Signatures */}
+      <div className="pt-8 grid grid-cols-2 text-center text-[10px] text-slate-500">
+        <div>
+          <div className="w-24 border-b border-slate-300 mx-auto mb-1" />
+          <span>ဝယ်သူ ကုန်သည် လက်မှတ်</span>
+        </div>
+        <div>
+          <div className="w-24 border-b border-slate-300 mx-auto mb-1" />
+          <span>အရောင်းမန်နေဂျာ လက်မှတ်</span>
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 print:hidden">
+        <div className="bg-white text-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-200 flex flex-col max-h-[96vh]">
+          {/* Actions Bar */}
+          <div className="px-3.5 py-2.5 bg-blue-950 text-white flex items-center justify-between shrink-0 print:hidden">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-200">
+              <Truck className="w-4 h-4 text-blue-400" />
+              <span>အရောင်းဘောင်ချာ</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {onOpenThermalReceipt && (
+                <button
+                  type="button"
+                  onClick={handleThermalPrint}
+                  className="px-2 py-1 bg-blue-900 hover:bg-blue-800 text-blue-100 rounded text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Bluetooth / Thermal POS ဖြတ်ပိုင်းထုတ်မည်"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Thermal</span>
+                </button>
+              )}
+              {onOpenQR && (
+                <button
+                  type="button"
+                  onClick={() => onOpenQR(sale.voucherNo, sale)}
+                  className="px-2 py-1 bg-blue-900 hover:bg-blue-800 text-blue-100 rounded text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                  title="QR Code ထုတ်ယူမည်"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">QR</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print (၁ ရွက်)</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-7 h-7 rounded-full bg-blue-900 hover:bg-blue-800 text-blue-200 flex items-center justify-center cursor-pointer transition-colors ml-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Paper Size Selector (Print-friendly single page controls) */}
+          <div className="px-3.5 py-1.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs print:hidden">
+            <div className="flex items-center gap-1 text-slate-600 font-semibold">
+              <FileText className="w-3.5 h-3.5 text-slate-500" />
+              <span>စာရွက်ဆိုဒ်:</span>
+            </div>
+            <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-300">
+              <button
+                type="button"
+                onClick={() => setPaperSize('A5')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                  paperSize === 'A5' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="A5 စာရွက်တစ်ဝက် (အကြံပြုထားသော ဆိုဒ်)"
+              >
+                A5 (စာရွက်ဝက်)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperSize('A4')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                  paperSize === 'A4' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="A4 စာရွက်အပြည့်"
+              >
+                A4 (စာရွက်ကြီး)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperSize('80mm')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                  paperSize === '80mm' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="80mm Thermal POS ပရင်တာ"
+              >
+                80mm POS
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaperSize('58mm')}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors ${
+                  paperSize === '58mm' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="58mm အိတ်ဆောင် ပရင်တာ"
+              >
+                58mm POS
+              </button>
+            </div>
+          </div>
+
+          {/* On-screen preview */}
+          {voucherPaper}
+        </div>
+      </div>
+
+      {/* Print Portal isolated from main app tree */}
+      <PrintPortal>{voucherPaper}</PrintPortal>
+    </>
   );
 };

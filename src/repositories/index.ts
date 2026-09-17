@@ -58,6 +58,7 @@ import { buildCashIdempotencyKey, getCashMovementTypeLabel } from '../services/c
 import { recordAuditEvent } from '../services/auditTrailService';
 import { enforcePermission, AuthorizationError } from '../services/authorizationService';
 import { roundMMK, moneyMul, moneyAdd, moneySub, calcRemainingBalance } from '../utils/currency';
+import { calculateWeightedAverageCost } from '../utils/cogs';
 
 export * from './types';
 export * from './errors';
@@ -84,8 +85,11 @@ export class ProductRepository implements IProductRepository {
   async save(product: Product): Promise<string> {
     await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်း မာစတာဒေတာ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
+    const avgCost = product.avgCostPrice ?? product.costPrice ?? product.defaultPrice ?? 0;
     const toSave: Product = {
       ...product,
+      avgCostPrice: avgCost,
+      costPrice: avgCost,
       id: product.id || generateStableId('prod'),
       createdAt: product.createdAt || now,
       updatedAt: now,
@@ -98,13 +102,18 @@ export class ProductRepository implements IProductRepository {
   async saveMany(products: Product[]): Promise<void> {
     await enforcePermission('MANAGE_MASTER_DATA', 'ကုန်ပစ္စည်း မာစတာဒေတာများ သိမ်းဆည်းခြင်း');
     const now = new Date().toISOString();
-    const enriched = products.map((p) => ({
-      ...p,
-      id: p.id || generateStableId('prod'),
-      createdAt: p.createdAt || now,
-      updatedAt: now,
-      revision: (p.revision || 0) + 1,
-    }));
+    const enriched = products.map((p) => {
+      const avgCost = p.avgCostPrice ?? p.costPrice ?? p.defaultPrice ?? 0;
+      return {
+        ...p,
+        avgCostPrice: avgCost,
+        costPrice: avgCost,
+        id: p.id || generateStableId('prod'),
+        createdAt: p.createdAt || now,
+        updatedAt: now,
+        revision: (p.revision || 0) + 1,
+      };
+    });
     await this.database.products.bulkPut(enriched);
   }
 
@@ -516,9 +525,15 @@ export class TransactionRepository implements ITransactionRepository {
               throw new EntityNotFoundError('Product', item.productId);
             }
             const currentStock = product.currentStock ?? product.openingStock ?? 0;
-            const updatedStock = currentStock + (item.quantity || 0);
+            const currentAvgCost = product.avgCostPrice ?? product.costPrice ?? product.defaultPrice ?? 0;
+            const incomingQty = item.quantity || 0;
+            const incomingPrice = item.unitPrice || 0;
+            const newAvgCost = calculateWeightedAverageCost(currentStock, currentAvgCost, incomingQty, incomingPrice);
+            const updatedStock = currentStock + incomingQty;
             await this.database.products.update(item.productId, {
               currentStock: updatedStock,
+              avgCostPrice: newAvgCost,
+              costPrice: newAvgCost,
               updatedAt: now,
             });
 
@@ -1123,8 +1138,12 @@ export async function executeProcessSaleAtomicInternal(
 
   // 3. Validate products & decrement inventory & record ledger movement
   if (Array.isArray(sale.items) && sale.items.length > 0) {
+    const updatedItems = [];
     for (const item of sale.items) {
-      if (!item.productId) continue;
+      if (!item.productId) {
+        updatedItems.push(item);
+        continue;
+      }
       const product = await database.products.get(item.productId);
       if (!product) {
         throw new EntityNotFoundError('Product', item.productId);
@@ -1134,6 +1153,16 @@ export async function executeProcessSaleAtomicInternal(
       await database.products.update(item.productId, {
         currentStock: newStock,
         updatedAt: now,
+      });
+
+      // Populate item.costPrice if missing or 0 using weighted average cost
+      const itemCost = item.costPrice !== undefined && item.costPrice !== null && !isNaN(item.costPrice) && item.costPrice > 0
+        ? item.costPrice
+        : (product.avgCostPrice ?? product.costPrice ?? product.defaultPrice ?? 0);
+
+      updatedItems.push({
+        ...item,
+        costPrice: itemCost,
       });
 
       // Write stock movement ledger
@@ -1162,6 +1191,7 @@ export async function executeProcessSaleAtomicInternal(
         schemaVersion: 1,
       });
     }
+    enrichedSale.items = updatedItems;
   }
 
   // 4. Update merchant receivable balance & totals
@@ -1601,9 +1631,15 @@ export class MerchantPurchaseRepository implements IMerchantPurchaseRepository {
             const product = await this.database.products.get(item.productId);
             if (product) {
               const currentStock = product.currentStock ?? product.openingStock ?? 0;
-              const newStock = currentStock + (item.quantity || 0);
+              const currentAvgCost = product.avgCostPrice ?? product.costPrice ?? product.defaultPrice ?? 0;
+              const incomingQty = item.quantity || 0;
+              const incomingPrice = item.unitPrice || 0;
+              const newAvgCost = calculateWeightedAverageCost(currentStock, currentAvgCost, incomingQty, incomingPrice);
+              const newStock = currentStock + incomingQty;
               await this.database.products.update(item.productId, {
                 currentStock: newStock,
+                avgCostPrice: newAvgCost,
+                costPrice: newAvgCost,
                 updatedAt: now,
               });
 

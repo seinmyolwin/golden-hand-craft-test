@@ -56,7 +56,7 @@ export function generateCryptoSalt(byteLength: number = 16): string {
 /**
  * Convert hex string to Uint8Array
  */
-function hexToBytes(hex: string): Uint8Array {
+export function hexToBytes(hex: string): Uint8Array {
   const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '');
   const bytes = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -68,7 +68,7 @@ function hexToBytes(hex: string): Uint8Array {
 /**
  * Convert ArrayBuffer to hex string
  */
-function bytesToHex(buffer: ArrayBuffer | Uint8Array): string {
+export function bytesToHex(buffer: ArrayBuffer | Uint8Array): string {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   let hex = '';
   for (let i = 0; i < bytes.length; i++) {
@@ -236,7 +236,7 @@ export async function verifyOwnerPin(
   if (!enteredPin || !enteredPin.trim()) return false;
   const pin = enteredPin.trim();
   if (!settings) {
-    return pin === '123456';
+    return false;
   }
 
   let activeSettings = settings;
@@ -248,8 +248,7 @@ export async function verifyOwnerPin(
     return verifySecretHash(pin, activeSettings.pinSalt, activeSettings.pinHash);
   }
 
-  // If no PIN is configured yet, default 123456 is valid
-  return pin === '123456';
+  return false;
 }
 
 /**
@@ -404,3 +403,146 @@ export const SECURITY_DISCLOSURE_MY =
 
 export const SECURITY_DISCLOSURE_EN =
   'Security Notice: This local screen lock provides privacy against casual unauthorized viewing. It is not equivalent to hardware-level operating system full disk encryption.';
+
+export interface EncryptedBackupEnvelope {
+  encrypted: true;
+  algorithm: 'AES-GCM';
+  pbkdf2Salt: string;
+  iv: string;
+  ciphertext: string;
+}
+
+/**
+ * Encrypts a serialized JSON backup payload using AES-GCM (256-bit) with PBKDF2 derived key (100,000 iterations)
+ */
+export async function encryptBackupPayload(
+  jsonString: string,
+  passphrase: string
+): Promise<EncryptedBackupEnvelope> {
+  if (!passphrase || !passphrase.trim()) {
+    throw new Error('Passphrase is required for encryption.');
+  }
+
+  const saltHex = generateCryptoSalt(16);
+  const ivBytes = new Uint8Array(12); // 96-bit IV for AES-GCM
+  const cryptoObj =
+    typeof window !== 'undefined' && window.crypto?.getRandomValues
+      ? window.crypto
+      : typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues
+      ? globalThis.crypto
+      : undefined;
+
+  if (!cryptoObj) {
+    throw new Error('Web Crypto API is required for backup encryption.');
+  }
+  cryptoObj.getRandomValues(ivBytes);
+
+  const enc = new TextEncoder();
+  const passphraseBytes = enc.encode(passphrase.trim());
+  const saltBytes = hexToBytes(saltHex);
+
+  const keyMaterial = await cryptoObj.subtle.importKey(
+    'raw',
+    passphraseBytes,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+
+  const derivedKey = await cryptoObj.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: saltBytes,
+      iterations: 100_000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt']
+  );
+
+  const dataBytes = enc.encode(jsonString);
+  const encryptedBuffer = await cryptoObj.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: ivBytes,
+    },
+    derivedKey,
+    dataBytes
+  );
+
+  return {
+    encrypted: true,
+    algorithm: 'AES-GCM',
+    pbkdf2Salt: saltHex,
+    iv: bytesToHex(ivBytes),
+    ciphertext: bytesToHex(encryptedBuffer),
+  };
+}
+
+/**
+ * Decrypts an AES-GCM encrypted backup payload envelope using PBKDF2 derived key
+ */
+export async function decryptBackupPayload(
+  envelope: EncryptedBackupEnvelope,
+  passphrase: string
+): Promise<string> {
+  if (!passphrase || !passphrase.trim()) {
+    throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+  }
+
+  try {
+    const cryptoObj =
+      typeof window !== 'undefined' && window.crypto?.subtle
+        ? window.crypto
+        : typeof globalThis !== 'undefined' && globalThis.crypto?.subtle
+        ? globalThis.crypto
+        : undefined;
+
+    if (!cryptoObj || !cryptoObj.subtle) {
+      throw new Error('Web Crypto API is unavailable');
+    }
+
+    const enc = new TextEncoder();
+    const passphraseBytes = enc.encode(passphrase.trim());
+    const saltBytes = hexToBytes(envelope.pbkdf2Salt);
+    const ivBytes = hexToBytes(envelope.iv);
+    const ciphertextBytes = hexToBytes(envelope.ciphertext);
+
+    const keyMaterial = await cryptoObj.subtle.importKey(
+      'raw',
+      passphraseBytes,
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    );
+
+    const derivedKey = await cryptoObj.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: saltBytes,
+        iterations: 100_000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    const decryptedBuffer = await cryptoObj.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: ivBytes,
+      },
+      derivedKey,
+      ciphertextBytes
+    );
+
+    const dec = new TextDecoder();
+    return dec.decode(decryptedBuffer);
+  } catch {
+    throw new Error('စကားဝှက် မှားယွင်းနေပါသည် သို့မဟုတ် ဒေတာ ပျက်စီးနေပါသည်');
+  }
+}

@@ -9,13 +9,19 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { AppLockSettings } from '../types';
-import { verifyOwnerPin } from '../services/cryptoSecurity';
+import {
+  verifyOwnerPin,
+  derivePinCredentials,
+  generateSecureRecoveryKey,
+  deriveRecoveryCredentials,
+} from '../services/cryptoSecurity';
 
 interface DemoReloadConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirmReload: () => Promise<void> | void;
   appLockSettings?: AppLockSettings | null;
+  onUpdateAppLockSettings?: (settings: AppLockSettings) => void;
 }
 
 export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
@@ -23,9 +29,12 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
   onClose,
   onConfirmReload,
   appLockSettings,
+  onUpdateAppLockSettings,
 }) => {
   const [doubleConfirmed, setDoubleConfirmed] = useState<boolean>(false);
   const [ownerPin, setOwnerPin] = useState<string>('');
+  const [newSetupPin, setNewSetupPin] = useState<string>('');
+  const [confirmSetupPin, setConfirmSetupPin] = useState<string>('');
   const [showPin, setShowPin] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -48,7 +57,42 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
 
     setIsProcessing(true);
     try {
-      if (hasConfiguredPin) {
+      if (!hasConfiguredPin) {
+        if (!newSetupPin || newSetupPin.trim().length < 6) {
+          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၆ လုံး ရိုက်ထည့်ရန် လိုအပ်ပါသည်');
+          setIsProcessing(false);
+          return;
+        }
+        if (newSetupPin !== confirmSetupPin) {
+          setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
+          setIsProcessing(false);
+          return;
+        }
+
+        const pinToSet = newSetupPin.trim();
+        const pinCreds = await derivePinCredentials(pinToSet);
+        const recKey = generateSecureRecoveryKey();
+        const recCreds = await deriveRecoveryCredentials(recKey);
+
+        const updatedSettings: AppLockSettings = {
+          ...(appLockSettings || { enabled: true, autoLockMinutes: 5, lockOnStartup: true }),
+          enabled: true,
+          isPinInitialized: true,
+          pinSalt: pinCreds.salt,
+          pinHash: pinCreds.hash,
+          recoverySalt: recCreds.salt,
+          recoveryHash: recCreds.hash,
+          recoveryKeyDisplay: recKey,
+          failedAttempts: 0,
+          lockedUntilTimestamp: undefined,
+          lastResetAt: new Date().toISOString(),
+          lastUnlockedAt: new Date().toISOString(),
+        };
+
+        if (onUpdateAppLockSettings) {
+          onUpdateAppLockSettings(updatedSettings);
+        }
+      } else {
         if (!ownerPin.trim()) {
           setErrorMsg('ဆိုင်ရှင် PIN ရိုက်ထည့်ပေးပါ');
           setIsProcessing(false);
@@ -71,6 +115,13 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
       setIsProcessing(false);
     }
   };
+
+  const isSubmitDisabled =
+    !doubleConfirmed ||
+    (!hasConfiguredPin
+      ? !newSetupPin || !confirmSetupPin
+      : !ownerPin.trim()) ||
+    isProcessing;
 
   return (
     <div
@@ -115,7 +166,48 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
             </p>
           </div>
 
-          {hasConfiguredPin && (
+          {!hasConfiguredPin ? (
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-3 border border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <span>ဆိုင်ရှင် PIN အသစ် သတ်မှတ်ပါ (Set your Owner PIN)</span>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                    ဆိုင်ရှင် PIN အသစ် (၆ လုံး သတ်မှတ်ပါ) *
+                  </label>
+                  <input
+                    id="reload-demo-new-pin-input"
+                    type={showPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="၆ လုံး သတ်မှတ်ပါ"
+                    value={newSetupPin}
+                    onChange={(e) => setNewSetupPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-red-400"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                    PIN အသစ် ထပ်မံအတည်ပြုပါ (၆ လုံး) *
+                  </label>
+                  <input
+                    id="reload-demo-confirm-pin-input"
+                    type={showPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="၆ လုံး ထပ်မံရိုက်ပါ"
+                    value={confirmSetupPin}
+                    onChange={(e) => setConfirmSetupPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-red-400"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
             <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-2 border border-slate-800">
               <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
                 <KeyRound className="w-4 h-4 text-amber-400" />
@@ -126,6 +218,7 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
                   id="reload-demo-owner-pin-input"
                   type={showPin ? 'text' : 'password'}
                   inputMode="numeric"
+                  maxLength={6}
                   placeholder="ဆိုင်ရှင် PIN ရိုက်ထည့်ပါ"
                   value={ownerPin}
                   onChange={(e) => setOwnerPin(e.target.value.replace(/\D/g, ''))}
@@ -177,9 +270,9 @@ export const DemoReloadConfirmModal: React.FC<DemoReloadConfirmModalProps> = ({
             <button
               type="submit"
               id="confirm-demo-reload-btn"
-              disabled={!doubleConfirmed || (hasConfiguredPin && !ownerPin.trim()) || isProcessing}
+              disabled={isSubmitDisabled}
               className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 cursor-pointer shadow-md transition-all ${
-                doubleConfirmed && (!hasConfiguredPin || ownerPin.trim()) && !isProcessing
+                !isSubmitDisabled
                   ? 'bg-red-600 hover:bg-red-500 text-white active:scale-95'
                   : 'bg-slate-300 text-slate-500 cursor-not-allowed'
               }`}

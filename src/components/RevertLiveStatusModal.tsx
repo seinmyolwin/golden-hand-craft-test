@@ -9,15 +9,22 @@ import {
   RotateCcw,
   Database,
   CheckCircle2,
+  KeyRound,
 } from 'lucide-react';
 import { AppLockSettings } from '../types';
-import { verifyOwnerPin } from '../services/cryptoSecurity';
+import {
+  verifyOwnerPin,
+  derivePinCredentials,
+  generateSecureRecoveryKey,
+  deriveRecoveryCredentials,
+} from '../services/cryptoSecurity';
 
 interface RevertLiveStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirmRevert: (pin: string) => Promise<void> | void;
   appLockSettings?: AppLockSettings | null;
+  onUpdateAppLockSettings?: (settings: AppLockSettings) => void;
 }
 
 export const RevertLiveStatusModal: React.FC<RevertLiveStatusModalProps> = ({
@@ -25,14 +32,21 @@ export const RevertLiveStatusModal: React.FC<RevertLiveStatusModalProps> = ({
   onClose,
   onConfirmRevert,
   appLockSettings,
+  onUpdateAppLockSettings,
 }) => {
   const [pin, setPin] = useState<string>('');
+  const [newSetupPin, setNewSetupPin] = useState<string>('');
+  const [confirmSetupPin, setConfirmSetupPin] = useState<string>('');
   const [showPin, setShowPin] = useState<boolean>(false);
   const [doubleConfirmed, setDoubleConfirmed] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   if (!isOpen) return null;
+
+  const hasConfiguredPin = Boolean(
+    appLockSettings?.pinHash || appLockSettings?.passcode || appLockSettings?.pin
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,21 +58,62 @@ export const RevertLiveStatusModal: React.FC<RevertLiveStatusModalProps> = ({
       return;
     }
 
-    if (!pin.trim()) {
-      setErrorMsg('စကားဝှက် (PIN ၆ လုံး) ရိုက်ထည့်ပေးပါ');
-      return;
-    }
-
     setIsProcessing(true);
     try {
-      const isValid = await verifyOwnerPin(pin.trim(), appLockSettings);
-      if (!isValid) {
-        setErrorMsg('စကားဝှက် (PIN) မှားယွင်းနေပါသည်။ ပုံသေ စကားဝှက်မှာ 123456 ဖြစ်ပါသည်');
-        setIsProcessing(false);
-        return;
+      let finalPin = pin.trim();
+
+      if (!hasConfiguredPin) {
+        if (!newSetupPin || newSetupPin.trim().length < 6) {
+          setErrorMsg('ဆိုင်ရှင် PIN အသစ်သည် အနည်းဆုံး ၆ လုံး ရိုက်ထည့်ရန် လိုအပ်ပါသည်');
+          setIsProcessing(false);
+          return;
+        }
+        if (newSetupPin !== confirmSetupPin) {
+          setErrorMsg('PIN အသစ်နှစ်ကြိမ် ရိုက်ထည့်မှု တူညီမှုမရှိပါ');
+          setIsProcessing(false);
+          return;
+        }
+
+        const pinToSet = newSetupPin.trim();
+        const pinCreds = await derivePinCredentials(pinToSet);
+        const recKey = generateSecureRecoveryKey();
+        const recCreds = await deriveRecoveryCredentials(recKey);
+
+        const updatedSettings: AppLockSettings = {
+          ...(appLockSettings || { enabled: true, autoLockMinutes: 5, lockOnStartup: true }),
+          enabled: true,
+          isPinInitialized: true,
+          pinSalt: pinCreds.salt,
+          pinHash: pinCreds.hash,
+          recoverySalt: recCreds.salt,
+          recoveryHash: recCreds.hash,
+          recoveryKeyDisplay: recKey,
+          failedAttempts: 0,
+          lockedUntilTimestamp: undefined,
+          lastResetAt: new Date().toISOString(),
+          lastUnlockedAt: new Date().toISOString(),
+        };
+
+        if (onUpdateAppLockSettings) {
+          onUpdateAppLockSettings(updatedSettings);
+        }
+        finalPin = pinToSet;
+      } else {
+        if (!finalPin) {
+          setErrorMsg('စကားဝှက် (PIN ၆ လုံး) ရိုက်ထည့်ပေးပါ');
+          setIsProcessing(false);
+          return;
+        }
+
+        const isValid = await verifyOwnerPin(finalPin, appLockSettings);
+        if (!isValid) {
+          setErrorMsg('စကားဝှက် (PIN) မှားယွင်းနေပါသည်');
+          setIsProcessing(false);
+          return;
+        }
       }
 
-      await onConfirmRevert(pin.trim());
+      await onConfirmRevert(finalPin);
       onClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'Live Status ဖြုတ်ရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်');
@@ -122,35 +177,76 @@ export const RevertLiveStatusModal: React.FC<RevertLiveStatusModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-slate-700 font-bold mb-1.5">
-              ဆိုင်ရှင် စကားဝှက် / PIN (၆ လုံး) *
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Lock className="w-4 h-4" />
+          {!hasConfiguredPin ? (
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-3 border border-slate-800">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <span>ဆိုင်ရှင် PIN အသစ် သတ်မှတ်ပါ (Set your Owner PIN)</span>
               </div>
-              <input
-                type={showPin ? 'text' : 'password'}
-                required
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="ဥပမာ - 123456"
-                className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono tracking-widest font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPin(!showPin)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                    ဆိုင်ရှင် PIN အသစ် (၆ လုံး သတ်မှတ်ပါ) *
+                  </label>
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="၆ လုံး သတ်မှတ်ပါ"
+                    value={newSetupPin}
+                    onChange={(e) => setNewSetupPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-300 font-semibold mb-1">
+                    PIN အသစ် ထပ်မံအတည်ပြုပါ (၆ လုံး) *
+                  </label>
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="၆ လုံး ထပ်မံရိုက်ပါ"
+                    value={confirmSetupPin}
+                    onChange={(e) => setConfirmSetupPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white font-mono text-xs tracking-wider focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-500 mt-1 font-mono">
-              စကားဝှက်မပြောင်းရသေးပါက ပုံသေစကားဝှက် <strong>123456</strong> ကို ရိုက်ထည့်နိုင်ပါသည်။
-            </p>
-          </div>
+          ) : (
+            <div>
+              <label className="block text-slate-700 font-bold mb-1.5">
+                ဆိုင်ရှင် စကားဝှက် / PIN (၆ လုံး) *
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <input
+                  type={showPin ? 'text' : 'password'}
+                  required
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="၆ လုံး ရိုက်ထည့်ပါ"
+                  className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono tracking-widest font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                သတ်မှတ်ထားသော ဆိုင်ရှင် PIN (၆ လုံး) ကို ရိုက်ထည့်ပါ။
+              </p>
+            </div>
+          )}
 
           <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
             <input

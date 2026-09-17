@@ -31,7 +31,7 @@ import {
   INITIAL_PEER_TRADERS,
 } from '../data/defaultData';
 import { db } from '../db/database';
-import { generateSecureRecoveryKey } from '../services/cryptoSecurity';
+import { generateSecureRecoveryKey, encryptBackupPayload } from '../services/cryptoSecurity';
 import { generateStableId } from './idGenerator';
 import { createCompleteBackup, downloadBackupFile } from '../services/backupService';
 import { calculateAllProductsStockLedgerSummaries } from '../services/stockLedgerService';
@@ -1864,7 +1864,7 @@ export function mergeDatabaseSnapshots(
   };
 }
 
-export function exportAllDataJSON(): void {
+export async function exportAllDataJSON(passphrase?: string): Promise<void> {
   try {
     const fullBackup = {
       suppliers: getStoredSuppliers(),
@@ -1882,7 +1882,12 @@ export function exportAllDataJSON(): void {
       appLockSettings: getStoredAppLockSettings(),
       exportedAt: new Date().toISOString(),
     };
-    const jsonStr = JSON.stringify(fullBackup, null, 2);
+    let output: any = fullBackup;
+    if (passphrase && passphrase.trim()) {
+      const jsonStr = JSON.stringify(fullBackup);
+      output = await encryptBackupPayload(jsonStr, passphrase.trim());
+    }
+    const jsonStr = JSON.stringify(output, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

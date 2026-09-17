@@ -6,6 +6,11 @@
   }
 }
 
+/* Print portal container is hidden on screen */
+#print-portal-root {
+  display: none;
+}
+
 @media print {
   /* Strict single-sheet configuration: remove external margins that push content to page 2 */
   @page {
@@ -23,36 +28,53 @@
     padding: 0 !important;
     width: 100% !important;
     height: auto !important;
+    min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
   }
 
-  /* Hide app frame, header, navigation, and background overlays */
-  body > * {
-    visibility: hidden !important;
+  /* Isolate print portal root from the main app root and backdrop containers */
+  body.has-print-portal > *:not(#print-portal-root),
+  body:has(#print-portal-root > *) > *:not(#print-portal-root) {
+    display: none !important;
   }
 
-  /* When printing, remove modal backdrop constraints */
-  .fixed.inset-0 {
+  body.has-print-portal #print-portal-root,
+  body:has(#print-portal-root > *) #print-portal-root {
+    display: block !important;
     position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Support standalone modal printing when portal is not used (e.g. User Guide) */
+  .modal-printable-backdrop {
+    position: static !important;
     background: transparent !important;
     padding: 0 !important;
-    margin: 0 !important;
-    display: block !important;
+    overflow: visible !important;
   }
 
-  /* Isolate printable voucher and ensure proper page flow */
-  .voucher-printable-scope,
-  .voucher-printable-scope * {
-    visibility: visible !important;
+  .modal-printable-container {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
+  /* Voucher container in print portal */
   .voucher-printable-scope {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    right: 0 !important;
+    position: relative !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 auto !important;
