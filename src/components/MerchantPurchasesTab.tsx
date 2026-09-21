@@ -74,10 +74,11 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter valid presets excluding cash advance
+  const isBusinessLive = Boolean(shopSettings?.isLiveConfirmed);
   const activeRawPresets = useMemo(() => {
-    const list = rawMaterialPresets && rawMaterialPresets.length > 0 ? rawMaterialPresets : DEFAULT_RAW_MATERIAL_PRESETS;
+    const list = rawMaterialPresets && rawMaterialPresets.length > 0 ? rawMaterialPresets : isBusinessLive ? [] : DEFAULT_RAW_MATERIAL_PRESETS;
     return list.filter((p) => p && p.category !== 'CASH_ADVANCE');
-  }, [rawMaterialPresets]);
+  }, [rawMaterialPresets, isBusinessLive]);
 
   // Items for new purchase
   const [items, setItems] = useState<
@@ -85,10 +86,10 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   >([
     {
       id: '1',
-      materialName: activeRawPresets[0]?.name || 'ဝါးပိုးဝါး (ဝါးလုံး)',
-      quantity: '100',
-      unit: activeRawPresets[0]?.defaultUnit || 'လုံး',
-      unitPrice: String(activeRawPresets[0]?.defaultUnitPrice || 3500),
+      materialName: activeRawPresets[0]?.name || '',
+      quantity: '',
+      unit: activeRawPresets[0]?.defaultUnit || 'ခု',
+      unitPrice: activeRawPresets[0]?.defaultUnitPrice ? String(activeRawPresets[0].defaultUnitPrice) : '',
     },
   ]);
 

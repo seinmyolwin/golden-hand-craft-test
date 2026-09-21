@@ -32,7 +32,7 @@ export type {
   OpeningIssuedMaterialPosition,
 };
 import { generateStableId } from '../utils/idGenerator';
-import { getTodayDateString } from '../utils/storage';
+import { getTodayDateString, STORAGE_KEYS } from '../utils/storage';
 
 export function createEmptyOpeningPosition(): OpeningPosition {
   return {
@@ -503,8 +503,8 @@ export async function cleanupDemoDataForGoLive(options?: {
   }));
 
   // Clean suppliers and merchants of demo transactions/balances
-  const demoSupplierIds = new Set(['s-1', 's-2', 's-3', 's-4', 's-5']);
-  const demoMerchantIds = new Set(['m-1', 'm-2', 'm-3', 'm-4', 'm-5']);
+  const demoSupplierIds = new Set(['s-1', 's-2', 's-3', 's-4', 's-5', 's-6']);
+  const demoMerchantIds = new Set(['m-1', 'm-2', 'm-3', 'm-4', 'm-5', 'm-6']);
 
   const ownerSuppliers: Supplier[] = currentSuppliers.filter(
     (s) => !demoSupplierIds.has(s.id) || (s as any).isUserCreated === true
@@ -531,6 +531,19 @@ export async function cleanupDemoDataForGoLive(options?: {
     totalPurchasedFromMerchant: 0,
   }));
 
+  // Extract any owner-defined raw materials from opening position
+  const ownerRawPresets = (openingPosition?.rawMaterials && openingPosition.rawMaterials.length > 0)
+    ? openingPosition.rawMaterials.map((rm, idx) => ({
+        id: `rm-owner-${idx + 1}`,
+        name: rm.materialName || (rm as any).name || 'ကုန်ကြမ်း',
+        category: (rm as any).category || 'OTHER',
+        categoryLabel: (rm as any).categoryLabel || 'ကုန်ကြမ်း',
+        defaultUnit: rm.unit || 'ခု',
+        defaultUnitPrice: rm.unitPrice || 0,
+        isUserCreated: true,
+      }))
+    : [];
+
   // Clean all demo transactions in database tables
   await targetDb.transaction(
     'rw',
@@ -546,6 +559,7 @@ export async function cleanupDemoDataForGoLive(options?: {
       targetDb.merchantPurchases,
       targetDb.dailyClosings,
       targetDb.softDeletedItems,
+      targetDb.rawMaterialPresets,
     ],
     async () => {
       // Clear all demo activity ledgers
@@ -557,6 +571,12 @@ export async function cleanupDemoDataForGoLive(options?: {
       await targetDb.merchantPurchases.clear();
       await targetDb.dailyClosings.clear();
       await targetDb.softDeletedItems.clear();
+
+      // Clear all sample raw material presets and add owner's presets if defined
+      await targetDb.rawMaterialPresets.clear();
+      if (ownerRawPresets.length > 0) {
+        await targetDb.rawMaterialPresets.bulkAdd(ownerRawPresets as any);
+      }
 
       // Replace products with cleaned owner products
       await targetDb.products.clear();
@@ -577,6 +597,12 @@ export async function cleanupDemoDataForGoLive(options?: {
       }
     }
   );
+
+  // Sync with local storage
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify(ownerRawPresets));
+    localStorage.setItem('ledger_zero_settings_activated', 'true');
+  }
 
   return {
     cleanedProducts,

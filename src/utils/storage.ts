@@ -198,38 +198,36 @@ export const DEFAULT_SHOP_SETTINGS: ShopSettings = {
 };
 
 export const DEFAULT_RAW_MATERIAL_PRESETS: RawMaterialPreset[] = [
-  // ဝါးကုန်ကြမ်း
+  // ဝါးကုန်ကြမ်း (၃ မျိုး)
   { id: 'rm-1', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးပိုးဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 3500 },
   { id: 'rm-2', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'တင်းဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 2800 },
-  { id: 'rm-3', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'သနပ်ခါးဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 3000 },
-  { id: 'rm-4', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'မျှင်ဝါး (ဝါးလုံး)', defaultUnit: 'လုံး', defaultUnitPrice: 2200 },
-  { id: 'rm-5', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးနှီးစိပ် (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 4500 },
-  { id: 'rm-6', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးခွေ (ချော)', defaultUnit: 'ခွေ', defaultUnitPrice: 5000 },
+  { id: 'rm-3', category: 'BAMBOO', categoryLabel: 'ဝါးကုန်ကြမ်း', name: 'ဝါးနှီးစိပ် (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 4500 },
 
-  // ကြိမ်ကုန်ကြမ်း
-  { id: 'rm-7', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်လုံး (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 12000 },
-  { id: 'rm-8', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ကြိုး (ခွေ)', defaultUnit: 'ခွေ', defaultUnitPrice: 8500 },
-  { id: 'rm-9', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ခွေ (ချော)', defaultUnit: 'ခွေ', defaultUnitPrice: 9000 },
-  { id: 'rm-10', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်အူ (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 15000 },
-  { id: 'rm-11', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ပြား (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 11000 },
+  // ကြိမ်ကုန်ကြမ်း (၃ မျိုး)
+  { id: 'rm-4', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်လုံး (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 12000 },
+  { id: 'rm-5', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်ကြိုး (ခွေ)', defaultUnit: 'ခွေ', defaultUnitPrice: 8500 },
+  { id: 'rm-6', category: 'RATTAN', categoryLabel: 'ကြိမ်ကုန်ကြမ်း', name: 'ကြိမ်အူ (စည်း)', defaultUnit: 'စည်း', defaultUnitPrice: 15000 },
 
-  // ငွေကြိုယူ
-  { id: 'rm-12', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'ငွေသားကြိုထုတ် (Cash Advance)', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
-  { id: 'rm-13', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'အလုပ်သမားစရိတ်ကြိုယူ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
-  { id: 'rm-14', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'လုပ်အားခကြိုယူငွေ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
-  { id: 'rm-15', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'အိမ်သုံးစရိတ်ကြိုယူငွေ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  // ငွေကြိုယူ (၃ မျိုး)
+  { id: 'rm-7', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'ငွေသားကြိုထုတ် (Cash Advance)', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  { id: 'rm-8', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'အလုပ်သမားစရိတ်ကြိုယူ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
+  { id: 'rm-9', category: 'CASH_ADVANCE', categoryLabel: 'ငွေကြိုယူ', name: 'လုပ်အားခကြိုယူငွေ', defaultUnit: 'ကျပ်', defaultUnitPrice: 1 },
 
-  // အခြားကုန်ကြမ်း
-  { id: 'rm-16', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သဲစက္ကူ (ကော်ပတ်)', defaultUnit: 'ချပ်', defaultUnitPrice: 1500 },
-  { id: 'rm-17', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သစ်သားကော် / ကော်ကပ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 6000 },
-  { id: 'rm-18', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'အရောင်တင်ဆီ / သုတ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 8000 },
-  { id: 'rm-19', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'ဆိုးဆေးရောင်စုံ', defaultUnit: 'ထုပ်', defaultUnitPrice: 3500 },
+  // အခြားကုန်ကြမ်း (၃ မျိုး)
+  { id: 'rm-10', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သဲစက္ကူ (ကော်ပတ်)', defaultUnit: 'ချပ်', defaultUnitPrice: 1500 },
+  { id: 'rm-11', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'သစ်သားကော် / ကော်ကပ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 6000 },
+  { id: 'rm-12', category: 'OTHER', categoryLabel: 'အခြားကုန်ကြမ်း', name: 'အရောင်တင်ဆီ / သုတ်ဆေး', defaultUnit: 'ပုလင်း', defaultUnitPrice: 8000 },
 ];
 
 export function getStoredRawMaterialPresets(): RawMaterialPreset[] {
   try {
+    const isLive = typeof localStorage !== 'undefined' && localStorage.getItem('ledger_zero_settings_activated') === 'true';
     const data = localStorage.getItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS);
     if (data === null) {
+      if (isLive) {
+        localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify([]));
+        return [];
+      }
       localStorage.setItem(STORAGE_KEYS.RAW_MATERIAL_PRESETS, JSON.stringify(DEFAULT_RAW_MATERIAL_PRESETS));
       localStorage.setItem('raw_material_presets_initialized_v2', 'true');
       return DEFAULT_RAW_MATERIAL_PRESETS;
@@ -237,12 +235,16 @@ export function getStoredRawMaterialPresets(): RawMaterialPreset[] {
     const parsed = JSON.parse(data);
     if (Array.isArray(parsed)) {
       // Filter out any lingering LACQUER / သစ်စေး items if user had previous version
-      return parsed.filter((p: any) => p && p.category !== 'LACQUER' && p.categoryLabel !== 'သစ်စေး' && !p.name?.includes('သစ်စေး'));
+      const filtered = parsed.filter((p: any) => p && p.category !== 'LACQUER' && p.categoryLabel !== 'သစ်စေး' && !p.name?.includes('သစ်စေး'));
+      if (isLive) {
+        return filtered.filter((p: any) => p.isUserCreated === true);
+      }
+      return filtered;
     }
-    return DEFAULT_RAW_MATERIAL_PRESETS;
+    return isLive ? [] : DEFAULT_RAW_MATERIAL_PRESETS;
   } catch (e) {
     console.error('Error reading raw material presets', e);
-    return DEFAULT_RAW_MATERIAL_PRESETS;
+    return [];
   }
 }
 

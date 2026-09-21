@@ -1,9 +1,20 @@
 @import "tailwindcss";
 
 @layer base {
+  html, body {
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Myanmar Text', Padauk, sans-serif;
   }
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* Print portal container is hidden on screen */
