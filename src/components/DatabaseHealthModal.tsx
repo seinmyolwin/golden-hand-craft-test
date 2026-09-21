@@ -36,6 +36,7 @@ import {
   runDatabaseDiagnostics,
   downloadDiagnosticReport,
   formatBytes,
+  migrateLegacyProductPriceFieldNames,
 } from '../services/databaseHealthService';
 import {
   getRepairCapability,
@@ -66,6 +67,24 @@ export const DatabaseHealthModal: React.FC<DatabaseHealthModalProps> = ({
   const [isRepairModalOpen, setIsRepairModalOpen] = useState<boolean>(false);
   const [repairHistory, setRepairHistory] = useState<AuditLogEntry[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+
+  // Legacy price field migration state
+  const [isMigratingPrices, setIsMigratingPrices] = useState<boolean>(false);
+  const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
+
+  const handleMigrateLegacyPrices = async () => {
+    setIsMigratingPrices(true);
+    try {
+      const res = await migrateLegacyProductPriceFieldNames();
+      await executeDiagnostics();
+      setMigrationMessage(`ကုန်ပစ္စည်း (${res.migrated}) မျိုး၏ ဈေးနှုန်းအမည်ဟောင်းများ (wholesalePrice/purchasePrice) အား စနစ်တကျ အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။`);
+    } catch (err) {
+      console.error('Failed to migrate legacy prices:', err);
+      setMigrationMessage('ဈေးနှုန်းပြင်ဆင်ရာတွင် အမှားတစ်ခု ဖြစ်ပေါ်ခဲ့ပါသည်။');
+    } finally {
+      setIsMigratingPrices(false);
+    }
+  };
 
   const executeDiagnostics = async () => {
     setIsRunning(true);
@@ -605,6 +624,44 @@ export const DatabaseHealthModal: React.FC<DatabaseHealthModalProps> = ({
 
           {/* Results List */}
           <div className="space-y-2">
+            {migrationMessage && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center justify-between gap-2 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-semibold">{migrationMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMigrationMessage(null)}
+                  className="text-emerald-600 hover:text-emerald-800 text-xs font-bold cursor-pointer"
+                >
+                  ပိတ်မည်
+                </button>
+              </div>
+            )}
+
+            {report?.results.some((r) => r.code === 'LEGACY_PRICE_FIELD_NAME') && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">အမည်ဟောင်းဖြင့် သိမ်းဆည်းထားသော ကုန်ပစ္စည်းဈေးနှုန်းများ တွေ့ရှိရပါသည် (Go-Live setup)</span>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      "wholesalePrice/purchasePrice" အမည်များအား စနစ်မှ ဖတ်ရှုနိုင်သော "defaultWholesalePrice/costPrice" သို့ ပြင်ဆင်ရန် အောက်ပါခလုတ်ကို နှိပ်ပါ။
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleMigrateLegacyPrices}
+                  disabled={isMigratingPrices}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors shadow-xs disabled:opacity-50"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>{isMigratingPrices ? 'ပြင်ဆင်နေသည်...' : 'ပြင်ရန် (Fix)'}</span>
+                </button>
+              </div>
+            )}
             {isRunning ? (
               <div className="p-12 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
                 <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin" />
@@ -703,6 +760,19 @@ export const DatabaseHealthModal: React.FC<DatabaseHealthModalProps> = ({
                         </div>
 
                         {(() => {
+                          if (r.code === 'LEGACY_PRICE_FIELD_NAME') {
+                            return (
+                              <button
+                                type="button"
+                                onClick={handleMigrateLegacyPrices}
+                                disabled={isMigratingPrices}
+                                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs disabled:opacity-50"
+                              >
+                                <Wrench className="w-3 h-3 text-white" />
+                                <span>{isMigratingPrices ? 'ပြင်ဆင်နေသည်...' : 'ပြင်ရန် (Fix)'}</span>
+                              </button>
+                            );
+                          }
                           const cap = getRepairCapability(r.code);
                           if (cap.repairAvailable) {
                             return (

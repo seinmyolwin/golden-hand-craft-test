@@ -12,6 +12,7 @@ export interface MasterDataCategory {
 
 export interface Product {
   id: string;
+  code?: string; // P-001, P-XL-002 etc.
   name: string;
   defaultPrice: number; // Procurement / Buy Price in MMK
   defaultWholesalePrice?: number; // Wholesale selling price in MMK
@@ -23,6 +24,7 @@ export interface Product {
   minStockAlert?: number; // Low stock alert threshold
   avgCostPrice?: number; // Weighted average unit cost price in MMK
   costPrice?: number; // Cost unit price
+  isUserCreated?: boolean; // Added manually/via import during Go-Live setup
   active: boolean;
   notes?: string;
   createdAt?: string;

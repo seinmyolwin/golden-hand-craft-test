@@ -462,6 +462,24 @@ export async function runDatabaseDiagnostics(
           });
         }
       }
+      const legacyWholesalePrice = (p as unknown as { wholesalePrice?: number }).wholesalePrice;
+      const legacyPurchasePrice = (p as unknown as { purchasePrice?: number }).purchasePrice;
+      if (
+        (typeof legacyWholesalePrice === 'number' && legacyWholesalePrice > 0 && !p.defaultWholesalePrice) ||
+        (typeof legacyPurchasePrice === 'number' && legacyPurchasePrice > 0 && !p.costPrice)
+      ) {
+        results.push({
+          id: makeCheckId('prod_legacy_price_fieldname'),
+          category: 'FINANCIAL',
+          severity: 'WARN',
+          code: 'LEGACY_PRICE_FIELD_NAME',
+          title: 'Product saved with old field names (Go-Live setup bug)',
+          message: `Product "${p.name || p.id}" was saved by an older version of Go-Live setup using "wholesalePrice"/"purchasePrice", which the rest of the app does not read. Run the price field migration to copy these into "defaultWholesalePrice"/"costPrice".`,
+          entity: 'Product',
+          recordId: p.id,
+          detectedAt,
+        });
+      }
       if (p.unit === undefined || p.unit === null || p.unit === '') {
         results.push({
           id: makeCheckId('prod_unit'),
@@ -1939,3 +1957,50 @@ export function downloadDiagnosticReport(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * One-time repair for products saved by pre-fix versions of the Go-Live
+ * setup flow (ZeroSettingsConfirmModal.tsx), which stored wholesale/cost
+ * prices under the non-existent field names "wholesalePrice" and
+ * "purchasePrice" instead of the real Product schema fields
+ * "defaultWholesalePrice" and "costPrice"/"avgCostPrice". This is the one
+ * deliberate write operation in this otherwise read-only diagnostics file —
+ * call it explicitly (e.g. from a "Fix" button next to the
+ * LEGACY_PRICE_FIELD_NAME result), never automatically.
+ */
+export async function migrateLegacyProductPriceFieldNames(): Promise<{
+  scanned: number;
+  migrated: number;
+  migratedProductIds: string[];
+}> {
+  const allProducts = await db.products.toArray();
+  const migratedProductIds: string[] = [];
+
+  await db.transaction('rw', [db.products], async () => {
+    for (const p of allProducts) {
+      const legacy = p as unknown as { wholesalePrice?: number; purchasePrice?: number };
+      const needsWholesaleMigration =
+        typeof legacy.wholesalePrice === 'number' && legacy.wholesalePrice > 0 && !p.defaultWholesalePrice;
+      const needsCostMigration =
+        typeof legacy.purchasePrice === 'number' && legacy.purchasePrice > 0 && !p.costPrice;
+
+      if (needsWholesaleMigration || needsCostMigration) {
+        const patch: Partial<Product> = { updatedAt: new Date().toISOString() };
+        if (needsWholesaleMigration) patch.defaultWholesalePrice = legacy.wholesalePrice;
+        if (needsCostMigration) {
+          patch.costPrice = legacy.purchasePrice;
+          if (!p.avgCostPrice) patch.avgCostPrice = legacy.purchasePrice;
+        }
+        await db.products.update(p.id, patch);
+        migratedProductIds.push(p.id);
+      }
+    }
+  });
+
+  return {
+    scanned: allProducts.length,
+    migrated: migratedProductIds.length,
+    migratedProductIds,
+  };
+}
+

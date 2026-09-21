@@ -291,14 +291,15 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
       openingStock: stockQty,
       currentStock: stockQty,
       defaultPrice: salePrice,
-      wholesalePrice: salePrice,
-      purchasePrice: buyPrice,
+      defaultWholesalePrice: salePrice,
+      costPrice: buyPrice,
+      avgCostPrice: buyPrice,
       minStockAlert: 10,
       active: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isUserCreated: true,
-    } as any;
+    };
     setProducts((prev) => [...prev, newProduct]);
     setProductName('');
     setProductStock('0');
@@ -485,14 +486,15 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
               openingStock: pStock,
               currentStock: pStock,
               defaultPrice: pSale,
-              wholesalePrice: pSale,
-              purchasePrice: pBuy,
+              defaultWholesalePrice: pSale,
+              costPrice: pBuy,
+              avgCostPrice: pBuy,
               minStockAlert: 10,
               active: true,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               isUserCreated: true,
-            } as any);
+            });
             importedCount++;
           }
           if (newProds.length > 0) {
@@ -715,8 +717,8 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
           productId: p.id,
           productName: p.name,
           quantity: p.openingStock || 0,
-          unitPrice: p.wholesalePrice || p.defaultPrice || 0,
-          totalValue: (p.openingStock || 0) * (p.wholesalePrice || p.defaultPrice || 0),
+          unitPrice: p.defaultWholesalePrice || p.defaultPrice || 0,
+          totalValue: (p.openingStock || 0) * (p.defaultWholesalePrice || p.defaultPrice || 0),
         })),
         rawMaterials: rawMaterials.map((r) => ({
           materialName: r.materialName,
