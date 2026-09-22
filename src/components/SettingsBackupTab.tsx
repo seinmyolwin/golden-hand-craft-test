@@ -648,17 +648,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
     }
   };
 
-  const handleLoad100Suppliers = () => {
-    if (!isOwner) {
-      alert('နမူနာဒေတာ သွင်းခြင်းကို ဆိုင်ရှင် (OWNER) သာ ဆောင်ရွက်ခွင့်ရှိပါသည်');
-      return;
-    }
-    if (confirm('စမ်းသပ်ရန် ကုန်ကြမ်းပေးသွင်းသူ ၁၀၀ ဦး စာရင်းကို ထည့်သွင်းလိုပါသလား?')) {
-      const generated = generate100SampleSuppliers();
-      onRestoreData(products, generated, transactions, merchants, sales, stockAdjustments, shopSettings);
-      alert(`ကုန်ကြမ်းပေးသွင်းသူ ၁၀၀ ဦး စာရင်း အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
-    }
-  };
+
 
   const handleResetDefaults = () => {
     if (!isOwner) {
@@ -1810,7 +1800,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       </div>
 
       {/* Staff Tab Access Restrictions Card (Role-Based Access Control) */}
-      {isOwner && (
+      {(activeSection === 'ALL' || activeSection === 'SECURITY') && (
         <div className="bg-white rounded-2xl p-4 sm:p-5 border border-purple-200 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-3">
@@ -1823,61 +1813,65 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                     ဝန်ထမ်း (Staff) ကြည့်ရှုခွင့် Tab များ စီမံခြင်း (Staff Tab Permissions)
                   </h3>
                   <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
-                    Owner Only
+                    {isOwner ? 'Owner Mode' : 'Staff View'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  ဆိုင်ရှင် (Owner) မဟုတ်သော ဝန်ထမ်းအကောင့်များ (Staff) ကြည့်ရှုအသုံးပြုခွင့်ရှိမည့် Tab များကို သီးသန့် ရွေးချယ်သတ်မှတ်ပေးနိုင်ပါသည်
+                  {isOwner 
+                    ? 'ဝန်ထမ်းအကောင့်များ (Staff) ကြည့်ရှုအသုံးပြုခွင့်ရှိမည့် Tab များကို ရွေးချယ်သတ်မှတ်ပေးနိုင်ပါသည် (ဖုန်း၊ တက်ဘလက်၊ ကွန်ပြူတာ အားလုံးတွင် အလုပ်လုပ်သည်)'
+                    : 'လက်ရှိ ဝန်ထမ်းအကောင့်အတွက် ဝင်ရောက်ကြည့်ရှုခွင့်ပြုထားသော Tab များစာရင်း'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  const allTabs: ActiveTab[] = [
-                    'daily',
-                    'inventory',
-                    'retail',
-                    'orders',
-                    'sales',
-                    'purchases',
-                    'peers',
-                    'merchants',
-                    'suppliers',
-                    'products',
-                    'history',
-                    'reports',
-                    'backup',
-                  ];
-                  setStaffTabsState(allTabs);
-                }}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
-              >
-                အားလုံး ရွေးမည်
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const defaultTabs: ActiveTab[] = [
-                    'daily',
-                    'inventory',
-                    'orders',
-                    'sales',
-                    'purchases',
-                    'peers',
-                    'merchants',
-                    'suppliers',
-                    'history',
-                  ];
-                  setStaffTabsState(defaultTabs);
-                }}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
-              >
-                မူလအတိုင်း ထားမည်
-              </button>
-            </div>
+            {isOwner && (
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allTabs: ActiveTab[] = [
+                      'daily',
+                      'inventory',
+                      'retail',
+                      'orders',
+                      'sales',
+                      'purchases',
+                      'peers',
+                      'merchants',
+                      'suppliers',
+                      'products',
+                      'history',
+                      'reports',
+                      'backup',
+                    ];
+                    setStaffTabsState(allTabs);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                >
+                  အားလုံး ရွေးမည်
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultTabs: ActiveTab[] = [
+                      'daily',
+                      'inventory',
+                      'orders',
+                      'sales',
+                      'purchases',
+                      'peers',
+                      'merchants',
+                      'suppliers',
+                      'history',
+                    ];
+                    setStaffTabsState(defaultTabs);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                >
+                  မူလအတိုင်း ထားမည်
+                </button>
+              </div>
+            )}
           </div>
 
           {staffSaveSuccess && (
@@ -1908,14 +1902,18 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 <button
                   key={tabItem.id}
                   type="button"
+                  disabled={!isOwner}
                   onClick={() => {
+                    if (!isOwner) return;
                     if (isChecked) {
                       setStaffTabsState(staffTabsState.filter((t) => t !== tabItem.id));
                     } else {
                       setStaffTabsState([...staffTabsState, tabItem.id]);
                     }
                   }}
-                  className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-2.5 ${
+                  className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                    !isOwner ? 'cursor-default opacity-90' : 'cursor-pointer'
+                  } ${
                     isChecked
                       ? 'bg-purple-50/90 border-purple-400 text-purple-950 shadow-2xs'
                       : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
@@ -1924,6 +1922,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   <input
                     type="checkbox"
                     checked={isChecked}
+                    disabled={!isOwner}
                     onChange={() => {}}
                     className="mt-0.5 w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
                   />
@@ -1940,19 +1939,21 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
             })}
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <span className="text-xs text-slate-600 font-medium">
-              ခွင့်ပြုထားသော Tab စုစုပေါင်း: <strong className="text-purple-700 font-bold">{staffTabsState.length} ခု</strong>
-            </span>
-            <button
-              type="button"
-              onClick={handleSaveStaffTabPermissions}
-              className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
-            >
-              <Check className="w-4 h-4" />
-              <span>ဝန်ထမ်း ခွင့်ပြုချက်များ သိမ်းဆည်းမည်</span>
-            </button>
-          </div>
+          {isOwner && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-xs text-slate-600 font-medium">
+                ခွင့်ပြုထားသော Tab စုစုပေါင်း: <strong className="text-purple-700 font-bold">{staffTabsState.length} ခု</strong> (ဖုန်း/တက်ဘလက်/ကွန်ပြူတာ အားလုံးတွင် အလိုအလျောက် သက်ရောက်သည်)
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveStaffTabPermissions}
+                className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Check className="w-4 h-4" />
+                <span>ဝန်ထမ်း ခွင့်ပြုချက်များ သိမ်းဆည်းမည်</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
       </>
@@ -2690,15 +2691,6 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>နမူနာဒေတာ ထည့်မည်</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="seed-100-suppliers-btn"
-                    onClick={handleLoad100Suppliers}
-                    className="w-full py-1.5 px-2 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <Users className="w-3 h-3 text-emerald-600" />
-                    <span>ပေးသွင်းသူ ၁၀၀ ဦး စမ်းသပ်ထည့်မည်</span>
                   </button>
                 </>
               )}

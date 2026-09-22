@@ -300,7 +300,7 @@ export const EditShopProfileModal: React.FC<EditShopProfileModalProps> = ({
                   className="w-4 h-4 rounded text-slate-700 focus:ring-slate-500 cursor-pointer accent-slate-700"
                 />
                 <span className="text-[11px] text-slate-700 font-semibold">
-                  နမူနာဒေတာနှင့် ပေးသွင်းသူ ၁၀၀ ထည့်သည့် ခလုတ်များကို ပိတ်ထားမည် (Hide Demo Data Buttons)
+                  နမူနာဒေတာ ခလုတ်များကို ပိတ်ထားမည် (Hide Demo Data Buttons)
                 </span>
               </label>
             </div>
