@@ -243,6 +243,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
     );
   });
   const [staffSaveSuccess, setStaffSaveSuccess] = useState<boolean>(false);
+  const [isStaffPermissionsExpanded, setIsStaffPermissionsExpanded] = useState<boolean>(true);
 
   const handleSaveStaffTabPermissions = () => {
     if (!isOwner) {
@@ -1824,135 +1825,150 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
               </div>
             </div>
 
-            {isOwner && (
-              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const allTabs: ActiveTab[] = [
-                      'daily',
-                      'inventory',
-                      'retail',
-                      'orders',
-                      'sales',
-                      'purchases',
-                      'peers',
-                      'merchants',
-                      'suppliers',
-                      'products',
-                      'history',
-                      'reports',
-                      'backup',
-                    ];
-                    setStaffTabsState(allTabs);
-                  }}
-                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
-                >
-                  အားလုံး ရွေးမည်
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const defaultTabs: ActiveTab[] = [
-                      'daily',
-                      'inventory',
-                      'orders',
-                      'sales',
-                      'purchases',
-                      'peers',
-                      'merchants',
-                      'suppliers',
-                      'history',
-                    ];
-                    setStaffTabsState(defaultTabs);
-                  }}
-                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
-                >
-                  မူလအတိုင်း ထားမည်
-                </button>
-              </div>
-            )}
-          </div>
-
-          {staffSaveSuccess && (
-            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in duration-150">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>ဝန်ထမ်းများ၏ Tab ကြည့်ရှုခွင့်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-            {[
-              { id: 'daily' as ActiveTab, label: 'နေ့စဉ် ကုန်သိမ်း', sub: 'Daily Pickup' },
-              { id: 'inventory' as ActiveTab, label: 'ကုန်ပစ္စည်း လက်ကျန်', sub: 'Inventory Stock' },
-              { id: 'retail' as ActiveTab, label: 'လက်လီ အရောင်း POS', sub: 'Retail Sales' },
-              { id: 'orders' as ActiveTab, label: 'ကုန်သည် အော်ဒါ', sub: 'Merchant Orders' },
-              { id: 'sales' as ActiveTab, label: 'ကုန်သည် လက်ကားအရောင်း', sub: 'Wholesale Sales' },
-              { id: 'purchases' as ActiveTab, label: 'ကုန်ကြမ်း ဝယ်ယူမှု', sub: 'Raw Purchases' },
-              { id: 'peers' as ActiveTab, label: 'မိတ်ဖက် ကုန်ဖလှယ်မှု', sub: 'Peer Trading' },
-              { id: 'merchants' as ActiveTab, label: 'ကုန်သည်များ စာရင်း', sub: 'Merchants' },
-              { id: 'suppliers' as ActiveTab, label: 'ကုန်ပစ္စည်း ပေးသွင်းသူများ', sub: 'Suppliers' },
-              { id: 'products' as ActiveTab, label: 'ကုန်ပစ္စည်း မာစတာ', sub: 'Products' },
-              { id: 'history' as ActiveTab, label: 'မှတ်တမ်းဟောင်းများ', sub: 'History Logs' },
-              { id: 'reports' as ActiveTab, label: 'အစီရင်ခံစာများ', sub: 'Reports' },
-              { id: 'backup' as ActiveTab, label: 'ဆက်တင်နှင့် ဒေတာ', sub: 'Settings & Backup' },
-            ].map((tabItem) => {
-              const isChecked = staffTabsState.includes(tabItem.id);
-              return (
-                <button
-                  key={tabItem.id}
-                  type="button"
-                  disabled={!isOwner}
-                  onClick={() => {
-                    if (!isOwner) return;
-                    if (isChecked) {
-                      setStaffTabsState(staffTabsState.filter((t) => t !== tabItem.id));
-                    } else {
-                      setStaffTabsState([...staffTabsState, tabItem.id]);
-                    }
-                  }}
-                  className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
-                    !isOwner ? 'cursor-default opacity-90' : 'cursor-pointer'
-                  } ${
-                    isChecked
-                      ? 'bg-purple-50/90 border-purple-400 text-purple-950 shadow-2xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    disabled={!isOwner}
-                    onChange={() => {}}
-                    className="mt-0.5 w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
-                  />
-                  <div>
-                    <span className="font-bold text-xs block text-slate-900 leading-tight">
-                      {tabItem.label}
-                    </span>
-                    <span className="text-[10px] text-slate-500 block mt-0.5">
-                      {tabItem.sub}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {isOwner && (
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span className="text-xs text-slate-600 font-medium">
-                ခွင့်ပြုထားသော Tab စုစုပေါင်း: <strong className="text-purple-700 font-bold">{staffTabsState.length} ခု</strong> (ဖုန်း/တက်ဘလက်/ကွန်ပြူတာ အားလုံးတွင် အလိုအလျောက် သက်ရောက်သည်)
-              </span>
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
               <button
                 type="button"
-                onClick={handleSaveStaffTabPermissions}
-                className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                onClick={() => setIsStaffPermissionsExpanded(!isStaffPermissionsExpanded)}
+                className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold rounded-lg cursor-pointer transition-colors flex items-center gap-1.5"
               >
-                <Check className="w-4 h-4" />
-                <span>ဝန်ထမ်း ခွင့်ပြုချက်များ သိမ်းဆည်းမည်</span>
+                <span>{isStaffPermissionsExpanded ? 'ဖွက်မည် (Hide)' : 'ပြမည် (Show)'}</span>
+                {isStaffPermissionsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
+
+              {isOwner && isStaffPermissionsExpanded && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allTabs: ActiveTab[] = [
+                        'daily',
+                        'inventory',
+                        'retail',
+                        'orders',
+                        'sales',
+                        'purchases',
+                        'peers',
+                        'merchants',
+                        'suppliers',
+                        'products',
+                        'history',
+                        'reports',
+                        'backup',
+                      ];
+                      setStaffTabsState(allTabs);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                  >
+                    အားလုံး ရွေးမည်
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultTabs: ActiveTab[] = [
+                        'daily',
+                        'inventory',
+                        'orders',
+                        'sales',
+                        'purchases',
+                        'peers',
+                        'merchants',
+                        'suppliers',
+                        'history',
+                      ];
+                      setStaffTabsState(defaultTabs);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer transition-colors"
+                  >
+                    မူလအတိုင်း ထားမည်
+                  </button>
+                </>
+              )}
             </div>
+          </div>
+
+          {isStaffPermissionsExpanded && (
+            <>
+              {staffSaveSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in duration-150">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>ဝန်ထမ်းများ၏ Tab ကြည့်ရှုခွင့်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                {[
+                  { id: 'daily' as ActiveTab, label: 'နေ့စဉ် ကုန်သိမ်း', sub: 'Daily Pickup' },
+                  { id: 'inventory' as ActiveTab, label: 'ကုန်ပစ္စည်း လက်ကျန်', sub: 'Inventory Stock' },
+                  { id: 'retail' as ActiveTab, label: 'လက်လီ အရောင်း POS', sub: 'Retail Sales' },
+                  { id: 'orders' as ActiveTab, label: 'ကုန်သည် အော်ဒါ', sub: 'Merchant Orders' },
+                  { id: 'sales' as ActiveTab, label: 'ကုန်သည် လက်ကားအရောင်း', sub: 'Wholesale Sales' },
+                  { id: 'purchases' as ActiveTab, label: 'ကုန်ကြမ်း ဝယ်ယူမှု', sub: 'Raw Purchases' },
+                  { id: 'peers' as ActiveTab, label: 'မိတ်ဖက် ကုန်ဖလှယ်မှု', sub: 'Peer Trading' },
+                  { id: 'merchants' as ActiveTab, label: 'ကုန်သည်များ စာရင်း', sub: 'Merchants' },
+                  { id: 'suppliers' as ActiveTab, label: 'ကုန်ပစ္စည်း ပေးသွင်းသူများ', sub: 'Suppliers' },
+                  { id: 'products' as ActiveTab, label: 'ကုန်ပစ္စည်း မာစတာ', sub: 'Products' },
+                  { id: 'history' as ActiveTab, label: 'မှတ်တမ်းဟောင်းများ', sub: 'History Logs' },
+                  { id: 'reports' as ActiveTab, label: 'အစီရင်ခံစာများ', sub: 'Reports' },
+                  { id: 'backup' as ActiveTab, label: 'ဆက်တင်နှင့် ဒေတာ', sub: 'Settings & Backup' },
+                ].map((tabItem) => {
+                  const isChecked = staffTabsState.includes(tabItem.id);
+                  return (
+                    <button
+                      key={tabItem.id}
+                      type="button"
+                      disabled={!isOwner}
+                      onClick={() => {
+                        if (!isOwner) return;
+                        if (isChecked) {
+                          setStaffTabsState(staffTabsState.filter((t) => t !== tabItem.id));
+                        } else {
+                          setStaffTabsState([...staffTabsState, tabItem.id]);
+                        }
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                        !isOwner ? 'cursor-default opacity-90' : 'cursor-pointer'
+                      } ${
+                        isChecked
+                          ? 'bg-purple-50/90 border-purple-400 text-purple-950 shadow-2xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        disabled={!isOwner}
+                        onChange={() => {}}
+                        className="mt-0.5 w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-bold text-xs block text-slate-900 leading-tight">
+                          {tabItem.label}
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {tabItem.sub}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {isOwner && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <span className="text-xs text-slate-600 font-medium">
+                    ခွင့်ပြုထားသော Tab စုစုပေါင်း: <strong className="text-purple-700 font-bold">{staffTabsState.length} ခု</strong> (ဖုန်း/တက်ဘလက်/ကွန်ပြူတာ အားလုံးတွင် အလိုအလျောက် သက်ရောက်သည်)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSaveStaffTabPermissions}
+                    className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>ဝန်ထမ်း ခွင့်ပြုချက်များ သိမ်းဆည်းမည်</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
