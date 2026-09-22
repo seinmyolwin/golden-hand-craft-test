@@ -5,6 +5,7 @@ import {
   Merchant,
   Product,
   RawMaterialPreset,
+  ShopSettings,
 } from '../types';
 import {
   formatMMK,
@@ -39,6 +40,7 @@ interface MerchantPurchasesTabProps {
   merchants: Merchant[];
   products: Product[];
   rawMaterialPresets?: RawMaterialPreset[];
+  shopSettings?: ShopSettings;
   initialMerchantId?: string;
   selectedDate: string;
   onSavePurchase: (purchase: MerchantPurchaseRecord) => void;
@@ -50,6 +52,7 @@ export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
   purchases = [],
   merchants = [],
   rawMaterialPresets = [],
+  shopSettings,
   initialMerchantId,
   selectedDate,
   onSavePurchase,

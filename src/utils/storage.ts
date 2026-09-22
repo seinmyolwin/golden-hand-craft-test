@@ -36,7 +36,7 @@ import { generateStableId } from './idGenerator';
 import { createCompleteBackup, downloadBackupFile } from '../services/backupService';
 import { calculateAllProductsStockLedgerSummaries } from '../services/stockLedgerService';
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   PRODUCTS: 'ledger_products_v2',
   SUPPLIERS: 'ledger_suppliers_v2',
   TRANSACTIONS: 'ledger_transactions_v2',

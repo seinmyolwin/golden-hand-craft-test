@@ -477,14 +477,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
             )}
 
-            {/* PIN Dots Indicator */}
-            <div className="flex justify-center items-center gap-3 my-2">
-              {[0, 1, 2, 3].map((idx) => {
+            {/* PIN Dots Indicator (Supports 4 to 6+ digits dynamically) */}
+            <div className="flex justify-center items-center gap-2 my-2">
+              {Array.from({ length: Math.max(4, enteredPin.length) }).map((_, idx) => {
                 const hasDigit = enteredPin.length > idx;
                 return (
                   <div
                     key={idx}
-                    className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${
+                    className={`w-3.5 h-3.5 rounded-full border-2 transition-all duration-200 ${
                       hasDigit
                         ? 'bg-amber-400 border-amber-300 scale-110 shadow-sm shadow-amber-400/50'
                         : 'border-slate-600 bg-slate-800/60'
@@ -505,8 +505,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 const val = e.target.value.replace(/\D/g, '');
                 setEnteredPin(val);
                 setErrorMsg('');
-                if (val.length >= 4) {
-                  handleVerifyOwnerPin(val);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && enteredPin.length >= 4) {
+                  handleVerifyOwnerPin(enteredPin);
                 }
               }}
               placeholder="ဆိုင်ရှင် PIN ရိုက်ထည့်ပါ"
@@ -527,7 +529,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   key={digit}
                   type="button"
                   disabled={lockoutSeconds > 0 || isVerifying}
-                  onClick={() => handleDigitPress(digit)}
+                  onClick={() => {
+                    if (lockoutSeconds > 0 || isVerifying) return;
+                    if (enteredPin.length < 8) {
+                      setEnteredPin((prev) => prev + digit);
+                      setErrorMsg('');
+                    }
+                  }}
                   className="py-3 bg-slate-800/90 hover:bg-slate-700 active:bg-amber-500 active:text-slate-950 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-bold text-lg rounded-2xl border border-slate-700/60 shadow-xs transition-all cursor-pointer"
                 >
                   {digit}
@@ -544,7 +552,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <button
                 type="button"
                 disabled={lockoutSeconds > 0 || isVerifying}
-                onClick={() => handleDigitPress('0')}
+                onClick={() => {
+                  if (lockoutSeconds > 0 || isVerifying) return;
+                  if (enteredPin.length < 8) {
+                    setEnteredPin((prev) => prev + '0');
+                    setErrorMsg('');
+                  }
+                }}
                 className="py-3 bg-slate-800/90 hover:bg-slate-700 active:bg-amber-500 active:text-slate-950 active:scale-95 disabled:opacity-40 disabled:pointer-events-none text-white font-bold text-lg rounded-2xl border border-slate-700/60 shadow-xs transition-all cursor-pointer"
               >
                 0

@@ -2338,6 +2338,7 @@ export default function App() {
               merchants={merchants}
               products={products}
               rawMaterialPresets={rawMaterialPresets}
+              shopSettings={shopSettings}
               selectedDate={selectedDate}
               onSavePurchase={handleSaveMerchantPurchase}
               onDeletePurchase={handleDeleteMerchantPurchase}

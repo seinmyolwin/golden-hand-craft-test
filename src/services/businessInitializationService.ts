@@ -535,7 +535,7 @@ export async function cleanupDemoDataForGoLive(options?: {
   const ownerRawPresets = (openingPosition?.rawMaterials && openingPosition.rawMaterials.length > 0)
     ? openingPosition.rawMaterials.map((rm, idx) => ({
         id: `rm-owner-${idx + 1}`,
-        name: rm.materialName || (rm as any).name || 'ကုန်ကြမ်း',
+        name: rm.name || (rm as any).materialName || 'ကုန်ကြမ်း',
         category: (rm as any).category || 'OTHER',
         categoryLabel: (rm as any).categoryLabel || 'ကုန်ကြမ်း',
         defaultUnit: rm.unit || 'ခု',
