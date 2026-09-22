@@ -45,7 +45,7 @@ export const Logo: React.FC<LogoProps> = ({
   };
 
   const style = typeof size === 'number' ? { width: `${size}px`, height: `${size}px` } : undefined;
-  const primarySrc = logoUrl || '/src/assets/images/shwe_let_yar_logo_1788517955720.jpg';
+  const primarySrc = logoUrl || '/logo.svg';
   const imageSrc = imgError ? DEFAULT_LOGO_DATA_URL : primarySrc;
 
   return (
@@ -60,7 +60,7 @@ export const Logo: React.FC<LogoProps> = ({
         alt={alt}
         referrerPolicy="no-referrer"
         onError={() => setImgError(true)}
-        className="w-full h-full object-cover rounded-xl"
+        className="w-full h-full object-cover rounded-xl bg-emerald-900"
       />
     </div>
   );
