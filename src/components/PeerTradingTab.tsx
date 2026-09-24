@@ -27,8 +27,8 @@ import {
 } from 'lucide-react';
 
 interface PeerTradingTabProps {
-  peerTrades: PeerTradeRecord[];
-  products: Product[];
+  peerTrades?: PeerTradeRecord[];
+  products?: Product[];
   merchants?: Merchant[];
   onAddPeerTrade: (trade: PeerTradeRecord) => void;
   onUpdatePeerTrade?: (trade: PeerTradeRecord) => void;
@@ -36,9 +36,9 @@ interface PeerTradingTabProps {
 }
 
 export const PeerTradingTab: React.FC<PeerTradingTabProps> = ({
-  peerTrades = [],
-  products = [],
-  merchants = [],
+  peerTrades = [] as PeerTradeRecord[],
+  products = [] as Product[],
+  merchants = [] as Merchant[],
   onAddPeerTrade,
   onUpdatePeerTrade,
   onDeletePeerTrade,

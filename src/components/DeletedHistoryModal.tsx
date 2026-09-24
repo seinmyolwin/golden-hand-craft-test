@@ -5,7 +5,7 @@ import { X, Trash2, RotateCcw, Search, AlertCircle } from 'lucide-react';
 interface DeletedHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  deletedItems: SoftDeletedItem[];
+  deletedItems?: SoftDeletedItem[];
   onRestore: (item: SoftDeletedItem) => void;
   onPermanentDelete: (id: string) => void;
   onEmptyTrash: () => void;
@@ -14,7 +14,7 @@ interface DeletedHistoryModalProps {
 export const DeletedHistoryModal: React.FC<DeletedHistoryModalProps> = ({
   isOpen,
   onClose,
-  deletedItems = [],
+  deletedItems = [] as SoftDeletedItem[],
   onRestore,
   onPermanentDelete,
   onEmptyTrash,

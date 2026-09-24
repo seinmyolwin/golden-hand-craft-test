@@ -48,7 +48,7 @@ interface RetailCartItem {
 }
 
 interface RetailSalesTabProps {
-  products: Product[];
+  products?: Product[];
   merchants?: Merchant[];
   sales?: SaleRecord[];
   currentSession?: UserSession | null;
@@ -58,8 +58,8 @@ interface RetailSalesTabProps {
 }
 
 export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
-  products = [],
-  merchants = [],
+  products = [] as Product[],
+  merchants = [] as Merchant[],
   currentSession,
   shopSettings,
   onSaleCompleted,

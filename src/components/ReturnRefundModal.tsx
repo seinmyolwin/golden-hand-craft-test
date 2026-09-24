@@ -38,9 +38,9 @@ import { NumericInput, getNotePlaceholder } from './NumericInput';
 interface ReturnRefundModalProps {
   isOpen: boolean;
   onClose: () => void;
-  sales: SaleRecord[];
-  merchantPurchases: MerchantPurchaseRecord[];
-  products: Product[];
+  sales?: SaleRecord[];
+  merchantPurchases?: MerchantPurchaseRecord[];
+  products?: Product[];
   initialSelectedSale?: SaleRecord | null;
   initialSelectedPurchase?: MerchantPurchaseRecord | null;
   onReturnSuccess?: () => void;
@@ -49,11 +49,11 @@ interface ReturnRefundModalProps {
 export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
   isOpen,
   onClose,
-  sales = [],
-  merchantPurchases = [],
-  products: _products = [],
-  initialSelectedSale = null,
-  initialSelectedPurchase = null,
+  sales = [] as SaleRecord[],
+  merchantPurchases = [] as MerchantPurchaseRecord[],
+  products: _products = [] as Product[],
+  initialSelectedSale = null as SaleRecord | null,
+  initialSelectedPurchase = null as MerchantPurchaseRecord | null,
   onReturnSuccess,
 }) => {
   const { showConfirm, showToast } = useToast();
@@ -104,10 +104,10 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
   useEffect(() => {
     if (initialSelectedSale) {
       setActiveTab('sales_return');
-      setSelectedSaleVoucherNo(initialSelectedSale.voucherNo);
+      setSelectedSaleVoucherNo(initialSelectedSale.voucherNo || '');
     } else if (initialSelectedPurchase) {
       setActiveTab('purchase_return');
-      setSelectedPurchaseNo(initialSelectedPurchase.purchaseNo);
+      setSelectedPurchaseNo(initialSelectedPurchase.purchaseNo || '');
     }
   }, [initialSelectedSale, initialSelectedPurchase, isOpen]);
 
@@ -407,7 +407,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
       if (!q) return true;
       return (
         p.purchaseNo.toLowerCase().includes(q) ||
-        (p.supplierName || p.merchantName || '').toLowerCase().includes(q)
+        (p.merchantName || '').toLowerCase().includes(q)
       );
     });
   }, [merchantPurchases, purchaseSearch]);

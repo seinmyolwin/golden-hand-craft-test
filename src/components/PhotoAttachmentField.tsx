@@ -3,14 +3,14 @@ import { Camera, Image as ImageIcon, X, Loader2, AlertCircle } from 'lucide-reac
 import { validateAttachmentFile, processImageInput, formatStorageError } from '../services/attachmentService';
 
 interface PhotoAttachmentFieldProps {
-  photos: string[];
+  photos?: string[];
   onChange: (photos: string[]) => void;
   maxPhotos?: number;
   label?: string;
 }
 
 export const PhotoAttachmentField: React.FC<PhotoAttachmentFieldProps> = ({
-  photos = [],
+  photos = [] as string[],
   onChange,
   maxPhotos = 3,
   label = 'ဘောင်ချာ / ပစ္စည်း ဓာတ်ပုံ ပူးတွဲမှတ်တမ်း (Photo Attachment)',

@@ -24,9 +24,9 @@ import {
 
 interface DailyPickupTabProps {
   selectedDate: string;
-  suppliers: Supplier[];
-  products: Product[];
-  transactions: TransactionRecord[];
+  suppliers?: Supplier[];
+  products?: Product[];
+  transactions?: TransactionRecord[];
   onOpenNewEntryWithSupplier: (supplierId: string) => void;
   onOpenNewEntry: () => void;
   onViewVoucher: (tx: TransactionRecord) => void;
@@ -39,14 +39,14 @@ interface DailyPickupTabProps {
 
 export const DailyPickupTab: React.FC<DailyPickupTabProps> = ({
   selectedDate,
-  suppliers = [],
-  products = [],
-  transactions = [],
+  suppliers = [] as Supplier[],
+  products = [] as Product[],
+  transactions = [] as TransactionRecord[],
   onOpenNewEntryWithSupplier,
   onOpenNewEntry,
   onViewVoucher,
   onDeleteTransaction,
-  pendingOrders = [],
+  pendingOrders = [] as MerchantOrder[],
   onNavigateToOrders,
   onOpenOrderNotificationModal,
   onOpenCashLedger,

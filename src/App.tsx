@@ -1175,12 +1175,13 @@ export default function App() {
       productName: it.productName,
       quantity: it.quantity,
       unit: it.unit,
-      unitPrice: it.unitPrice,
-      subtotal: it.subtotal,
+      unitPrice: it.unitPrice ?? it.agreedPrice ?? 0,
+      subtotal: it.subtotal || 0,
     }));
 
     const totalItems = items.reduce((sum, it) => sum + it.quantity, 0);
     const voucherNo = generateVoucherNo('SL');
+    const orderTotal = order.totalEstimatedValue ?? order.totalOrderAmount ?? 0;
 
     const newSale: SaleRecord = {
       id: generateStableId('sale'),
@@ -1192,11 +1193,11 @@ export default function App() {
       merchantTown: order.merchantTown,
       items,
       totalItemsCount: totalItems,
-      grandTotal: order.totalEstimatedValue,
-      cashPaidByMerchant: 0,
+      grandTotal: orderTotal,
+      cashPaidByMerchant: order.advanceDeposit ?? 0,
       paymentMethod: 'CASH',
-      remainingReceivableBalance: order.totalEstimatedValue,
-      notes: `အော်ဒါ ${order.orderNumber} မှ အရောင်းသို့ ပြောင်းလဲခဲ့သည်`,
+      remainingReceivableBalance: Math.max(0, orderTotal - (order.advanceDeposit ?? 0)),
+      notes: `အော်ဒါ ${order.orderNumber || order.orderNo || ''} မှ အရောင်းသို့ ပြောင်းလဲခဲ့သည်`,
     };
 
     try {

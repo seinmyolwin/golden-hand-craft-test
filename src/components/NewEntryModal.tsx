@@ -31,8 +31,8 @@ import { NumericInput, getNotePlaceholder } from './NumericInput';
 interface NewEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  suppliers: Supplier[];
-  products: Product[];
+  suppliers?: Supplier[];
+  products?: Product[];
   existingTransactions?: TransactionRecord[];
   initialSupplierId?: string;
   selectedDate: string;
@@ -44,9 +44,9 @@ interface NewEntryModalProps {
 export const NewEntryModal: React.FC<NewEntryModalProps> = ({
   isOpen,
   onClose,
-  suppliers = [],
-  products = [],
-  existingTransactions = [],
+  suppliers = [] as Supplier[],
+  products = [] as Product[],
+  existingTransactions = [] as TransactionRecord[],
   initialSupplierId,
   selectedDate,
   onSave,

@@ -7,7 +7,7 @@ interface SupplierLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
   supplier: Supplier | null;
-  transactions: TransactionRecord[];
+  transactions?: TransactionRecord[];
   onViewVoucher: (tx: TransactionRecord) => void;
   onOpenNewSaleForSupplier?: (supplier: Supplier) => void;
   onOpenNewEntryWithSupplier?: (supplierId: string) => void;
@@ -17,7 +17,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
   isOpen,
   onClose,
   supplier,
-  transactions = [],
+  transactions = [] as TransactionRecord[],
   onViewVoucher,
   onOpenNewSaleForSupplier,
   onOpenNewEntryWithSupplier,

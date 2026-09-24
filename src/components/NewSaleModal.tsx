@@ -29,8 +29,8 @@ import { NumericInput, getNotePlaceholder } from './NumericInput';
 interface NewSaleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  merchants: Merchant[];
-  products: Product[];
+  merchants?: Merchant[];
+  products?: Product[];
   rawMaterialPresets?: RawMaterialPreset[];
   initialMerchantId?: string;
   selectedDate: string;
@@ -43,13 +43,13 @@ interface NewSaleModalProps {
 export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   isOpen,
   onClose,
-  merchants = [],
-  products = [],
-  rawMaterialPresets = [],
+  merchants = [] as Merchant[],
+  products = [] as Product[],
+  rawMaterialPresets = [] as RawMaterialPreset[],
   initialMerchantId,
   selectedDate,
-  inventoryStock = [],
-  existingSales = [],
+  inventoryStock = [] as any[],
+  existingSales = [] as SaleRecord[],
   onSave,
   onAddNewMerchant,
 }) => {

@@ -24,7 +24,7 @@ export const CategoryMasterModal: React.FC<CategoryMasterModalProps> = ({
   rawMaterialCategories,
   onUpdateProductCategories,
   onUpdateRawMaterialCategories,
-  activeProductCategoriesInUse = [],
+  activeProductCategoriesInUse = [] as string[],
 }) => {
   const [activeTab, setActiveTab] = useState<'PRODUCT' | 'RAW_MATERIAL'>('PRODUCT');
   const [newProdCat, setNewProdCat] = useState<string>('');

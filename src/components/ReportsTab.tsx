@@ -33,24 +33,24 @@ import {
 } from 'lucide-react';
 
 interface ReportsTabProps {
-  suppliers: Supplier[];
-  products: Product[];
-  transactions: TransactionRecord[];
-  sales: SaleRecord[];
-  merchants: Merchant[];
+  suppliers?: Supplier[];
+  products?: Product[];
+  transactions?: TransactionRecord[];
+  sales?: SaleRecord[];
+  merchants?: Merchant[];
   merchantPurchases?: MerchantPurchaseRecord[];
   returnsAndRefunds?: ReturnRecord[];
   onOpenCashLedger?: () => void;
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({
-  suppliers = [],
-  products = [],
-  transactions = [],
-  sales = [],
-  merchants = [],
-  merchantPurchases = [],
-  returnsAndRefunds = [],
+  suppliers = [] as Supplier[],
+  products = [] as Product[],
+  transactions = [] as TransactionRecord[],
+  sales = [] as SaleRecord[],
+  merchants = [] as Merchant[],
+  merchantPurchases = [] as MerchantPurchaseRecord[],
+  returnsAndRefunds = [] as ReturnRecord[],
   onOpenCashLedger,
 }) => {
   const [startDate, setStartDate] = useState<string>(() => {

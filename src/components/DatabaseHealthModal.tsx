@@ -438,7 +438,7 @@ export const DatabaseHealthModal: React.FC<DatabaseHealthModalProps> = ({
                   <span>စုစုပေါင်း စာရင်းမှတ်တမ်း</span>
                 </div>
                 <div className="font-bold text-sm text-slate-800">
-                  {Object.values(report.tableCounts).reduce((a: number, b: number) => a + b, 0).toLocaleString()} ခု
+                  {(Object.values(report.tableCounts) as number[]).reduce((a: number, b: number) => a + (Number(b) || 0), 0).toLocaleString()} ခု
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
                   Active in IndexedDB

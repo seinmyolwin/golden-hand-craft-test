@@ -157,8 +157,8 @@ describe('P0.3 — dailyClosingService & Inbound Cash/Stock Re-Audit', () => {
     expect(closing.expectedClosingCash).toBe(60000);
     expect(closing.actualCountedCash).toBe(60000);
     expect(closing.difference).toBe(0);
-    expect(closing.breakdown.supplierCashPayout).toBe(30000);
-    expect(closing.breakdown.supplierAdvanceCash).toBe(10000);
+    expect(closing.breakdown?.supplierCashPayout).toBe(30000);
+    expect(closing.breakdown?.supplierAdvanceCash).toBe(10000);
   });
 
   it('correctly uses business initialization opening cash float when no prior day closing exists', async () => {

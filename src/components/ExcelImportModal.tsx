@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet,
   Upload,
@@ -36,9 +35,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   isOpen,
   onClose,
   defaultTarget = 'PRODUCTS',
-  existingProducts = [],
-  existingSuppliers = [],
-  existingMerchants = [],
+  existingProducts = [] as Product[],
+  existingSuppliers = [] as Supplier[],
+  existingMerchants = [] as Merchant[],
   onImportProducts,
   onImportSuppliers,
   onImportMerchants,
@@ -66,8 +65,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   };
 
   // 1. Download Template for current target
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       let sheetData: any[] = [];
       let filename = '';
@@ -136,8 +136,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     setIsProcessing(true);
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'array' });
         const firstSheetName = wb.SheetNames[0];
@@ -193,7 +194,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           });
         } else if (activeTarget === 'SUPPLIERS') {
           const existingNames = new Set(existingSuppliers.map((s) => s.name.trim().toLowerCase()));
-          const existingCodes = new Set(existingSuppliers.map((s) => s.code.trim().toUpperCase()));
+          const existingCodes = new Set(existingSuppliers.map((s) => (s.code || '').trim().toUpperCase()));
 
           jsonData.forEach((row: any, idx: number) => {
             const name = String(findValue(row, 'အမည်', 'name', 'supplier') || '').trim();
@@ -230,7 +231,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         } else {
           // MERCHANTS
           const existingNames = new Set(existingMerchants.map((m) => m.name.trim().toLowerCase()));
-          const existingCodes = new Set(existingMerchants.map((m) => m.code.trim().toUpperCase()));
+          const existingCodes = new Set(existingMerchants.map((m) => (m.code || '').trim().toUpperCase()));
 
           jsonData.forEach((row: any, idx: number) => {
             const name = String(findValue(row, 'အမည်', 'name', 'merchant') || '').trim();

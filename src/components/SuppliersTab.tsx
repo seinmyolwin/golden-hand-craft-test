@@ -32,8 +32,8 @@ import {
 } from 'lucide-react';
 
 interface SuppliersTabProps {
-  suppliers: Supplier[];
-  transactions: TransactionRecord[];
+  suppliers?: Supplier[];
+  transactions?: TransactionRecord[];
   products?: Product[];
   onAddSupplier: (supplier: Supplier) => void;
   onUpdateSupplier: (supplier: Supplier) => void;
@@ -48,9 +48,9 @@ interface SuppliersTabProps {
 }
 
 export const SuppliersTab: React.FC<SuppliersTabProps> = ({
-  suppliers = [],
-  transactions = [],
-  products = [],
+  suppliers = [] as Supplier[],
+  transactions = [] as TransactionRecord[],
+  products = [] as Product[],
   onAddSupplier,
   onUpdateSupplier,
   onOpenNewEntryWithSupplier,
@@ -234,12 +234,12 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
       type: isCashAdv ? 'ADVANCE_ONLY' : 'RAW_MATERIAL_CREDIT',
       items: [
         {
-          productId: rawItem.id,
+          productId: rawItem.id || generateStableId('raw'),
           productName: `[${isCashAdv ? 'ငွေကြိုထုတ်' : 'ကုန်ကြမ်း'}] ${rawItem.name}`,
           quantity: rawItem.quantity,
           unit: rawItem.unit,
           unitPrice: rawItem.unitPrice,
-          subtotal: rawItem.totalValue,
+          subtotal: rawItem.totalValue || totalRawVal,
         },
       ],
       rawMaterialItems: isCashAdv ? [] : [rawItem],
@@ -836,7 +836,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
                           if (prod) {
                             setRawItemName(prod.name);
                             setRawUnit(prod.unit || 'ခု');
-                            setRawUnitPrice(prod.buyPrice || prod.price || 3000);
+                            setRawUnitPrice(prod.defaultPrice || prod.avgCostPrice || 3000);
                           }
                         }
                       }}

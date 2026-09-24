@@ -30,8 +30,8 @@ import {
 } from 'lucide-react';
 
 interface MerchantsTabProps {
-  merchants: Merchant[];
-  sales: SaleRecord[];
+  merchants?: Merchant[];
+  sales?: SaleRecord[];
   onAddMerchant: (merchant: Merchant) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
   onSettleMerchantPayment: (
@@ -51,8 +51,8 @@ interface MerchantsTabProps {
 }
 
 export const MerchantsTab: React.FC<MerchantsTabProps> = ({
-  merchants = [],
-  sales = [],
+  merchants = [] as Merchant[],
+  sales = [] as SaleRecord[],
   onAddMerchant,
   onUpdateMerchant,
   onSettleMerchantPayment,

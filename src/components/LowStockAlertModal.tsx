@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRight, ArrowDownLeft, X, Package, ShieldAlert } fro
 interface LowStockAlertModalProps {
   isOpen: boolean;
   onClose: () => void;
-  lowStockProducts: { product: Product; currentStock: number; minStockAlert: number }[];
+  lowStockProducts?: { product: Product; currentStock: number; minStockAlert: number }[];
   onOpenNewEntryWithProduct?: (productId: string) => void;
   onGoToInventory?: () => void;
 }
@@ -13,7 +13,7 @@ interface LowStockAlertModalProps {
 export const LowStockAlertModal: React.FC<LowStockAlertModalProps> = ({
   isOpen,
   onClose,
-  lowStockProducts = [],
+  lowStockProducts = [] as { product: Product; currentStock: number; minStockAlert: number }[],
   onOpenNewEntryWithProduct,
   onGoToInventory,
 }) => {

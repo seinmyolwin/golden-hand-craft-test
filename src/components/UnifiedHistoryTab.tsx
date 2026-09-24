@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 
 interface UnifiedHistoryTabProps {
-  transactions: TransactionRecord[];
-  sales: SaleRecord[];
+  transactions?: TransactionRecord[];
+  sales?: SaleRecord[];
   onViewInboundVoucher: (tx: TransactionRecord) => void;
   onViewSaleVoucher: (sale: SaleRecord) => void;
   onDeleteTransaction?: (txId: string) => void;
@@ -22,8 +22,8 @@ interface UnifiedHistoryTabProps {
 }
 
 export const UnifiedHistoryTab: React.FC<UnifiedHistoryTabProps> = ({
-  transactions = [],
-  sales = [],
+  transactions = [] as TransactionRecord[],
+  sales = [] as SaleRecord[],
   onViewInboundVoucher,
   onViewSaleVoucher,
   onDeleteTransaction,
@@ -58,11 +58,11 @@ export const UnifiedHistoryTab: React.FC<UnifiedHistoryTabProps> = ({
         type: 'INBOUND',
         voucherNo: t.voucherNo,
         partyName: t.supplierName,
-        sublocation: t.supplierVillage,
+        sublocation: t.supplierVillage || '',
         itemsCount: count,
-        totalValue: t.totalGoodsValue,
-        settledAmount: t.advanceDeducted + t.netCashPaidToSupplier,
-        balance: t.remainingAdvanceBalance,
+        totalValue: t.totalGoodsValue || 0,
+        settledAmount: (t.advanceDeducted || 0) + (t.netCashPaidToSupplier || 0),
+        balance: t.remainingAdvanceBalance || 0,
         originalItem: t,
       });
     });
@@ -75,12 +75,12 @@ export const UnifiedHistoryTab: React.FC<UnifiedHistoryTabProps> = ({
         time: s.time,
         type: 'OUTBOUND',
         voucherNo: s.voucherNo,
-        partyName: s.merchantName,
-        sublocation: s.merchantTown,
-        itemsCount: s.totalItemsCount,
-        totalValue: s.grandTotal,
-        settledAmount: s.cashPaidByMerchant,
-        balance: s.remainingReceivableBalance,
+        partyName: s.merchantName || '',
+        sublocation: s.merchantTown || '',
+        itemsCount: s.totalItemsCount || 0,
+        totalValue: s.grandTotal || 0,
+        settledAmount: s.cashPaidByMerchant || 0,
+        balance: s.remainingReceivableBalance || 0,
         originalItem: s,
       });
     });

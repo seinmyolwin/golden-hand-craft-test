@@ -45,7 +45,7 @@ describe('Phase 21 — Chunked & Animated QR Transfer Tests', () => {
 
   // Test B: Large Object (500 realistic sales records forcing 50+ chunks)
   it('b. Encodes a large 500-sales dataset (50+ chunks) and decodes all chunks in order', () => {
-    const sales = [];
+    const sales: any[] = [];
     for (let i = 1; i <= 500; i++) {
       sales.push({
         id: `sale-${i}-${Date.now()}`,

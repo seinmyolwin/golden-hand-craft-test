@@ -50,10 +50,10 @@ import {
 } from 'lucide-react';
 
 interface InventoryTabProps {
-  products: Product[];
-  transactions: TransactionRecord[];
-  sales: SaleRecord[];
-  stockAdjustments: StockAdjustmentRecord[];
+  products?: Product[];
+  transactions?: TransactionRecord[];
+  sales?: SaleRecord[];
+  stockAdjustments?: StockAdjustmentRecord[];
   peerTrades?: PeerTradeRecord[];
   merchantPurchases?: MerchantPurchaseRecord[];
   rawMaterialPresets?: RawMaterialPreset[];
@@ -72,13 +72,13 @@ export const getProductMaterialType = (product: { name: string; category?: strin
 };
 
 export const InventoryTab: React.FC<InventoryTabProps> = ({
-  products = [],
-  transactions = [],
-  sales = [],
-  stockAdjustments = [],
-  peerTrades = [],
-  merchantPurchases = [],
-  rawMaterialPresets = [],
+  products = [] as Product[],
+  transactions = [] as TransactionRecord[],
+  sales = [] as SaleRecord[],
+  stockAdjustments = [] as StockAdjustmentRecord[],
+  peerTrades = [] as PeerTradeRecord[],
+  merchantPurchases = [] as MerchantPurchaseRecord[],
+  rawMaterialPresets = [] as RawMaterialPreset[],
   onUpdateProduct,
   onAddProduct,
   onAddStockAdjustment,

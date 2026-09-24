@@ -36,9 +36,9 @@ import {
 import { NumericInput, getNotePlaceholder } from './NumericInput';
 
 interface MerchantPurchasesTabProps {
-  purchases: MerchantPurchaseRecord[];
-  merchants: Merchant[];
-  products: Product[];
+  purchases?: MerchantPurchaseRecord[];
+  merchants?: Merchant[];
+  products?: Product[];
   rawMaterialPresets?: RawMaterialPreset[];
   shopSettings?: ShopSettings;
   initialMerchantId?: string;
@@ -49,9 +49,9 @@ interface MerchantPurchasesTabProps {
 }
 
 export const MerchantPurchasesTab: React.FC<MerchantPurchasesTabProps> = ({
-  purchases = [],
-  merchants = [],
-  rawMaterialPresets = [],
+  purchases = [] as MerchantPurchaseRecord[],
+  merchants = [] as Merchant[],
+  rawMaterialPresets = [] as RawMaterialPreset[],
   shopSettings,
   initialMerchantId,
   selectedDate,

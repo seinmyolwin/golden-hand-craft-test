@@ -122,12 +122,12 @@ import {
 } from '../data/defaultData';
 
 interface SettingsBackupTabProps {
-  products: Product[];
-  suppliers: Supplier[];
-  transactions: TransactionRecord[];
-  merchants: Merchant[];
-  sales: SaleRecord[];
-  stockAdjustments: StockAdjustmentRecord[];
+  products?: Product[];
+  suppliers?: Supplier[];
+  transactions?: TransactionRecord[];
+  merchants?: Merchant[];
+  sales?: SaleRecord[];
+  stockAdjustments?: StockAdjustmentRecord[];
   shopSettings?: ShopSettings;
   currentSession?: UserSession | null;
   deletedRecordsCount?: number;
@@ -174,12 +174,12 @@ interface SettingsBackupTabProps {
 }
 
 export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
-  products = [],
-  suppliers = [],
-  transactions = [],
-  merchants = [],
-  sales = [],
-  stockAdjustments = [],
+  products = [] as Product[],
+  suppliers = [] as Supplier[],
+  transactions = [] as TransactionRecord[],
+  merchants = [] as Merchant[],
+  sales = [] as SaleRecord[],
+  stockAdjustments = [] as StockAdjustmentRecord[],
   shopSettings = DEFAULT_SHOP_SETTINGS,
   currentSession,
   deletedRecordsCount = 0,
@@ -193,7 +193,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
   onOpenAuditHistory,
   appLockSettings,
   onUpdateAppLockSettings,
-  snapshots = [],
+  snapshots = [] as AutoRecoverySnapshot[],
   onRestoreSnapshot,
   onTakeSnapshotNow,
   onOpenSyncModal,

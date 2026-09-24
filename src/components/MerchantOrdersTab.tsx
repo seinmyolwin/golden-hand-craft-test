@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 
 interface MerchantOrdersTabProps {
-  orders: MerchantOrder[];
-  merchants: Merchant[];
-  products: Product[];
+  orders?: MerchantOrder[];
+  merchants?: Merchant[];
+  products?: Product[];
   onAddOrder: (order: MerchantOrder) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
   onConvertOrderToSale: (order: MerchantOrder) => void;
@@ -34,9 +34,9 @@ interface MerchantOrdersTabProps {
 }
 
 export const MerchantOrdersTab: React.FC<MerchantOrdersTabProps> = ({
-  orders = [],
-  merchants = [],
-  products = [],
+  orders = [] as MerchantOrder[],
+  merchants = [] as Merchant[],
+  products = [] as Product[],
   onAddOrder,
   onUpdateOrderStatus,
   onConvertOrderToSale,

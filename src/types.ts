@@ -13,6 +13,8 @@ export interface MasterDataCategory {
 export interface Product {
   id: string;
   code?: string; // P-001, P-XL-002 etc.
+  barcode?: string; // Barcode / QR Code
+  sku?: string;
   name: string;
   defaultPrice: number; // Procurement / Buy Price in MMK
   defaultWholesalePrice?: number; // Wholesale selling price in MMK
@@ -643,7 +645,7 @@ export interface MerchantOrderItem {
   unit: string;
 }
 
-export type OrderStatus = 'PENDING' | 'IN_PROGRESS' | 'READY' | 'DELIVERED' | 'CANCELLED';
+export type OrderStatus = 'PENDING' | 'PREPARING' | 'IN_PROGRESS' | 'READY' | 'DELIVERED' | 'CANCELLED';
 
 export interface MerchantOrder {
   id: string;

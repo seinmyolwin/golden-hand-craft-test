@@ -15,7 +15,7 @@ interface CategoryManageModalProps {
 export const CategoryManageModal: React.FC<CategoryManageModalProps> = ({
   isOpen,
   onClose,
-  products = [],
+  products = [] as Product[],
   onUpdateProduct,
   onCategoriesChanged,
   initialDomain = 'FINISHED_GOODS',

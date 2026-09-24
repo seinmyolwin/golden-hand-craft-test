@@ -204,8 +204,8 @@ describe('Attachment & Photo Storage Engine Audit', () => {
     // Create complete backup file
     const backupFile = await createCompleteBackup();
     expect(backupFile.data.attachments).toBeDefined();
-    expect(backupFile.data.attachments.length).toBe(1);
-    expect(backupFile.data.attachments[0].imageBase64).toBeDefined();
+    expect(backupFile.data.attachments!.length).toBe(1);
+    expect(backupFile.data.attachments![0].imageBase64).toBeDefined();
 
     // Clear DB
     await db.attachments.clear();

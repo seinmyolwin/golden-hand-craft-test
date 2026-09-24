@@ -205,7 +205,7 @@ describe('Phase 17 - Canonical Audit Trail & Traceability Engine', () => {
     expect(await db.auditLogs.count()).toBe(0);
 
     // Concurrently or sequentially insert 250 records
-    const promises = [];
+    const promises: Promise<any>[] = [];
     for (let i = 1; i <= 250; i++) {
       promises.push(
         recordAuditEvent({

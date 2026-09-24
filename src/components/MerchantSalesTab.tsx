@@ -23,9 +23,9 @@ import {
 } from 'lucide-react';
 
 interface MerchantSalesTabProps {
-  sales: SaleRecord[];
-  merchants: Merchant[];
-  products: Product[];
+  sales?: SaleRecord[];
+  merchants?: Merchant[];
+  products?: Product[];
   selectedDate?: string;
   inventoryStock?: any[];
   onOpenNewSale: () => void;
@@ -36,9 +36,9 @@ interface MerchantSalesTabProps {
 }
 
 export const MerchantSalesTab: React.FC<MerchantSalesTabProps> = ({
-  sales = [],
-  merchants = [],
-  products: _products = [],
+  sales = [] as SaleRecord[],
+  merchants = [] as Merchant[],
+  products: _products = [] as Product[],
   selectedDate = '',
   inventoryStock: _inventoryStock,
   onOpenNewSale,

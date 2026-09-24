@@ -346,8 +346,8 @@ describe('Backup and Restore Reliability Audit', () => {
 
     const backup = await createCompleteBackup();
     expect(backup.data.attachments).toBeDefined();
-    expect(backup.data.attachments.length).toBe(1);
-    expect(backup.data.attachments[0].id).toBe(attachmentId);
+    expect(backup.data.attachments!.length).toBe(1);
+    expect(backup.data.attachments![0].id).toBe(attachmentId);
 
     const report = await validateBackupFile(backup);
     expect(report.isValid).toBe(true);

@@ -28,7 +28,6 @@ import {
   Info,
   Check,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { Product, Supplier, Merchant, AppLockSettings, ShopSettings, OpeningPosition } from '../types';
 import { generateStableId } from '../utils/idGenerator';
 import {
@@ -450,8 +449,9 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsName = wb.SheetNames[0];
@@ -574,8 +574,9 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       let sheetData: any[] = [];
       let filename = '';

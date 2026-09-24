@@ -32,7 +32,7 @@ import {
 } from '../services/stockLedgerService';
 
 interface ProductsTabProps {
-  products: Product[];
+  products?: Product[];
   transactions?: TransactionRecord[];
   sales?: SaleRecord[];
   stockAdjustments?: StockAdjustmentRecord[];
@@ -45,12 +45,12 @@ interface ProductsTabProps {
 }
 
 export const ProductsTab: React.FC<ProductsTabProps> = ({
-  products = [],
-  transactions = [],
-  sales = [],
-  stockAdjustments = [],
-  merchantPurchases = [],
-  peerTrades = [],
+  products = [] as Product[],
+  transactions = [] as TransactionRecord[],
+  sales = [] as SaleRecord[],
+  stockAdjustments = [] as StockAdjustmentRecord[],
+  merchantPurchases = [] as MerchantPurchaseRecord[],
+  peerTrades = [] as PeerTradeRecord[],
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
