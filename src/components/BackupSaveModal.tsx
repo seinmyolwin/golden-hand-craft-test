@@ -134,7 +134,7 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
 
             <button
               type="button"
-              onClick={exportDailyCollectionCSV}
+              onClick={() => exportDailyCollectionCSV('')}
               className="w-full p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between font-bold text-slate-800 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export const BackupSaveModal: React.FC<BackupSaveModalProps> = ({
 
             <button
               type="button"
-              onClick={exportMerchantSalesCSV}
+              onClick={() => exportMerchantSalesCSV()}
               className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-between font-bold text-blue-900 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2">

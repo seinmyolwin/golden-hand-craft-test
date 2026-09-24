@@ -12,31 +12,25 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<Props, State> {
-  public state: State = {
+export class ErrorBoundary extends Component<Props, State> {
+  public override state: State = {
     hasError: false,
     error: null,
   };
-  public props: Props;
-
-  constructor(props: Props) {
-    super(props);
-    this.props = props;
-  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
   }
 
   public handleReset = () => {
-    (this as unknown as { setState: (s: Partial<State>) => void }).setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null });
   };
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       if (this.props.isSection) {
         return (

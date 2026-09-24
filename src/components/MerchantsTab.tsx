@@ -613,7 +613,7 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
           setIsAddModalOpen(false);
           setEditingMerchant(null);
         }}
-        initialMerchant={editingMerchant}
+        merchantToEdit={editingMerchant}
         onSave={(savedMerch) => {
           if (editingMerchant) {
             onUpdateMerchant(savedMerch);
@@ -621,7 +621,7 @@ export const MerchantsTab: React.FC<MerchantsTabProps> = ({
             onAddMerchant(savedMerch);
           }
         }}
-        availableTowns={towns}
+        existingTowns={towns}
       />
 
       {/* Settle Debt Modal */}

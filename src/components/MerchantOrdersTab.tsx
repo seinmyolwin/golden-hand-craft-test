@@ -85,6 +85,7 @@ export const MerchantOrdersTab: React.FC<MerchantOrdersTabProps> = ({
           quantity: it.quantity,
           unit: p.unit,
           unitPrice,
+          agreedPrice: unitPrice,
           subtotal: it.quantity * unitPrice,
         };
       })

@@ -342,7 +342,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           setIsModalOpen(false);
           setEditingProduct(null);
         }}
-        initialProduct={editingProduct}
+        productToEdit={editingProduct}
         onSave={(savedProd) => {
           if (editingProduct) {
             onUpdateProduct(savedProd);

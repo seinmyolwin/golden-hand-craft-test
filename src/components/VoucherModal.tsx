@@ -75,7 +75,7 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
   const handleThermalPrint = () => {
     if (!onOpenThermalReceipt) return;
     const items = (transaction.items || []).map((item) => ({
-      name: item.productName || item.name || '',
+      name: item.productName || (item as any).name || '',
       qty: item.quantity,
       unit: item.unit,
       unitPrice: item.unitPrice,
@@ -169,7 +169,7 @@ export const VoucherModal: React.FC<VoucherModalProps> = ({
           <tbody className="divide-y divide-slate-100 text-xs">
             {(transaction.items || []).map((item, idx) => (
               <tr key={idx} className="py-1">
-                <td className="py-1 font-semibold text-slate-900">{item.productName || item.name || '-'}</td>
+                <td className="py-1 font-semibold text-slate-900">{item.productName || (item as any).name || '-'}</td>
                 <td className="py-1 text-center font-bold text-slate-700">
                   {item.quantity ?? 0} {item.unit || ''}
                 </td>

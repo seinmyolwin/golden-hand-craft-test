@@ -1986,7 +1986,7 @@ export default function App() {
           town: supplier.village || 'ကျေးရွာ/ရပ်ကွက်',
           contactPerson: supplier.name,
           phone: supplier.phone || '',
-          address: supplier.address || supplier.village || '',
+          address: supplier.village || '',
           role: 'BOTH',
           currentReceivableBalance: 0,
           receivableBalance: 0,
@@ -2180,11 +2180,10 @@ export default function App() {
         return 'history';
       case 'REPORTS':
         return 'reports';
-      case 'BACKUP':
-      case 'SETTINGS':
+      case 'backup':
         return 'backup';
       default:
-        return (activeTab as ActiveTab) || 'daily';
+        return (activeTab as unknown as ActiveTab) || 'daily';
     }
   }, [activeTab]);
 
@@ -2661,10 +2660,9 @@ export default function App() {
         <RevertLiveStatusModal
           isOpen={isRevertLiveStatusOpen}
           onClose={() => setIsRevertLiveStatusOpen(false)}
-          onConfirmRevert={handleConfirmRevertLive}
+          onConfirmRevert={(pin) => handleConfirmRevertLive({ pin, backupFirst: true })}
           appLockSettings={appLockSettings}
           onUpdateAppLockSettings={handleUpdateAppLock}
-          shopSettings={shopSettings}
         />
 
         <LowStockAlertModal

@@ -714,7 +714,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
           setIsAddModalOpen(false);
           setEditingSupplier(null);
         }}
-        initialSupplier={editingSupplier}
+        supplierToEdit={editingSupplier}
         onSave={(savedSup) => {
           if (editingSupplier) {
             onUpdateSupplier(savedSup);
@@ -722,7 +722,7 @@ export const SuppliersTab: React.FC<SuppliersTabProps> = ({
             onAddSupplier(savedSup);
           }
         }}
-        availableVillages={villages}
+        existingVillages={villages}
       />
 
       {/* Raw Material Credit Modal */}

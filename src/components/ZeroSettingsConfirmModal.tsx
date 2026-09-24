@@ -717,11 +717,13 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
         finishedGoods: products.map((p) => ({
           productId: p.id,
           productName: p.name,
+          unit: p.unit || 'ခု',
           quantity: p.openingStock || 0,
           unitPrice: p.defaultWholesalePrice || p.defaultPrice || 0,
           totalValue: (p.openingStock || 0) * (p.defaultWholesalePrice || p.defaultPrice || 0),
         })),
         rawMaterials: rawMaterials.map((r) => ({
+          name: r.materialName || (r as any).name || '',
           materialName: r.materialName,
           unit: r.unit,
           quantity: r.quantity,
@@ -729,7 +731,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
           totalValue: r.totalValue,
         })),
         receivables: receivables.map((r) => ({
-          merchantId: r.merchantId,
+          merchantId: r.merchantId || r.merchantName,
           merchantName: r.merchantName,
           amount: r.amount,
           notes: r.notes,
@@ -1111,7 +1113,7 @@ export const ZeroSettingsConfirmModal: React.FC<ZeroSettingsConfirmModalProps> =
                         <div>
                           <span className="font-bold text-slate-900">{s.name}</span>
                           <span className="text-amber-800 bg-amber-100 text-[10px] px-1.5 py-0.5 rounded-full ml-2 font-semibold">
-                            {s.craftType}
+                            {(s as any).craftType || s.village || 'ရိုးရာ'}
                           </span>
                           {s.phone && <span className="text-slate-500 text-[11px] ml-2 font-mono">({s.phone})</span>}
                           {s.village && <span className="text-slate-600 text-[11px] ml-2">[{s.village}]</span>}

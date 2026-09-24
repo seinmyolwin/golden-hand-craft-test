@@ -87,7 +87,7 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
 
   // New Cash Movement State
   const [isAddMovementOpen, setIsAddMovementOpen] = useState<boolean>(false);
-  const [newMovType, setNewMovType] = useState<CashMovementType>('EXPENSE');
+  const [newMovType, setNewMovType] = useState<CashMovementType>('EXPENSE_PAYOUT');
   const [newMovAmount, setNewMovAmount] = useState<string>('');
   const [newMovDescription, setNewMovDescription] = useState<string>('');
   const [newMovCounterpart, setNewMovCounterpart] = useState<string>('');
@@ -108,7 +108,7 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
 
     setIsSavingMovement(true);
     try {
-      const isOut = newMovType === 'EXPENSE' || newMovType === 'OWNER_DRAW' || newMovType === 'PURCHASE_PAYOUT' || newMovType === 'SUPPLIER_PAYOUT';
+      const isOut = newMovType === 'EXPENSE_PAYOUT' || newMovType === 'DIRECT_CASH_OUT' || newMovType === 'MERCHANT_PURCHASE_PAYOUT' || newMovType === 'SUPPLIER_PAYOUT';
       const dir: 'IN' | 'OUT' = isOut ? 'OUT' : 'IN';
       const signed = isOut ? -Math.abs(amt) : Math.abs(amt);
       const now = new Date().toISOString();
@@ -124,9 +124,9 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
         referenceType:
           newMovType === 'OPENING_FLOAT'
             ? 'OPENING'
-            : newMovType === 'EXPENSE'
+            : newMovType === 'EXPENSE_PAYOUT'
             ? 'EXPENSE'
-            : newMovType === 'INCOME'
+            : newMovType === 'INCOME_IN'
             ? 'INCOME'
             : 'MANUAL_ADJUSTMENT',
         referenceId: movId,

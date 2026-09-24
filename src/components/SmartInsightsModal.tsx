@@ -176,14 +176,14 @@ export const SmartInsightsModal: React.FC<SmartInsightsModalProps> = ({
                   >
                     <div>
                       <div className="font-bold text-slate-900">{sup.name}</div>
-                      <div className="text-[10px] text-slate-500">{sup.village || 'ရွာမသိ'} • {sup.craftType || 'ရိုးရာ'}</div>
+                      <div className="text-[10px] text-slate-500">{sup.village || 'ရွာမသိ'}</div>
                     </div>
                     <div className="text-right">
                       <span className="font-extrabold text-rose-700 text-xs">
-                        {sup.currentAdvanceBalance.toLocaleString()} Ks
+                        {(sup.currentAdvanceBalance || 0).toLocaleString()} Ks
                       </span>
                       <span className="text-[10px] text-slate-500 block">
-                        {sup.activeWorkOrderCount ? `လုပ်လက်စ ${sup.activeWorkOrderCount} ခု` : 'အကြိုငွေကျန်'}
+                        {(sup as any).activeWorkOrderCount ? `လုပ်လက်စ ${(sup as any).activeWorkOrderCount} ခု` : 'အကြိုငွေကျန်'}
                       </span>
                     </div>
                   </div>

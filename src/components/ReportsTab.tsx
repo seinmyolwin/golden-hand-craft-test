@@ -137,12 +137,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     let totalPurchaseCashRecovered = 0;
 
     (filteredReturns || []).forEach((r) => {
-      if (r.returnType === 'SALES_RETURN') {
-        totalSalesReturnValue += r.totalRefundAmount || 0;
-        totalSalesCashRefunded += r.cashRefundedAmount || 0;
-      } else if (r.returnType === 'PURCHASE_RETURN') {
+      const returnType = (r as any).type || (r as any).returnType;
+      if (returnType === 'SALES_RETURN') {
+        totalSalesReturnValue += r.totalReturnAmount || (r as any).totalRefundAmount || 0;
+        totalSalesCashRefunded += r.cashRefundAmount || (r as any).cashRefundedAmount || 0;
+      } else if (returnType === 'PURCHASE_RETURN') {
         totalPurchaseReturnValue += r.totalReturnAmount || 0;
-        totalPurchaseCashRecovered += r.cashRecoveredAmount || 0;
+        totalPurchaseCashRecovered += r.cashRefundAmount || (r as any).cashRecoveryAmount || (r as any).cashRecoveredAmount || 0;
       }
     });
 

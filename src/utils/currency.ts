@@ -10,6 +10,7 @@
  */
 
 import {
+  roundMMK,
   toSafeIntMoney,
   moneyAdd,
   moneySub,
@@ -27,13 +28,7 @@ import {
   moneyFormat,
 } from './moneyMath';
 
-/**
- * Rounds a monetary amount to an exact integer Myanmar Kyat (MMK).
- * Handles numbers, numeric strings, undefined, null, and NaN safely.
- */
-export function roundMMK(amount: number | string | undefined | null): number {
-  return toSafeIntMoney(amount);
-}
+export { roundMMK } from './moneyMath';
 
 /**
  * Validates whether a value is an exact integer MMK amount (no fractional decimals).

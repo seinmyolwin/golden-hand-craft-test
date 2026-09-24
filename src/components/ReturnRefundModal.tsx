@@ -232,6 +232,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
         quantity: it.returnQty,
         unitPrice: it.unitPrice,
         subtotal: it.returnQty * it.unitPrice,
+        totalAmount: it.returnQty * it.unitPrice,
         unit: it.unit,
       }));
 
@@ -304,6 +305,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
         quantity: it.returnQty,
         unitPrice: it.unitPrice,
         subtotal: it.returnQty * it.unitPrice,
+        totalAmount: it.returnQty * it.unitPrice,
         unit: it.unit,
       }));
 
@@ -417,10 +419,12 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
     const q = historySearch.toLowerCase().trim();
     return returnHistory.filter((r) => {
       if (!q) return true;
+      const origVch = r.referenceVoucherNo || (r as any).originalVoucherNo || '';
+      const party = r.merchantName || r.supplierName || (r as any).partyName || (r as any).counterpartName || '';
       return (
         r.returnNo.toLowerCase().includes(q) ||
-        r.originalVoucherNo.toLowerCase().includes(q) ||
-        (r.partyName || '').toLowerCase().includes(q) ||
+        origVch.toLowerCase().includes(q) ||
+        party.toLowerCase().includes(q) ||
         (r.reason || '').toLowerCase().includes(q)
       );
     });
@@ -730,7 +734,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                 <option value="">-- ဝယ်ယူမှုဘောက်ချာ ရွေးပါ ({filteredPurchaseOptions.length} စောင်) --</option>
                 {filteredPurchaseOptions.map((p) => (
                   <option key={p.id} value={p.purchaseNo}>
-                    [{p.purchaseNo}] - {p.supplierName || p.merchantName} - {p.date} - {formatMMK(p.totalAmount)}
+                    [{p.purchaseNo}] - {(p as any).supplierName || p.merchantName} - {p.date} - {formatMMK(p.totalAmount)}
                   </option>
                 ))}
               </select>
@@ -757,7 +761,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                 <div className="flex items-center gap-4 text-xs text-slate-600">
                   <div className="flex items-center gap-1">
                     <User className="w-3.5 h-3.5 text-slate-400" />
-                    <span>ပေးသွင်းသူ: <strong>{activePurchase.supplierName || activePurchase.merchantName}</strong></span>
+                    <span>ပေးသွင်းသူ: <strong>{(activePurchase as any).supplierName || activePurchase.merchantName}</strong></span>
                   </div>
                 </div>
 
@@ -903,7 +907,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
             ) : (
               <div className="space-y-3">
                 {filteredHistory.map((rec) => {
-                  const isSales = rec.returnType === 'SALES_RETURN';
+                  const isSales = (rec as any).type === 'SALES_RETURN' || (rec as any).returnType === 'SALES_RETURN';
                   const isCancelled = rec.status === 'CANCELLED';
 
                   return (
@@ -933,7 +937,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
                           </span>
                           <span className="text-slate-400">|</span>
                           <span className="text-slate-600">
-                            မူလဘောက်ချာ: <strong>{rec.originalVoucherNo}</strong>
+                            မူလဘောက်ချာ: <strong>{rec.referenceVoucherNo || (rec as any).originalVoucherNo}</strong>
                           </span>
                         </div>
 
@@ -960,12 +964,12 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
 
                       <div className="flex items-center justify-between text-slate-700">
                         <div>
-                          <span>အဖွဲ့အစည်း/ဝယ်သူ: <strong>{rec.partyName || '-'}</strong></span>
+                          <span>အဖွဲ့အစည်း/ဝယ်သူ: <strong>{rec.merchantName || rec.supplierName || (rec as any).partyName || (rec as any).counterpartName || '-'}</strong></span>
                         </div>
                         <div className="font-mono font-bold">
                           {isSales
-                            ? `ပြန်အမ်းငွေ: ${formatMMK(rec.cashRefundedAmount)}`
-                            : `ပြန်ရငွေ: ${formatMMK(rec.cashRecoveredAmount)}`}
+                            ? `ပြန်အမ်းငွေ: ${formatMMK(rec.cashRefundAmount ?? (rec as any).cashRefundedAmount ?? 0)}`
+                            : `ပြန်ရငွေ: ${formatMMK(rec.cashRefundAmount ?? (rec as any).cashRecoveryAmount ?? (rec as any).cashRecoveredAmount ?? 0)}`}
                         </div>
                       </div>
 

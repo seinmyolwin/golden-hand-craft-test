@@ -243,9 +243,13 @@ export const ProductStockLedgerModal: React.FC<ProductStockLedgerModalProps> = (
                   လက်ရှိလက်ကျန်
                 </span>
                 {ledgerSummary.isBalanced ? (
-                  <CheckCircle2 className={`w-3.5 h-3.5 ${isOutOfStock || isLowStock ? 'text-emerald-600' : 'text-emerald-400'}`} title="စာရင်းကိုက်ညီပါသည်" />
+                  <span title="စာရင်းကိုက်ညီပါသည်">
+                    <CheckCircle2 className={`w-3.5 h-3.5 ${isOutOfStock || isLowStock ? 'text-emerald-600' : 'text-emerald-400'}`} />
+                  </span>
                 ) : (
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-500 animate-pulse" title={`ကွာဟချက်: ${ledgerSummary.discrepancy}`} />
+                  <span title={`ကွာဟချက်: ${ledgerSummary.discrepancy}`}>
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
+                  </span>
                 )}
               </div>
               <div className="mt-1 flex items-baseline gap-1">

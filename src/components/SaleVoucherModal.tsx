@@ -191,7 +191,7 @@ export const SaleVoucherModal: React.FC<SaleVoucherModalProps> = ({
           <tbody className="divide-y divide-slate-100 text-xs">
             {(sale.items || []).map((item, idx) => (
               <tr key={idx} className="py-1">
-                <td className="py-1 font-semibold text-slate-900">{item.productName || item.name || '-'}</td>
+                <td className="py-1 font-semibold text-slate-900">{item.productName || (item as any).name || '-'}</td>
                 <td className="py-1 text-center font-bold text-slate-700">
                   {item.quantity ?? 0} {item.unit || ''}
                 </td>
