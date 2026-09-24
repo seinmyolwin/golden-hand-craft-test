@@ -18,7 +18,9 @@ import {
   getPreviousClosingCash,
 } from '../services/dailyClosingService';
 import { cashMovementRepo, dailyClosingRepo, supplierRepo } from '../repositories';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
+import { getSafeErrorMessage } from '../utils/errors';
+import { useToast } from '../context/ToastContext';
 import { generateStableId } from '../utils/idGenerator';
 import {
   X,
@@ -61,6 +63,7 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
   onClose,
   onRefreshData,
 }) => {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<ActiveTab>('LEDGER');
   const [cashMovements, setCashMovements] = useState<CashMovementRecord[]>([]);
   const [dailyClosings, setDailyClosings] = useState<DailyClosingRecord[]>([]);
@@ -95,11 +98,11 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
   const handleSaveMovement = async () => {
     const amt = parseFloat(newMovAmount);
     if (!amt || amt <= 0 || isNaN(amt)) {
-      alert('ကျေးဇူးပြု၍ တရားဝင် ငွေပမာဏ ရိုက်ထည့်ပါ');
+      showToast('ကျေးဇူးပြု၍ တရားဝင် ငွေပမာဏ ရိုက်ထည့်ပါ', 'warning');
       return;
     }
     if (!newMovDescription.trim()) {
-      alert('ကျေးဇူးပြု၍ အကြောင်းအရာ ရိုက်ထည့်ပါ');
+      showToast('ကျေးဇူးပြု၍ အကြောင်းအရာ ရိုက်ထည့်ပါ', 'warning');
       return;
     }
 
@@ -166,8 +169,9 @@ export const CashLedgerModal: React.FC<CashLedgerModalProps> = ({
       setNewMovNotes('');
       await loadData();
       onRefreshData?.();
+      showToast('ငွေစာရင်း ရေးသွင်းမှု အောင်မြင်ပါသည်', 'success');
     } catch (err: any) {
-      alert(`ငွေစာရင်းသွင်းရာတွင် အမှားဖြစ်ပေါ်ပါသည်: ${err?.message || err}`);
+      showToast(getSafeErrorMessage(err, 'ငွေစာရင်းသွင်းရာတွင် အမှားဖြစ်ပေါ်ပါသည်'), 'error');
     } finally {
       setIsSavingMovement(false);
     }

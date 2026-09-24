@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { TransactionRecord, SaleRecord } from '../types';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import {
   History,
   Search,

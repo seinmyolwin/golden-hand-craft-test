@@ -108,7 +108,7 @@ export async function saveAttachment(voucherId: string, input: File | Blob | str
 export async function getAttachmentsForVoucher(voucherId: string): Promise<Array<{ id: string; imageBase64: string; caption?: string; createdAt: string }>> {
   try {
     const list = await getServiceAttachmentsForVoucher(voucherId);
-    const result = [];
+    const result: Array<{ id: string; imageBase64: string; caption?: string; createdAt: string }> = [];
     for (const item of list) {
       let b64 = item.imageBase64 || item.thumbnail || '';
       if (!b64 && item.blob) {

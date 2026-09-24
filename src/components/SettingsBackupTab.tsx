@@ -27,8 +27,6 @@ import {
   computeAllProductsStock,
   DEFAULT_SHOP_SETTINGS,
   DEFAULT_APP_LOCK,
-  formatMMK,
-  formatNumberOnly,
   getTodayDateString,
   getCurrentTimeString,
   getStoredRawMaterialPresets,
@@ -36,6 +34,8 @@ import {
   DEFAULT_RAW_MATERIAL_PRESETS,
   loadShopSettings,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
+import { getSafeErrorMessage } from '../utils/errors';
 import { CURRENT_APP_VERSION } from '../constants/version';
 import { generateStableId } from '../utils/idGenerator';
 import {
@@ -642,7 +642,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
       setValidationReport(report);
       setIsImportPreviewOpen(true);
     } catch (err: any) {
-      alert(`ဖိုင်စစ်ဆေး၍ မရပါ: ${err?.message || 'Corrupted file'}`);
+      alert(getSafeErrorMessage(err, 'ဖိုင်စစ်ဆေး၍ မရပါ'));
     } finally {
       setIsValidating(false);
       e.target.value = '';
@@ -849,7 +849,7 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
         setTimeout(() => setDownloadSuccessMsg(''), 8000);
       }
     } catch (err: any) {
-      alert(`Backup ထုတ်ယူရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်: ${err?.message || err}`);
+      alert(getSafeErrorMessage(err, 'Backup ထုတ်ယူရာတွင် ချို့ယွင်းချက်ဖြစ်ပေါ်ပါသည်'));
     } finally {
       setIsBackingUp(false);
     }

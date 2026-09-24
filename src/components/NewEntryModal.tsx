@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Supplier, Product, TransactionRecord, TransactionItem } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   getTodayDateString,
   getCurrentTimeString,
   findPotentialDuplicateTransaction,
   parseBilingualNumber,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   X,

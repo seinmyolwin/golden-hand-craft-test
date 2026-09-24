@@ -27,6 +27,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { safeJsonParse } from '../utils/security';
+import { getSafeErrorMessage } from '../utils/errors';
 import {
   executeSyncMerge,
   buildLatestSyncPackage,
@@ -400,7 +401,7 @@ export const LocalSyncModal: React.FC<LocalSyncModalProps> = ({
       }
     } catch (err: any) {
       console.error('Merge execution error:', err);
-      alert(`ပေါင်းစည်းမှု ချို့ယွင်းချက်: ${err?.message || 'Error merging data'}`);
+      alert(getSafeErrorMessage(err, 'ပေါင်းစည်းမှု ချို့ယွင်းချက်'));
       setIsConfirmingMode(false);
     } finally {
       setIsMerging(false);

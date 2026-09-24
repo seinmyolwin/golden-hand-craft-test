@@ -3,9 +3,9 @@ import { Product } from '../../types';
 import { generateStableId } from '../../utils/idGenerator';
 import {
   DEFAULT_PRODUCT_CATEGORIES,
-  formatMMK,
   parseBilingualNumber,
 } from '../../utils/storage';
+import { formatMMK } from '../../utils/currency';
 import { masterDataService } from '../../services/masterDataService';
 import { Package, X, Check, Plus, AlertCircle } from 'lucide-react';
 

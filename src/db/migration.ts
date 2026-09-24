@@ -242,8 +242,8 @@ export async function runOfflineStorageMigration(): Promise<MigrationResult> {
     const rawShopSettings = safeParseLocalStorage<any>(['ledger_shop_settings_v2', 'ledger_shop_settings_v1'], null);
     const rawAppLock = safeParseLocalStorage<any>(['ledger_app_lock_v1'], null);
     const rawBackupReminder = safeParseLocalStorage<any>(['ledger_backup_reminder_v1'], null);
-    const rawProductCats = safeParseLocalStorage<any[]>(['ledger_product_categories_v1'], null);
-    const rawRawCats = safeParseLocalStorage<any[]>(['ledger_raw_material_categories_v1'], null);
+    const rawProductCats = safeParseLocalStorage<any[] | null>(['ledger_product_categories_v1'], null);
+    const rawRawCats = safeParseLocalStorage<any[] | null>(['ledger_raw_material_categories_v1'], null);
 
     // 2. Validate and transform
     const validProducts = validateProducts(rawProducts);

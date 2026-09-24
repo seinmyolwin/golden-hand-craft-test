@@ -36,9 +36,9 @@ const PBKDF2_KEY_LEN = 256; // bits
  */
 export function generateCryptoSalt(byteLength: number = 16): string {
   const cryptoObj =
-    typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues
+    typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function'
       ? window.crypto
-      : typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues
+      : typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function'
       ? globalThis.crypto
       : undefined;
 
@@ -159,9 +159,9 @@ export async function verifySecretHash(
 export function generateSecureRecoveryKey(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   const cryptoObj =
-    typeof window !== 'undefined' && window.crypto?.getRandomValues
+    typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function'
       ? window.crypto
-      : typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues
+      : typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function'
       ? globalThis.crypto
       : undefined;
 
@@ -426,9 +426,9 @@ export async function encryptBackupPayload(
   const saltHex = generateCryptoSalt(16);
   const ivBytes = new Uint8Array(12); // 96-bit IV for AES-GCM
   const cryptoObj =
-    typeof window !== 'undefined' && window.crypto?.getRandomValues
+    typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function'
       ? window.crypto
-      : typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues
+      : typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function'
       ? globalThis.crypto
       : undefined;
 

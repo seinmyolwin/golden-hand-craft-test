@@ -1,11 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { SaleRecord, Merchant, Product } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   exportMerchantSalesCSV,
   getTodayDateString,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import {
   Truck,
   Search,

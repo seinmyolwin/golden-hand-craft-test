@@ -164,10 +164,10 @@ export function validateBusinessInitialization(record: BusinessInitializationRec
     if (isNaN(iss.quantity) || iss.quantity < 0) {
       errors.push(`လုပ်သားပေးထုတ်ကုန်ကြမ်း စာရင်းစဉ် (${idx + 1}) တွင် အရေအတွက် မမှန်ကန်ပါ`);
     }
-    if (isNaN(iss.totalValue) || iss.totalValue < 0) {
+    if (iss.totalValue !== undefined && (isNaN(iss.totalValue) || iss.totalValue < 0)) {
       errors.push(`လုပ်သားပေးထုတ်ကုန်ကြမ်း စာရင်းစဉ် (${idx + 1}) တွင် ကုန်ကြမ်းတန်ဖိုး မမှန်ကန်ပါ`);
     }
-    if (isNaN(iss.cashAdvance) || iss.cashAdvance < 0) {
+    if (iss.cashAdvance !== undefined && (isNaN(iss.cashAdvance) || iss.cashAdvance < 0)) {
       errors.push(`လုပ်သားပေးထုတ်ကုန်ကြမ်း စာရင်းစဉ် (${idx + 1}) တွင် ထုတ်ပေးငွေ မမှန်ကန်ပါ`);
     }
   });

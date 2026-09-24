@@ -715,16 +715,6 @@ export function generatePeerVoucherNo(type: string, index: number = 0, dateStr: 
   return `${prefix}-${cleanDate}-${seq}`;
 }
 
-export function formatMMK(amount: number): string {
-  if (isNaN(amount)) return '၀ ကျပ်';
-  return `${amount.toLocaleString('en-US')} ကျပ်`;
-}
-
-export function formatNumberOnly(amount: number): string {
-  if (isNaN(amount)) return '0';
-  return amount.toLocaleString('en-US');
-}
-
 export function getTodayDateString(): string {
   const d = new Date();
   const year = d.getFullYear();
@@ -738,18 +728,6 @@ export function getCurrentTimeString(): string {
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
-}
-
-export function generateVoucherNo(dateStr: string, index: number): string {
-  const cleanDate = dateStr.replace(/-/g, '');
-  const seq = String(index + 1).padStart(3, '0');
-  return `REC-${cleanDate}-${seq}`;
-}
-
-export function generateSaleVoucherNo(dateStr: string, index: number): string {
-  const cleanDate = dateStr.replace(/-/g, '');
-  const seq = String(index + 1).padStart(3, '0');
-  return `SALE-${cleanDate}-${seq}`;
 }
 
 export function computeDailySummary(
@@ -1471,8 +1449,8 @@ export function mergeSyncPacket(
     return {
       ...supp,
       currentAdvanceBalance: latestTx.remainingAdvanceBalance ?? supp.currentAdvanceBalance,
-      totalGoodsValueDelivered: Math.max(supp.totalGoodsValueDelivered, totalGoodsDelivered),
-      totalAdvanceGiven: Math.max(supp.totalAdvanceGiven, totalAdvanceGiven),
+      totalGoodsValueDelivered: Math.max(supp.totalGoodsValueDelivered || 0, totalGoodsDelivered),
+      totalAdvanceGiven: Math.max(supp.totalAdvanceGiven || 0, totalAdvanceGiven),
       updatedAt: getTodayDateString(),
     };
   });
@@ -1497,8 +1475,8 @@ export function mergeSyncPacket(
     return {
       ...merch,
       currentReceivableBalance: latestSale.remainingReceivableBalance ?? merch.currentReceivableBalance,
-      totalPurchasesValue: Math.max(merch.totalPurchasesValue, totalPurchases),
-      totalPaidAmount: Math.max(merch.totalPaidAmount, totalPaid),
+      totalPurchasesValue: Math.max(merch.totalPurchasesValue || 0, totalPurchases),
+      totalPaidAmount: Math.max(merch.totalPaidAmount || 0, totalPaid),
       updatedAt: getTodayDateString(),
     };
   });

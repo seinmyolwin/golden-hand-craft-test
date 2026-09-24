@@ -10,10 +10,12 @@ import {
   AuditLogEntry,
 } from '../types';
 import {
-  formatMMK,
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { formatMMK } from '../utils/currency';
+import { getSafeErrorMessage } from '../utils/errors';
+import { useToast } from '../context/ToastContext';
 import { generateStableId } from '../utils/idGenerator';
 import { saleRepo, productRepo } from '../repositories';
 import { recordAuditEvent } from '../services/auditTrailService';
@@ -63,6 +65,7 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
   onSaleCompleted,
   onOpenVoucher,
 }) => {
+  const { showToast, showConfirm } = useToast();
   // State
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -208,7 +211,7 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
       handleAddToCart(matchedProduct);
       setIsScannerOpen(false);
     } else {
-      alert(`Barcode/QR Code "${scannedText}" အတွက် ကုန်ပစ္စည်း ရှာမတွေ့ပါ`);
+      showToast(`Barcode/QR Code "${scannedText}" အတွက် ကုန်ပစ္စည်း ရှာမတွေ့ပါ`, 'warning');
     }
   };
 
@@ -262,7 +265,7 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
   // Checkout Handler (Repository Pattern + Atomic Transaction + Protection against Silent Skips)
   const handleCheckout = async () => {
     if (cart.length === 0) {
-      alert('ဈေးဝယ်ခြင်းတောင်း ထဲတွင် ကုန်ပစ္စည်းမရှိသေးပါ');
+      showToast('ဈေးဝယ်ခြင်းတောင်း ထဲတွင် ကုန်ပစ္စည်းမရှိသေးပါ', 'warning');
       return;
     }
 
@@ -278,7 +281,12 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
 
     if (stockWarnings.length > 0) {
       const confirmMsg = `အောက်ပါ ကုန်ပစ္စည်းများ လက်ကျန်ထက် ပိုမိုရောင်းချနေပါသည် -\n\n${stockWarnings.join('\n')}\n\nဆက်လက် ရောင်းချပါမည်လား?`;
-      if (!confirm(confirmMsg)) {
+      const confirmed = await showConfirm({
+        title: 'လက်ကျန်မလုံလောက်မှု သတိပေးချက်',
+        message: confirmMsg,
+        isDangerous: true,
+      });
+      if (!confirmed) {
         return;
       }
     }
@@ -357,10 +365,10 @@ export const RetailSalesTab: React.FC<RetailSalesTabProps> = ({
       setCustomerName('လက်လီဝယ်သူ');
       setCustomerPhone('');
 
-      alert(`လက်လီအရောင်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!\nဘောင်ချာနံပါတ်: ${voucherNo}\nစုစုပေါင်း: ${formatMMK(grandTotal)}`);
+      showToast(`လက်လီအရောင်း အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!\nဘောင်ချာနံပါတ်: ${voucherNo}\nစုစုပေါင်း: ${formatMMK(grandTotal)}`, 'success');
     } catch (err: any) {
       console.error('Retail Sale Atomic Transaction Error:', err);
-      alert(`လက်လီအရောင်း သိမ်းဆည်းရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ခဲ့သည်: ${err?.message || 'Unknown error'}`);
+      showToast(getSafeErrorMessage(err, 'လက်လီအရောင်း သိမ်းဆည်းရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ခဲ့သည်'), 'error');
     } finally {
       setIsProcessing(false);
     }

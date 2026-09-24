@@ -631,6 +631,9 @@ export async function switchUserSession(
   };
 
   const savedSession = await setCurrentSession(newSession);
+  if (!savedSession) {
+    throw new AuthorizationError('AUTHENTICATION', 'UNKNOWN', 'အသုံးပြုသူ Session သိမ်းဆည်းရန် မအောင်မြင်ပါ');
+  }
 
   // Log successful session switch
   try {
@@ -698,5 +701,6 @@ export async function resetSessionForTesting(role: UserRole = 'OWNER'): Promise<
     loginTimestamp: new Date().toISOString(),
     sessionToken,
   };
-  return await setCurrentSession(session);
+  const saved = await setCurrentSession(session);
+  return saved || session;
 }

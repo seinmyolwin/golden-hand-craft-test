@@ -893,7 +893,7 @@ export async function runDatabaseDiagnostics(
           message: `Peer trade "${pt.id}" references non-existent productId "${pt.productId}".`,
           entity: 'PeerTrade',
           recordId: pt.id,
-          relatedRecordIds: [pt.productId],
+          relatedRecordIds: pt.productId ? [pt.productId] : [],
           detectedAt,
         });
       }

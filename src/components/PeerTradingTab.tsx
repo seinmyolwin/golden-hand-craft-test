@@ -1,11 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { PeerTradeRecord, PeerTradeItem, Product, Merchant } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId } from '../utils/idGenerator';
 import {
   ArrowRightLeft,

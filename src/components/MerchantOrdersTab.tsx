@@ -1,11 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { MerchantOrder, Merchant, Product, OrderStatus } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import {
   ShoppingBag,

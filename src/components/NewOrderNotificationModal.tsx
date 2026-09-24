@@ -1,6 +1,6 @@
 import React from 'react';
 import { MerchantOrder } from '../types';
-import { formatMMK } from '../utils/storage';
+import { formatMMK } from '../utils/currency';
 import { X, Bell, ShoppingBag, ArrowRight } from 'lucide-react';
 
 interface NewOrderNotificationModalProps {

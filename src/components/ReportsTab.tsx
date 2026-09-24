@@ -9,12 +9,11 @@ import {
   ReturnRecord,
 } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   getTodayDateString,
   exportDailyCollectionCSV,
   exportMerchantSalesCSV,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import {
   FileText,
   Calendar,

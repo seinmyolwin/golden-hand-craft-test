@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Supplier, Product, TransactionRecord, DailySummary, MerchantOrder } from '../types';
-import { formatMMK, formatNumberOnly, computeDailySummary, exportDailyCollectionCSV } from '../utils/storage';
+import { computeDailySummary, exportDailyCollectionCSV } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import {
   Truck,
   CheckCircle2,

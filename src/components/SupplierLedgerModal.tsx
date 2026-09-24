@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Supplier, TransactionRecord } from '../types';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { X, Users, MapPin, Receipt, ArrowDownLeft, ArrowUpRight, DollarSign } from 'lucide-react';
 
 interface SupplierLedgerModalProps {

@@ -1,13 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Supplier, TransactionRecord, RawMaterialItem, PaymentMethod, Product, RawMaterialPreset } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   exportSuppliersCSV,
   getTodayDateString,
   getCurrentTimeString,
   getStoredRawMaterialPresets,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { SupplierMasterModal } from './master/SupplierMasterModal';
 import { NumericInput, getNotePlaceholder } from './NumericInput';

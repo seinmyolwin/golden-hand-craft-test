@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { SaleRecord, ShopSettings } from '../types';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { X, Printer, Truck, Phone, QrCode, Receipt, FileText } from 'lucide-react';
 import { Logo } from './Logo';
 import { ThermalReceiptData } from '../services/thermalPrinter';

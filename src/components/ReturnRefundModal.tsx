@@ -13,7 +13,9 @@ import {
   getReturnedQuantitiesForVoucher,
 } from '../services/returnsService';
 import { db } from '../db/database';
-import { formatMMK, getTodayDateString } from '../utils/storage';
+import { getTodayDateString } from '../utils/storage';
+import { formatMMK } from '../utils/currency';
+import { useToast } from '../context/ToastContext';
 import {
   X,
   RotateCcw,
@@ -54,6 +56,7 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
   initialSelectedPurchase = null,
   onReturnSuccess,
 }) => {
+  const { showConfirm, showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'sales_return' | 'purchase_return' | 'history'>(
     initialSelectedPurchase ? 'purchase_return' : 'sales_return'
   );
@@ -357,11 +360,14 @@ export const ReturnRefundModal: React.FC<ReturnRefundModalProps> = ({
 
   // Cancel/Reverse a Return
   const handleCancelReturn = async (returnRecord: ReturnRecord) => {
-    if (
-      !window.confirm(
-        `ပြန်အပ်မှုမှတ်တမ်း (${returnRecord.returnNo}) ကို ပယ်ဖျက်လိုသည်မှာ သေချာပါသလား?\n\nစတော့နှင့် ငွေသားစာရင်းများအား မူလအတိုင်း ပြန်လည်ညှိနှိုင်းပေးမည် ဖြစ်ပါသည်။`
-      )
-    ) {
+    const confirmed = await showConfirm({
+      title: 'ပြန်အပ်မှုမှတ်တမ်း ပယ်ဖျက်ရန် အတည်ပြုခြင်း',
+      message: `ပြန်အပ်မှုမှတ်တမ်း (${returnRecord.returnNo}) ကို ပယ်ဖျက်လိုသည်မှာ သေချာပါသလား?\n\nစတော့နှင့် ငွေသားစာရင်းများအား မူလအတိုင်း ပြန်လည်ညှိနှိုင်းပေးမည် ဖြစ်ပါသည်။`,
+      isDangerous: true,
+      confirmText: 'ပယ်ဖျက်မည်',
+      cancelText: 'မလုပ်တော့ပါ',
+    });
+    if (!confirmed) {
       return;
     }
 

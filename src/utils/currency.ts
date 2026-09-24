@@ -54,6 +54,15 @@ export function formatMMK(amount: number | string | undefined | null, withSuffix
   return withSuffix ? `${formatted} ကျပ်` : formatted;
 }
 
+/**
+ * Formats an amount with comma thousand separators without any currency suffix.
+ * Returns '0' if invalid or nullish.
+ */
+export function formatNumberOnly(amount: number | string | undefined | null): string {
+  if (amount === undefined || amount === null || (typeof amount === 'number' && isNaN(amount))) return '0';
+  return moneyFormat(amount);
+}
+
 export {
   toSafeIntMoney,
   moneyAdd,

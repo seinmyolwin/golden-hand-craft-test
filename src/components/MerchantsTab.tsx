@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Merchant, SaleRecord } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   exportMerchantsCSV,
   getTodayDateString,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId } from '../utils/idGenerator';
 import { MerchantMasterModal } from './master/MerchantMasterModal';
 import {

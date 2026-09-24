@@ -12,6 +12,7 @@ import {
   Merchant,
   TransactionRecord,
   SaleRecord,
+  SaleItem,
   MerchantPurchaseRecord,
   MerchantOrder,
   StockAdjustmentRecord,
@@ -1138,7 +1139,7 @@ export async function executeProcessSaleAtomicInternal(
 
   // 3. Validate products & decrement inventory & record ledger movement
   if (Array.isArray(sale.items) && sale.items.length > 0) {
-    const updatedItems = [];
+    const updatedItems: SaleItem[] = [];
     for (const item of sale.items) {
       if (!item.productId) {
         updatedItems.push(item);

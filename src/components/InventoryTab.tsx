@@ -11,8 +11,6 @@ import {
   CategoryDomain,
 } from '../types';
 import {
-  formatMMK,
-  formatNumberOnly,
   computeAllProductsStock,
   computeRawMaterialsStock,
   ProductStockStats,
@@ -20,6 +18,7 @@ import {
   getTodayDateString,
   getCurrentTimeString,
 } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { generateStableId } from '../utils/idGenerator';
 import {
   calculateAllProductsStockLedgerSummaries,

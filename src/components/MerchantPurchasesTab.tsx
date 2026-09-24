@@ -8,12 +8,12 @@ import {
   ShopSettings,
 } from '../types';
 import {
-  formatMMK,
   getTodayDateString,
   getCurrentTimeString,
   parseBilingualNumber,
   DEFAULT_RAW_MATERIAL_PRESETS,
 } from '../utils/storage';
+import { formatMMK } from '../utils/currency';
 import { generateStableId, generateVoucherNo } from '../utils/idGenerator';
 import { PrintPortal } from './PrintPortal';
 import {

@@ -12,7 +12,7 @@ import {
   exportProductStockLedgerCSV,
   StockLedgerFilterOptions,
 } from '../services/stockLedgerService';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import {
   X,
   Layers,

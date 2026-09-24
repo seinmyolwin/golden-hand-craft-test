@@ -26,7 +26,7 @@ import {
 } from '../types';
 import { db, ShweLetYarDatabase } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { enforcePermission } from './authorizationService';
 
 /**

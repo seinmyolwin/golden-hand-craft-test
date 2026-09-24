@@ -59,6 +59,7 @@ import {
   getCurrentTimeString,
 } from './utils/storage';
 import { generateStableId, generateVoucherNo } from './utils/idGenerator';
+import { getSafeErrorMessage } from './utils/errors';
 import { playNotificationSound } from './utils/audio';
 import { CURRENT_APP_VERSION } from './constants/version';
 
@@ -718,7 +719,9 @@ export default function App() {
   const handleUnlock = useCallback(async () => {
     try {
       sessionStorage.setItem('shwe_let_yar_session_unlocked', 'true');
-    } catch (e) {}
+    } catch (e) {
+      console.warn('sessionStorage unavailable:', e);
+    }
     setIsUnlocked(true);
     try {
       const entry = await recordAuditEvent({
@@ -735,7 +738,9 @@ export default function App() {
   const handleLockApp = useCallback(() => {
     try {
       sessionStorage.removeItem('shwe_let_yar_session_unlocked');
-    } catch (e) {}
+    } catch (e) {
+      console.warn('sessionStorage unavailable:', e);
+    }
     setIsUnlocked(false);
   }, []);
 
@@ -743,14 +748,16 @@ export default function App() {
     try {
       await enforcePermission('ACCESS_SETTINGS', 'App Lock ဆက်တင် ပြင်ဆင်ခြင်း');
     } catch (err: any) {
-      alert(err.message || 'ခွင့်ပြုချက်မရှိပါ: App Lock ဆက်တင်အား ဆိုင်ရှင် (OWNER) သာ ပြင်ဆင်ခွင့်ရှိပါသည်');
+      alert(getSafeErrorMessage(err, 'ခွင့်ပြုချက်မရှိပါ: App Lock ဆက်တင်အား ဆိုင်ရှင် (OWNER) သာ ပြင်ဆင်ခွင့်ရှိပါသည်'));
       throw err;
     }
     setAppLockSettings(updated);
     if (!updated.enabled) {
       try {
         sessionStorage.removeItem('shwe_let_yar_session_unlocked');
-      } catch (e) {}
+      } catch (e) {
+        console.warn('sessionStorage unavailable:', e);
+      }
       setIsUnlocked(true);
     }
     try {
@@ -894,7 +901,7 @@ export default function App() {
       });
     } catch (err: any) {
       console.error('Failed to save inbound transaction atomically:', err);
-      alert(`ကုန်သိမ်းစာရင်း သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ကုန်သိမ်းစာရင်း သိမ်းဆည်းမှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -944,7 +951,7 @@ export default function App() {
       });
     } catch (err: any) {
       console.error('Failed to save sale atomically:', err);
-      alert(`အရောင်းဘောင်ချာ သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'အရောင်းဘောင်ချာ သိမ်းဆည်းမှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -994,7 +1001,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to soft delete supplier:', err);
-      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ဖျက်ဆီးမှု မအောင်မြင်ပါ'));
     }
   }, [suppliers]);
 
@@ -1070,7 +1077,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to soft delete merchant:', err);
-      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ဖျက်ဆီးမှု မအောင်မြင်ပါ'));
     }
   }, [merchants]);
 
@@ -1120,7 +1127,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to soft delete product:', err);
-      alert(`ဖျက်ဆီးမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ဖျက်ဆီးမှု မအောင်မြင်ပါ'));
     }
   }, [products]);
 
@@ -1207,7 +1214,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to convert order to sale atomically:', err);
-      alert(`အော်ဒါ ပြောင်းလဲမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'အော်ဒါ ပြောင်းလဲမှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -1220,7 +1227,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to cancel order atomically:', err);
-      alert(`အော်ဒါ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'အော်ဒါ ဖျက်ပစ်မှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -1237,7 +1244,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to save peer trade atomically:', err);
-      alert(`မိတ်ဖက်ဆိုင် ကုန်ဖလှယ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'မိတ်ဖက်ဆိုင် ကုန်ဖလှယ်မှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -1291,7 +1298,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to soft delete transaction atomically:', err);
-      alert(`ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ'));
     }
   }, [transactions]);
 
@@ -1311,7 +1318,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to cancel sale atomically:', err);
-      alert(`ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ဘောင်ချာ ဖျက်ပစ်မှု မအောင်မြင်ပါ'));
     }
   }, [sales]);
 
@@ -1345,7 +1352,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to restore item atomically:', err);
-      alert(`ပြန်လည်ရယူမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ပြန်လည်ရယူမှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -1552,7 +1559,7 @@ export default function App() {
         alert('ဆိုင်စာရင်းသစ် စတင်အသုံးပြုခြင်း (Go-Live) အောင်မြင်ပါသည်။ စနစ်ကို လက်တွေ့စတင်အသုံးပြုနေပါပြီ။');
       } catch (err: any) {
         console.error('Go-Live activation failed:', err);
-        alert(`Go-Live စတင်ခြင်း မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+        alert(getSafeErrorMessage(err, 'Go-Live စတင်ခြင်း မအောင်မြင်ပါ'));
       }
     },
     [shopSettings, appLockSettings]
@@ -1636,7 +1643,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to save merchant purchase atomically:', err);
-      alert(`ကုန်ကြမ်းဝယ်ယူမှု သိမ်းဆည်းမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'ကုန်ကြမ်းဝယ်ယူမှု သိမ်းဆည်းမှု မအောင်မြင်ပါ'));
     }
   }, []);
 
@@ -1655,7 +1662,7 @@ export default function App() {
         }
       } catch (err: any) {
         console.error('Failed to cancel merchant purchase atomically:', err);
-        alert(`ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်မှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+        alert(getSafeErrorMessage(err, 'ကုန်ကြမ်းဝယ်ယူမှု ပယ်ဖျက်မှု မအောင်မြင်ပါ'));
       }
     },
     [merchantPurchases]
@@ -1674,7 +1681,7 @@ export default function App() {
         });
       }
     } catch (authErr: any) {
-      alert(authErr.message || 'နမူနာဒေတာ ပြန်လည်သွင်းယူခွင့် ငြင်းပယ်ခံရပါသည်');
+      alert(getSafeErrorMessage(authErr, 'နမူနာဒေတာ ပြန်လည်သွင်းယူခွင့် ငြင်းပယ်ခံရပါသည်'));
       return;
     }
 
@@ -2008,7 +2015,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to save stock adjustment atomically:', err);
-      alert(`လက်ကျန်ပစ္စည်း ချိန်ညှိမှု မအောင်မြင်ပါ: ${err.message || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည်'}`);
+      alert(getSafeErrorMessage(err, 'လက်ကျန်ပစ္စည်း ချိန်ညှိမှု မအောင်မြင်ပါ'));
     }
   }, []);
 

@@ -11,3 +11,4 @@ export * from './supplierReconciliationService';
 export * from './crossLedgerIntegrityService';
 export * from './dailyClosingGuardService';
 export * from './reconciliationService';
+export * from '../ledgerIntegrityService';

@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { db } from '../db/database';
 import { generateStableId } from '../utils/idGenerator';
-import { formatMMK, formatNumberOnly } from '../utils/storage';
+import { formatMMK, formatNumberOnly } from '../utils/currency';
 import { enforcePermission } from './authorizationService';
 
 export type StockMovementType =
@@ -763,7 +763,7 @@ export async function recordStockMovement(
     direction: movement.direction,
     signedQuantity: movement.signedQuantity,
     referenceType: movement.referenceType,
-    referenceId: movement.referenceId,
+    referenceId: movement.referenceId || id,
     referenceVoucherNo: movement.referenceVoucherNo,
     counterpartName: movement.counterpartName,
     unit: movement.unit,
@@ -773,7 +773,7 @@ export async function recordStockMovement(
     transactionTime: movement.transactionTime,
     notes: movement.notes,
     reason: movement.reason,
-    idempotencyKey: movement.idempotencyKey,
+    idempotencyKey: movement.idempotencyKey || generateStableId(`ik_${id}`),
     status: movement.status || 'COMPLETED',
     schemaVersion: movement.schemaVersion || 1,
     createdAt: movement.createdAt || now,

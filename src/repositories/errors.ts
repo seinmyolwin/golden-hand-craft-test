@@ -55,3 +55,21 @@ export class DailyClosingLockedError extends BusinessIntegrityError {
   }
 }
 
+/**
+ * Centralized error-message helper for safe user-facing alerts & notifications.
+ * If the error is a BusinessIntegrityError (or derivative), returns its localized safeUserMessage.
+ * Otherwise returns a clear Burmese fallback message.
+ */
+export function getSafeErrorMessage(err: unknown, fallbackMessage?: string): string {
+  if (err instanceof BusinessIntegrityError && err.safeUserMessage) {
+    return err.safeUserMessage;
+  }
+  if (err instanceof Error && err.message) {
+    return fallbackMessage ? `${fallbackMessage}: ${err.message}` : err.message;
+  }
+  if (typeof err === 'string' && err.trim().length > 0) {
+    return fallbackMessage ? `${fallbackMessage}: ${err}` : err;
+  }
+  return fallbackMessage || 'စနစ်ချို့ယွင်းချက် ဖြစ်ပွားခဲ့ပါသည် (လုပ်ဆောင်ချက် မအောင်မြင်ပါ)';
+}
+

@@ -157,7 +157,7 @@ export async function createCompleteBackup(options?: {
     db.stockMovements.toArray(),
     db.cashMovements.toArray(),
     db.dailyClosings.toArray(),
-    db.returnsAndRefunds ? db.returnsAndRefunds.toArray() : Promise.resolve([]),
+    db.returnsAndRefunds ? db.returnsAndRefunds.toArray() : Promise.resolve<ReturnRecord[]>([]),
   ]);
 
   const shopSettings = options?.shopSettings || getStoredShopSettings();
@@ -1128,7 +1128,7 @@ export async function validateBackupFile(
   });
 
   checkDuplicateEntityIds(normalized.peerTrades, 'peerTrades', 'အချင်းချင်းကုန်သွယ်မှု');
-  checkDuplicateEntityIds(normalized.attachments, 'attachments', 'ဓါတ်ပုံမှတ်တမ်း');
+  checkDuplicateEntityIds(normalized.attachments || [], 'attachments', 'ဓါတ်ပုံမှတ်တမ်း');
   checkDuplicateEntityIds(normalized.auditLogs, 'auditLogs', 'စာရင်းစစ်မှတ်တမ်း');
   checkDuplicateEntityIds(normalized.returnsAndRefunds || [], 'returnsAndRefunds', 'ကုန်ပစ္စည်းပြန်အပ်/အမ်းငွေ');
 
@@ -1184,7 +1184,7 @@ export async function validateBackupFile(
       });
     }
   });
-  normalized.attachments.forEach((att, idx) => {
+  (normalized.attachments || []).forEach((att, idx) => {
     if (att.voucherId && !txIdSet.has(att.voucherId) && !saleIdSet.has(att.voucherId) && !purchaseIdSet.has(att.voucherId)) {
       warnings.push({
         field: `attachments[${idx}].voucherId`,

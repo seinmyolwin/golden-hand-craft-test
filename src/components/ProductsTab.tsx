@@ -8,10 +8,10 @@ import {
   PeerTradeRecord,
 } from '../types';
 import {
-  formatMMK,
   getStoredProductCategories,
   DEFAULT_PRODUCT_CATEGORIES,
 } from '../utils/storage';
+import { formatMMK } from '../utils/currency';
 import { masterDataService } from '../services/masterDataService';
 import {
   Package,
