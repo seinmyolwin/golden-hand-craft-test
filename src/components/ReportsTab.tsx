@@ -14,6 +14,7 @@ import {
   exportMerchantSalesCSV,
 } from '../utils/storage';
 import { formatMMK, formatNumberOnly } from '../utils/currency';
+import { SmartInsightsModal } from './SmartInsightsModal';
 import {
   FileText,
   Calendar,
@@ -59,6 +60,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState<string>(getTodayDateString());
+  const [isSmartInsightsOpen, setIsSmartInsightsOpen] = useState<boolean>(false);
 
   const filteredTransactions = useMemo(() => {
     return (transactions || []).filter((t) => t && t.date >= startDate && t.date <= endDate);
@@ -204,6 +206,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsSmartInsightsOpen(true)}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Smart Insights (အကြံပြုချက်များ)</span>
+          </button>
           {onOpenCashLedger && (
             <button
               type="button"
@@ -483,6 +493,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           </div>
         </div>
       </div>
+
+      <SmartInsightsModal
+        isOpen={isSmartInsightsOpen}
+        onClose={() => setIsSmartInsightsOpen(false)}
+        suppliers={suppliers}
+        products={products}
+        sales={sales}
+        transactions={transactions}
+      />
     </div>
   );
 };

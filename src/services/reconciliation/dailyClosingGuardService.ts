@@ -12,16 +12,9 @@
 import { db, ShweLetYarDatabase } from '../../db/database';
 import { DailyClosingLockedError } from '../../repositories/errors';
 import { recordAuditEvent } from '../auditTrailService';
+import { isDateClosed } from '../dailyClosingService';
 
-/**
- * Checks whether a given transaction date has already been closed/locked.
- */
-export async function isDateClosed(date: string, targetDb: ShweLetYarDatabase = db): Promise<boolean> {
-  if (!date) return false;
-  const closing = await targetDb.dailyClosings.get(`closing_${date}`);
-  if (!closing) return false;
-  return closing.status === 'CLOSED';
-}
+export { isDateClosed };
 
 /**
  * Asserts that a given transaction date is OPEN.

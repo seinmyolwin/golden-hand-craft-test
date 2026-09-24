@@ -48,7 +48,7 @@ import {
   getStoredBackupReminderSettings,
   saveStoredBackupReminderSettings,
   getStoredRecoverySnapshots,
-  createAutoRecoverySnapshot,
+  createInMemoryStateSnapshot,
   computeAllProductsStock,
   getStoredMerchantPurchases,
   saveStoredMerchantPurchases,
@@ -114,6 +114,9 @@ import { UpdateNotificationModal } from './components/UpdateNotificationModal';
 import { CashLedgerModal } from './components/CashLedgerModal';
 import { ReturnRefundModal } from './components/ReturnRefundModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
+import { ThermalReceiptModal } from './components/ThermalReceiptModal';
+import { VoucherQRModal } from './components/VoucherQRModal';
+import { ThermalReceiptData } from './services/thermalPrinter';
 import { recordAuditEvent, getAuditTrail, cleanupAuditLogsByRetentionPolicy } from './services/auditTrailService';
 import { getCleanZeroData, getFullDemoData } from './data/sampleDemoData';
 import { executeGoLive, checkIsBusinessLive, cleanupDemoDataForGoLive, authorizeDemoDataReload, OpeningPosition } from './services/businessInitializationService';
@@ -384,6 +387,8 @@ export default function App() {
 
   const [activeSaleVoucher, setActiveSaleVoucher] = useState<SaleRecord | null>(null);
   const [isSaleVoucherModalOpen, setIsSaleVoucherModalOpen] = useState<boolean>(false);
+  const [thermalReceiptData, setThermalReceiptData] = useState<ThermalReceiptData | null>(null);
+  const [qrModalData, setQrModalData] = useState<{ title: string; voucherNo: string; data: unknown } | null>(null);
 
   const [ledgerSupplier, setLedgerSupplier] = useState<Supplier | null>(null);
   const [isLedgerModalOpen, setIsLedgerModalOpen] = useState<boolean>(false);
@@ -2082,7 +2087,7 @@ export default function App() {
 
   const handleTakeSnapshotNow = useCallback(
     async (reason: string) => {
-      const snap = createAutoRecoverySnapshot(reason, {
+      const snap = createInMemoryStateSnapshot(reason, {
         products,
         suppliers,
         merchants,
@@ -2523,6 +2528,8 @@ export default function App() {
           onClose={() => setIsVoucherModalOpen(false)}
           transaction={activeVoucherTx}
           shopSettings={shopSettings}
+          onOpenThermalReceipt={(receipt) => setThermalReceiptData(receipt)}
+          onOpenQR={(voucherNo, data) => setQrModalData({ title: `ဘောက်ချာ QR [${voucherNo}]`, voucherNo, data })}
         />
 
         <SaleVoucherModal
@@ -2530,6 +2537,8 @@ export default function App() {
           onClose={() => setIsSaleVoucherModalOpen(false)}
           sale={activeSaleVoucher}
           shopSettings={shopSettings}
+          onOpenThermalReceipt={(receipt) => setThermalReceiptData(receipt)}
+          onOpenQR={(voucherNo, data) => setQrModalData({ title: `အရောင်းဘောက်ချာ QR [${voucherNo}]`, voucherNo, data })}
         />
 
         <SupplierLedgerModal
@@ -2733,6 +2742,24 @@ export default function App() {
           onClose={() => setIsAuditHistoryModalOpen(false)}
           auditLogs={auditLogs}
         />
+
+        {thermalReceiptData && (
+          <ThermalReceiptModal
+            isOpen={!!thermalReceiptData}
+            onClose={() => setThermalReceiptData(null)}
+            receiptData={thermalReceiptData}
+          />
+        )}
+
+        {qrModalData && (
+          <VoucherQRModal
+            isOpen={!!qrModalData}
+            onClose={() => setQrModalData(null)}
+            title={qrModalData.title}
+            voucherNo={qrModalData.voucherNo}
+            data={qrModalData.data}
+          />
+        )}
 
         <UserSwitchModal
           isOpen={isUserSwitchModalOpen}

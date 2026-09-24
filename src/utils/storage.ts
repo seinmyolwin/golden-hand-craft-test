@@ -615,7 +615,7 @@ export function saveStoredRecoverySnapshots(snapshots: AutoRecoverySnapshot[]): 
   }).catch((err) => console.error('Dexie save recovery snapshots error:', err));
 }
 
-export function createAutoRecoverySnapshot(
+export function createInMemoryStateSnapshot(
   reason: string,
   data: {
     products: Product[];

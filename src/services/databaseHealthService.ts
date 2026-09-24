@@ -36,6 +36,7 @@ import {
 } from '../types';
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_ATTACHMENT_SIZE_BYTES } from './attachmentService';
 import { CURRENT_APP_VERSION, CURRENT_DATABASE_SCHEMA_VERSION } from './backupService';
+import { getStorageEstimate as getStorageEstimateCore } from './dbStorage';
 
 export const EXPECTED_DATABASE_TABLES = [
   'products',
@@ -80,25 +81,23 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Safely retrieve storage estimation without throwing
+ * Safely retrieve storage estimation without throwing (wraps dbStorage core implementation)
  */
 export async function getStorageEstimate(): Promise<StorageEstimateInfo | undefined> {
-  if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
-    try {
-      const est = await navigator.storage.estimate();
-      const usageBytes = est.usage;
-      const quotaBytes = est.quota;
-      return {
-        usageBytes,
-        quotaBytes,
-        usageFormatted: usageBytes !== undefined ? formatBytes(usageBytes) : undefined,
-        quotaFormatted: quotaBytes !== undefined ? formatBytes(quotaBytes) : undefined,
-      };
-    } catch {
-      // Ignore estimation errors in restricted environments
-    }
+  try {
+    const est = await getStorageEstimateCore();
+    if (!est) return undefined;
+    const usageBytes = est.usedBytes;
+    const quotaBytes = est.quotaBytes;
+    return {
+      usageBytes,
+      quotaBytes,
+      usageFormatted: usageBytes !== undefined ? formatBytes(usageBytes) : undefined,
+      quotaFormatted: quotaBytes !== undefined ? formatBytes(quotaBytes) : undefined,
+    };
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 /**
