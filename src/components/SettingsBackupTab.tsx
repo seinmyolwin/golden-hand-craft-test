@@ -2209,19 +2209,19 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
           </div>
 
           {/* Audit Retention Row */}
-          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-600 shrink-0" />
               <span className="text-slate-700 font-medium">
                 စာရင်းစစ်မှတ်တမ်း ထိန်းသိမ်းချိန် (Audit Retention):
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <select
                 disabled={!isOwner || isCleaningAudit}
                 value={retentionPeriod}
                 onChange={(e) => handleRetentionChange(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-50 border border-amber-300 rounded-lg font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                className="flex-1 sm:flex-none min-w-[170px] max-w-full px-2.5 py-1.5 bg-slate-50 border border-amber-300 rounded-lg font-bold text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer truncate"
               >
                 <option value="10_DAYS">၁၀ ရက် (10 Days)</option>
                 <option value="3_MONTHS">၃ လ (3 Months)</option>
@@ -2235,10 +2235,10 @@ export const SettingsBackupTab: React.FC<SettingsBackupTabProps> = ({
                 type="button"
                 disabled={!isOwner || isCleaningAudit}
                 onClick={() => handleRetentionChange(retentionPeriod)}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+                className="flex-1 sm:flex-none justify-center px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap disabled:opacity-50"
                 title="ယခု အလိုအလျောက် သန့်ရှင်းရေး လုပ်ဆောင်မည်"
               >
-                <Trash2 className={`w-3 h-3 ${isCleaningAudit ? 'animate-spin' : ''}`} />
+                <Trash2 className={`w-3.5 h-3.5 ${isCleaningAudit ? 'animate-spin' : ''}`} />
                 <span>{isCleaningAudit ? 'ရှင်းနေသည်...' : 'သန့်ရှင်းမည်'}</span>
               </button>
             </div>

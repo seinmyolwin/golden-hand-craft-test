@@ -3,7 +3,7 @@
  * Single authoritative source of version definitions.
  */
 
-export const APP_VERSION = '2.5.0';
+export const APP_VERSION = '2.5.1';
 export const CURRENT_APP_VERSION = APP_VERSION;
 
 export const BACKUP_FORMAT_VERSION = '3.0';
